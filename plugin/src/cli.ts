@@ -99,15 +99,15 @@ import { storeExplorationFindings } from './findingsRun.ts'
 import { settleEnded } from './cleanups.ts'
 import { owedCleanups, settleCleanups } from './resets.ts'
 import { actionInput, actionRecovery, dispatchAction, performAction, type ActionName } from './actions.ts'
-import { addRecipe, allEvidence, listRecipes, recipeInstallReport, type ObserveValue } from './recipes.ts'
+import { allEvidence, listRecipes, recipeProblem, type ObserveValue } from './recipes.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
 type Context = {
+	cwd: string
 	actor: string | undefined
 	stdin: () => unknown
 	text: () => string
-	cwd: string
 	workspace: string
 	env: Record<string, string | undefined>
 }
@@ -358,22 +358,6 @@ function short(sha256: unknown) {
 }
 
 const commands: Record<string, Command> = {
-	'recipe add': {
-		positionals: [],
-		flags: { file: 'value', replace: 'switch' },
-		required: ['file'],
-		workspaceRun: (args, context) => {
-			const replace = args.replace === true
-			const entry = addRecipe(context.workspace, resolve(context.cwd, value(args, 'file')!), replace)
-			return completed(entry.recipe.name, {
-				workspace: context.workspace,
-				path: entry.path,
-				usagePath: entry.usagePath,
-				report: recipeInstallReport(entry, replace),
-			})
-		},
-		print: ({ data: { report, ...facts } }) => ({ facts, lines: [[`Report to the person: ${report}`]] }),
-	},
 	'recipe list': {
 		positionals: [],
 		workspaceRun: (_args, context) => completed('recipes', listRecipes(context.workspace)),
@@ -382,7 +366,7 @@ const commands: Record<string, Command> = {
 			return {
 				lines: [
 					...recipes.map(({ recipe, source, path }) => [recipe.name, source, path]),
-					...invalid.map(({ name, path, error }) => [name, 'invalid', path, error]),
+					...invalid.map((item) => [item.name, 'invalid', recipeProblem(item)]),
 				],
 			}
 		},
@@ -2730,10 +2714,10 @@ export function run(argv: string[], io: Io): Outcome {
 	try {
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
 		const context: Context = {
+			cwd: io.cwd,
 			actor,
 			stdin: () => readJson(io.stdin()),
 			text: io.stdin,
-			cwd: io.cwd,
 			workspace,
 			env: io.env,
 		}

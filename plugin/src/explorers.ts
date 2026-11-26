@@ -54,7 +54,7 @@ import { dataRules, markerFor, owe, requireDataFor, runPrepare, settleCleanups }
 import { isRecordedGroup, signalRecordedGroup, startOfGroup } from './processes.ts'
 import { storeFindingsRun } from './findingsRun.ts'
 import { changeOf, changedFiles } from './change.ts'
-import { testerEnvironment, testerTools, toolFolders } from './recipes.ts'
+import { requireValidRecipes, testerEnvironment, testerTools, toolFolders } from './recipes.ts'
 import { attachedServers } from './tool-servers.ts'
 import {
 	checkClaudeArgs,
@@ -422,6 +422,11 @@ export function startExploration(
 		scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []),
 	}
 	const reply = write(store, { actor, command: 'explore start', subject: input.planId, input }, (operationId, at) => {
+		if (input.explorationId)
+			requireValidRecipes(
+				store.workspace,
+				exploration(store, input.explorationId).charter.tools.map(({ name }) => name)
+			)
 		if (!input.session) {
 			requireChild(env, selectedHarness(env))
 			for (const { exploration_id: id } of all<{ exploration_id: string }>(
@@ -1127,7 +1132,10 @@ export async function driveExploration(workspace: string, explorationId: string,
 			step: 'done',
 			explorer: null,
 			status: 'failed',
-			detail: { reason: error instanceof Error ? error.message : String(error) },
+			detail: {
+				reason: error instanceof Error ? error.message : String(error),
+				...(error instanceof Refusal && error.hint ? { hint: error.hint } : {}),
+			},
 		})
 	} finally {
 		settleCleanups(store, [explorationId])
@@ -1438,7 +1446,10 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 			step: 'followed',
 			explorer: null,
 			status: 'failed',
-			detail: { reason: error instanceof Error ? error.message : String(error) },
+			detail: {
+				reason: error instanceof Error ? error.message : String(error),
+				...(error instanceof Refusal && error.hint ? { hint: error.hint } : {}),
+			},
 		})
 	} finally {
 		closeStore(store)

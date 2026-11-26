@@ -5,13 +5,9 @@ description: Set up a Checkmate target, correct its operations, or replace an in
 
 Read the workspace instructions. Use Checkmate tools from the current session.
 
-If the tool needed for the test has no recipe, add one as part of setup. Use the entry names from its recipe.
+If the tool you need has no recipe, write `<tool>.json` in the project's `.checkmate/recipes/` folder. Use a built-in JSON file from the Checkmate plugin’s `recipes/` folder as an example. Include {{recipe-fields}}. Put the tester instructions in `usage` as a list of Markdown lines. For each needed input, put its `name`, `kind`, and `purpose` in `entryPoints`.
 
-1. Read an example with `checkmate recipe list --json`. Write `<tool>.json` and the Markdown file named in `usage` side by side in a draft folder. Include {{recipe-fields}}, and include `entryPoints` for a target that needs inputs such as an inventory file or org alias. Give each entry a `name`, `kind`, and `purpose`. For a CLI, use its executable name with `kind: "cli"` and `detect: "path"`. For MCP, include `server` and `tools`.
-2. Run `checkmate recipe add --workspace <absolute project path> --file <recipe.json>`. Use the project folder where this host session started, or the workspace named in the setup refusal. The tool and draft can be elsewhere. Add `--replace` to correct an installed custom recipe with the same name.
-3. Verify the reported workspace and fix any validation error. Call `{{tool setup}}` with the declared entries. Pass the receipt line that starts with “Report to the person:” to the person.
-
-If `checkmate` is unavailable, use `node "<plugin root>/dist/checkmate.js"` in its place.
+Continue with `{{tool setup}}` and the declared entries. If Checkmate refuses the recipe, edit the file to fix the listed problems. Tell the person you added the recipe and what it lets testers run.
 
 1. Call `{{tool list_targets}}` when the target is unclear. Use the only target if it matches the request.
 2. Ask for the application address or the entries its tool needs. For a remote target, confirm the environment and the operations the person permits. Record credential references.

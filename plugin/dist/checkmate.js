@@ -11851,24 +11851,13 @@ function piResult(output, error, status, signal) {
 
 // plugin/src/tool-servers.ts
 import { spawn } from "node:child_process";
-import { mkdirSync as mkdirSync3 } from "node:fs";
+import { mkdirSync as mkdirSync2 } from "node:fs";
 import { join as join3 } from "node:path";
 import { createInterface } from "node:readline";
 
 // plugin/src/recipes.ts
-import {
-  existsSync as existsSync2,
-  linkSync,
-  lstatSync,
-  mkdirSync as mkdirSync2,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmSync as rmSync2,
-  statSync,
-  writeFileSync
-} from "node:fs";
-import { basename, dirname, join as join2 } from "node:path";
+import { existsSync as existsSync2, lstatSync, readdirSync, readFileSync } from "node:fs";
+import { basename, join as join2 } from "node:path";
 var requiredRecipeFields = [
   "name",
   "capability",
@@ -11888,46 +11877,63 @@ function isIdentifier(value2) {
 function isText(value2) {
   return typeof value2 === "string" && value2.trim() !== "";
 }
+function invalidRecipe(path, problems, recipe) {
+  return {
+    source: "custom",
+    name: basename(path, ".json"),
+    path,
+    problems,
+    ...recipe ? { entryNames: entryNames(recipe) } : {},
+    ...isIdentifier(recipe?.name) ? { declaredName: recipe.name } : {}
+  };
+}
 function readRecipe(path, source) {
   const file = basename(path);
-  const refuse4 = (problem) => {
-    throw Error(`Tool recipe ${path} is not valid: ${problem}`);
-  };
-  let recipe = {};
-  let jsonText = "";
-  if (!lstatSync(path, { throwIfNoEntry: false })?.isFile()) refuse4("give a regular JSON file.");
+  let recipe;
+  let jsonText;
   try {
+    if (!lstatSync(path, { throwIfNoEntry: false })?.isFile())
+      return invalidRecipe(path, ["Use a regular JSON file."]);
     jsonText = readFileSync(path, "utf8");
     recipe = JSON.parse(jsonText);
   } catch (error) {
-    refuse4(`it is not JSON (${error.message}).`);
+    return invalidRecipe(path, [`Cannot read JSON: ${error.message}`]);
   }
-  if (typeof recipe !== "object" || recipe === null || Array.isArray(recipe)) refuse4("it is not a JSON object.");
+  if (typeof recipe !== "object" || recipe === null || Array.isArray(recipe))
+    return invalidRecipe(path, ["Use a JSON object."]);
+  const problems = [];
+  const refuse4 = (problem) => problems.push(problem);
   for (const field4 of requiredRecipeFields)
     if (!Object.hasOwn(recipe, field4)) refuse4(`give the required field ${field4}.`);
-  if (!isIdentifier(recipe.name) || `${recipe.name}.json` !== file)
+  if (recipe.name !== void 0 && (!isIdentifier(recipe.name) || `${recipe.name}.json` !== file))
     refuse4("name must match the file name without .json and use letters, numbers, dashes, or underscores.");
-  if (!isIdentifier(recipe.capability))
+  if (recipe.capability !== void 0 && !isIdentifier(recipe.capability))
     refuse4("capability must use 1 to 96 letters, digits, dashes, or underscores, starting with a letter or digit.");
-  if (recipe.kind !== "cli" && recipe.kind !== "mcp") refuse4("kind must be cli or mcp.");
+  if (recipe.kind !== void 0 && recipe.kind !== "cli" && recipe.kind !== "mcp") refuse4("kind must be cli or mcp.");
   if (recipe.kind === "mcp") readServer(recipe, refuse4);
-  else if ([recipe.server, recipe.tools, recipe.refusedArguments, recipe.entryArguments].some(
+  else if (recipe.kind === "cli" && [recipe.server, recipe.tools, recipe.refusedArguments, recipe.entryArguments].some(
     (value2) => value2 !== void 0
   ))
     refuse4("server, tools, refusedArguments, and entryArguments are only for a recipe of kind mcp.");
-  if (!isText(recipe.purpose)) refuse4("purpose must be a text.");
-  if (recipe.detect !== "path" && recipe.detect !== "runtime") refuse4("detect must be path or runtime.");
+  if (recipe.purpose !== void 0 && !isText(recipe.purpose)) refuse4("purpose must be a text.");
+  if (recipe.detect !== void 0 && recipe.detect !== "path" && recipe.detect !== "runtime")
+    refuse4("detect must be path or runtime.");
   const environment = recipe.environment;
-  if (typeof environment !== "object" || environment === null || Array.isArray(environment) || Object.values(environment).some((value2) => typeof value2 !== "string"))
-    return refuse4("environment must be an object of texts.");
-  for (const [name2, value2] of Object.entries(environment)) {
-    const unsupported = [...value2.matchAll(/\{([A-Za-z0-9][A-Za-z0-9_-]*)\}/g)].find(
-      ([, key]) => key !== "session" && key !== "workFolder"
-    );
-    if (unsupported)
-      refuse4(
-        `environment.${name2} cannot use ${unsupported[0]}. Use {session} or {workFolder}, or pass the entry as a tool argument.`
-      );
+  if (environment !== void 0) {
+    if (typeof environment !== "object" || environment === null || Array.isArray(environment))
+      refuse4("environment must be an object of texts.");
+    else
+      for (const [name2, value2] of Object.entries(environment)) {
+        if (typeof value2 !== "string") {
+          refuse4(`environment.${name2} must be text.`);
+          continue;
+        }
+        for (const [placeholder2, key] of value2.matchAll(/\{([A-Za-z0-9][A-Za-z0-9_-]*)\}/g))
+          if (key !== "session" && key !== "workFolder")
+            refuse4(
+              `environment.${name2} cannot use ${placeholder2}. Use {session} or {workFolder}, or pass the entry as a tool argument.`
+            );
+      }
   }
   if (recipe.entryPoints !== void 0) readEntryPoints(recipe.entryPoints, refuse4);
   if (recipe.reachable !== void 0) readReachable(recipe, refuse4);
@@ -11937,40 +11943,38 @@ function readRecipe(path, source) {
     refuse4("delegatedInstruction must be a text when it is given.");
   if (recipe.closeSession !== void 0 && (!Array.isArray(recipe.closeSession) || !recipe.closeSession.length || !recipe.closeSession.every(isText)))
     refuse4("closeSession must be a list of arguments when it is given.");
-  if (!Array.isArray(recipe.workspaceFolders) || !recipe.workspaceFolders.every(
+  if (recipe.workspaceFolders !== void 0 && (!Array.isArray(recipe.workspaceFolders) || !recipe.workspaceFolders.every(
     (name2) => isText(name2) && /^[a-zA-Z0-9._-]+$/.test(name2) && ![".", "..", ".checkmate", ".git"].includes(name2.toLowerCase())
-  ))
+  )))
     refuse4("workspaceFolders must list top-level tool folder names. Use a name other than .checkmate or .git.");
   const observeFrom = recipe.observeFrom;
-  if (typeof observeFrom !== "object" || observeFrom === null || Array.isArray(observeFrom) || !Object.keys(observeFrom).every(isValueName) || !Object.values(observeFrom).every((reading) => reading === "view" || reading === "state"))
+  if (observeFrom !== void 0 && (typeof observeFrom !== "object" || observeFrom === null || Array.isArray(observeFrom) || !Object.keys(observeFrom).every(isValueName) || !Object.values(observeFrom).every((reading) => reading === "view" || reading === "state")))
     refuse4("observeFrom must be an object that maps each value name to view or state.");
-  if (!Array.isArray(recipe.evidence) || !recipe.evidence.every(isValueName))
+  if (recipe.evidence !== void 0 && (!Array.isArray(recipe.evidence) || !recipe.evidence.every(isValueName)))
     refuse4("evidence must be a list of evidence kind names.");
   const extensions = recipe.evidenceExtensions;
-  if (extensions !== void 0 && (typeof extensions !== "object" || extensions === null || Array.isArray(extensions) || !Object.keys(extensions).every((extension) => /^\.[a-z0-9]{1,10}$/.test(extension)) || !Object.values(extensions).every((kind) => recipe.evidence?.includes(kind))))
+  if (extensions !== void 0 && (typeof extensions !== "object" || extensions === null || Array.isArray(extensions) || !Object.keys(extensions).every((extension) => /^\.[a-z0-9]{1,10}$/.test(extension)) || !Object.values(extensions).every(
+    (kind) => Array.isArray(recipe.evidence) && recipe.evidence.includes(kind)
+  )))
     refuse4("evidenceExtensions must map each file extension, for example .mp4, to an evidence kind of the recipe.");
   const usage2 = recipe.usage;
-  if (typeof usage2 !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*\.md$/.test(usage2))
-    return refuse4("usage must name a Markdown file beside the recipe.");
-  const usagePath = join2(dirname(path), usage2);
-  if (!lstatSync(usagePath, { throwIfNoEntry: false })?.isFile())
-    return refuse4(`usage must name a regular Markdown file beside the recipe: ${usagePath}.`);
-  let usageText = "";
-  try {
-    usageText = readFileSync(usagePath, "utf8");
-  } catch (error) {
-    refuse4(`usage could not read ${usagePath}: ${error.message}`);
-  }
-  if (!isText(usageText)) refuse4(`the usage file ${usagePath} is empty. Write the usage text for testers in it.`);
-  return { source, path, recipe, jsonText, usagePath, usageText };
+  if (usage2 !== void 0 && (!Array.isArray(usage2) || !usage2.every((line) => typeof line === "string") || !usage2.some(isText)))
+    refuse4("usage must be a non-empty list of Markdown lines.");
+  if (problems.length) return invalidRecipe(path, [...new Set(problems)], recipe);
+  return { source, path, recipe, jsonText };
+}
+function entryNames(recipe) {
+  return Array.isArray(recipe.entryPoints) ? recipe.entryPoints.flatMap((point) => isIdentifier(point?.name) ? [point.name] : []) : [];
 }
 function readEntryPoints(value2, refuse4) {
   const entryPointProblem = "entryPoints must be a list of {name, kind (url, command, or value), purpose, pattern (optional regular expression)}.";
-  if (!Array.isArray(value2) || !value2.length) refuse4(entryPointProblem);
+  if (!Array.isArray(value2) || !value2.length) return refuse4(entryPointProblem);
   const names = /* @__PURE__ */ new Set();
   for (const entry of value2) {
-    if (typeof entry !== "object" || entry === null || !isIdentifier(entry.name) || !["url", "command", "value"].includes(entry.kind) || !isText(entry.purpose) || Object.keys(entry).some((key) => !["name", "kind", "purpose", "pattern"].includes(key)))
+    if (typeof entry !== "object" || entry === null || !isIdentifier(entry.name) || !["url", "command", "value"].includes(entry.kind) || !isText(entry.purpose) || Object.keys(entry).some((key) => !["name", "kind", "purpose", "pattern"].includes(key))) {
       refuse4(entryPointProblem);
+      continue;
+    }
     if (names.has(entry.name)) refuse4(`entryPoints names ${entry.name} twice.`);
     names.add(entry.name);
     if (entry.pattern !== void 0) {
@@ -11986,10 +11990,13 @@ function readEntryPoints(value2, refuse4) {
 function readReachable(recipe, refuse4) {
   const problem = 'reachable must be a list of {check: "http", entry} or {check: "command", run (list of arguments), contains (optional list of texts)}.';
   const checks = recipe.reachable;
-  if (!Array.isArray(checks) || !checks.length) refuse4(problem);
-  const entries = (recipe.entryPoints ?? []).map((entry) => entry.name);
+  if (!Array.isArray(checks) || !checks.length) return refuse4(problem);
+  const entries = entryNames(recipe);
   for (const check of checks) {
-    if (typeof check !== "object" || check === null) refuse4(problem);
+    if (typeof check !== "object" || check === null) {
+      refuse4(problem);
+      continue;
+    }
     if (check.check === "http") {
       if (Object.keys(check).some((key) => key !== "check" && key !== "entry") || !isText(check.entry))
         refuse4(problem);
@@ -12010,9 +12017,9 @@ function readServer(recipe, refuse4) {
   if (recipe.closeSession !== void 0 || recipe.shellInstruction !== void 0)
     refuse4("a recipe of kind mcp has no closeSession or shellInstruction: Checkmate stops its server.");
   const refused3 = recipe.refusedArguments;
-  if (refused3 !== void 0 && (typeof refused3 !== "object" || refused3 === null || Array.isArray(refused3) || !Object.keys(refused3).every((tool) => recipe.tools?.includes(tool)) || !Object.values(refused3).every((names) => Array.isArray(names) && names.length && names.every(isText))))
+  if (refused3 !== void 0 && (typeof refused3 !== "object" || refused3 === null || Array.isArray(refused3) || !Object.keys(refused3).every((tool) => Array.isArray(recipe.tools) && recipe.tools.includes(tool)) || !Object.values(refused3).every((names) => Array.isArray(names) && names.length && names.every(isText))))
     refuse4("refusedArguments must map a tool of the recipe to the names of the arguments that it may not give.");
-  const entries = (recipe.entryPoints ?? []).map((entry) => entry.name);
+  const entries = entryNames(recipe);
   const pinned2 = recipe.entryArguments;
   if (pinned2 !== void 0 && (typeof pinned2 !== "object" || pinned2 === null || Array.isArray(pinned2) || !Object.keys(pinned2).every(isText) || !Object.values(pinned2).every((entry) => entries.includes(entry))))
     refuse4("entryArguments must map an argument name to an entry point of the recipe.");
@@ -12020,72 +12027,77 @@ function readServer(recipe, refuse4) {
 function isValueName(value2) {
   return typeof value2 === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(value2);
 }
+function recipeProblem(item) {
+  return `Tool recipe ${item.path} is not valid: ${item.problems.join(" ")}`;
+}
+function refuseInvalidRecipes(items) {
+  if (!items.length) return;
+  throw new Refusal(
+    "prohibited",
+    items.map(recipeProblem).join(" "),
+    `Edit ${items.map((item) => item.path).join(", ")} to fix the listed problems. Run checkmate recipe list to check the files.`
+  );
+}
 function recipeFiles(folder) {
   return readdirSync(folder).filter((file) => file.endsWith(".json")).sort().map((file) => join2(folder, file));
 }
-function readCustom(path) {
-  try {
-    return readRecipe(path, "custom");
-  } catch (error) {
-    return { source: "custom", name: basename(path, ".json"), path, error: error.message };
-  }
-}
-function conflict(entry, accepted, reserved) {
-  const { recipe } = entry;
-  const owner = reserved.get(recipe.name.toLowerCase());
-  if (owner) return `name ${recipe.name} is in use by the ${owner}. Choose a different name.`;
+function conflicts(recipe, accepted) {
+  const problems = [];
   if (recipe.kind === "mcp") {
     const server = serverName(recipe).toLowerCase();
-    const known = accepted.find(
-      (other) => other.recipe.kind === "mcp" && serverName(other.recipe).toLowerCase() === server
-    );
-    if (known)
-      return `name ${recipe.name} gives the MCP server name ${serverName(recipe)}, which is in use. Choose a different name.`;
+    if (accepted.some(({ recipe: recipe2 }) => recipe2.kind === "mcp" && serverName(recipe2).toLowerCase() === server))
+      problems.push(`MCP server name ${serverName(recipe)} is in use. Choose a different recipe name.`);
   }
   for (const [value2, reading] of Object.entries(recipe.observeFrom)) {
     const known = accepted.find((other) => (other.recipe.observeFrom[value2] ?? reading) !== reading);
     if (known)
-      return `observeFrom ${value2} is ${reading}, but it is ${known.recipe.observeFrom[value2]} in recipe ${known.recipe.name}.`;
+      problems.push(
+        `observeFrom ${value2} is ${reading}, but it is ${known.recipe.observeFrom[value2]} in recipe ${known.recipe.name}.`
+      );
   }
   const shape = (point) => JSON.stringify([point.kind, point.purpose, point.pattern ?? null]);
   for (const point of recipe.entryPoints ?? []) {
     const known = accepted.find(
       (other) => other.recipe.entryPoints?.some((item) => item.name === point.name && shape(item) !== shape(point))
     );
-    if (known) return `entry point ${point.name} differs from the one in recipe ${known.recipe.name}.`;
+    if (known) problems.push(`entry point ${point.name} differs from the one in recipe ${known.recipe.name}.`);
   }
   for (const [extension, kind] of Object.entries(recipe.evidenceExtensions ?? {})) {
     const known = accepted.find((other) => (other.recipe.evidenceExtensions?.[extension] ?? kind) !== kind);
     if (known)
-      return `evidenceExtensions ${extension} is ${kind}, but it is ${known.recipe.evidenceExtensions[extension]} in recipe ${known.recipe.name}.`;
+      problems.push(
+        `evidenceExtensions ${extension} is ${kind}, but it is ${known.recipe.evidenceExtensions[extension]} in recipe ${known.recipe.name}.`
+      );
   }
-  return null;
+  return problems;
 }
 function checkRecipes(found) {
   const reserved = /* @__PURE__ */ new Map();
   const catalog2 = { recipes: [], invalid: [] };
   for (const item of found) {
-    if ("error" in item) {
-      catalog2.invalid.push(item);
-      if (!reserved.has(item.name.toLowerCase()))
-        reserved.set(item.name.toLowerCase(), `invalid custom recipe ${item.path}`);
-      continue;
-    }
-    const problem = conflict(item, catalog2.recipes, reserved);
-    if (problem) {
-      const error = `Tool recipe ${item.path} is not valid: ${problem}`;
-      if (item.source === "built-in") throw Error(error);
-      catalog2.invalid.push({ source: "custom", name: item.recipe.name, path: item.path, error });
-      continue;
-    }
-    reserved.set(item.recipe.name.toLowerCase(), `${item.source} recipe ${item.path}`);
-    catalog2.recipes.push(item);
+    const invalid = "problems" in item;
+    const name2 = invalid ? item.name : item.recipe.name;
+    const declaredName = (invalid ? item.declaredName ?? name2 : name2).toLowerCase();
+    const owner = reserved.get(declaredName);
+    const problems = invalid ? [...item.problems] : conflicts(item.recipe, catalog2.recipes);
+    if (owner)
+      problems.push(`Name ${declaredName} is in use by ${owner}. Rename the file and update its name field.`);
+    if (problems.length) {
+      const issue = invalid ? { ...item, problems } : invalidRecipe(item.path, problems, item.recipe);
+      if (item.source === "built-in") throw Error(recipeProblem(issue));
+      catalog2.invalid.push(issue);
+    } else if (!invalid) catalog2.recipes.push(item);
+    if (!reserved.has(name2.toLowerCase()))
+      reserved.set(name2.toLowerCase(), `the ${item.source} recipe ${item.path}`);
   }
   return catalog2;
 }
+function projectRecipeFolder(workspace2) {
+  return join2(workspace2, ".checkmate", "recipes");
+}
 function customFolder(workspace2) {
   const checkmate = join2(workspace2, ".checkmate");
-  const folder = join2(checkmate, "recipes");
+  const folder = projectRecipeFolder(workspace2);
   for (const path of [checkmate, folder]) {
     const entry = lstatSync(path, { throwIfNoEntry: false });
     if (entry && !entry.isDirectory()) throw Error(`Tool recipes require a directory at ${path}.`);
@@ -12093,95 +12105,16 @@ function customFolder(workspace2) {
   return folder;
 }
 function catalogFiles(workspace2) {
-  builtIn ??= recipeFiles(join2(pluginRoot, "recipes")).map((path) => readRecipe(path, "built-in"));
+  builtIn ??= recipeFiles(join2(pluginRoot, "recipes")).map((path) => {
+    const item = readRecipe(path, "built-in");
+    if ("problems" in item) throw Error(recipeProblem(item));
+    return item;
+  });
   const folder = customFolder(workspace2);
-  return [...builtIn, ...existsSync2(folder) ? recipeFiles(folder).map(readCustom) : []];
+  return [...builtIn, ...existsSync2(folder) ? recipeFiles(folder).map((path) => readRecipe(path, "custom")) : []];
 }
 function listRecipes(workspace2) {
   return checkRecipes(catalogFiles(workspace2));
-}
-function usesMarkdown(item, path) {
-  if ("usagePath" in item) return item.usagePath === path;
-  if (dirname(item.path) !== dirname(path) || !lstatSync(item.path, { throwIfNoEntry: false })?.isFile()) return false;
-  try {
-    return JSON.parse(readFileSync(item.path, "utf8"))?.usage === basename(path);
-  } catch {
-    return false;
-  }
-}
-function addRecipe(workspace2, path, replace2) {
-  if (!statSync(workspace2, { throwIfNoEntry: false })?.isDirectory())
-    throw Error(
-      `Recipe workspace is not an existing directory: ${workspace2}. Give the project folder used by setup.`
-    );
-  const entry = readRecipe(path, "custom");
-  const folder = customFolder(workspace2);
-  const destination = join2(folder, basename(path));
-  const usagePath = join2(folder, basename(entry.usagePath));
-  mkdirSync2(folder, { recursive: true });
-  const lock = join2(folder, ".add");
-  try {
-    mkdirSync2(lock);
-  } catch (error) {
-    if (error.code === "EEXIST")
-      throw Error(`Another recipe add is using ${folder}. Run the command again after it finishes.`, {
-        cause: error
-      });
-    throw error;
-  }
-  try {
-    const files2 = catalogFiles(workspace2);
-    const existing = files2.find((item) => basename(item.path).toLowerCase() === basename(path).toLowerCase());
-    const custom = existing?.source === "custom" ? existing : void 0;
-    if (custom && (!replace2 || custom.path !== destination)) {
-      const owner = "error" in custom ? "invalid custom" : "custom";
-      throw Error(
-        `Tool recipe ${path} is not valid: name ${entry.recipe.name} is in use by the ${owner} recipe ${custom.path}. To replace it, keep its exact name and run checkmate recipe add --replace --workspace ${shellWord(workspace2)} --file ${shellWord(path)}.`
-      );
-    }
-    if (replace2 && !existing)
-      throw Error(`No custom recipe named ${entry.recipe.name} in ${workspace2}. Omit --replace to add it.`);
-    const others = files2.filter((item) => item !== custom);
-    const refused3 = checkRecipes([...others, entry]).invalid.find((item) => item.path === path);
-    if (refused3) throw Error(refused3.error);
-    const usageExists = existsSync2(usagePath);
-    const replaceUsage = usageExists && custom && usesMarkdown(custom, usagePath);
-    if (usageExists && (!replaceUsage || others.some((item) => usesMarkdown(item, usagePath))))
-      throw Error(`usage file ${usagePath} already exists. Choose a different usage file name.`);
-    const json = join2(lock, basename(path));
-    const usage2 = join2(lock, basename(usagePath));
-    const previousUsage = join2(lock, ".previous-usage");
-    writeFileSync(json, entry.jsonText);
-    writeFileSync(usage2, entry.usageText);
-    if (replaceUsage) {
-      linkSync(usagePath, previousUsage);
-      renameSync(usage2, usagePath);
-    } else linkSync(usage2, usagePath);
-    try {
-      if (custom) renameSync(json, destination);
-      else linkSync(json, destination);
-    } catch (error) {
-      if (replaceUsage) renameSync(previousUsage, usagePath);
-      else rmSync2(usagePath);
-      throw error;
-    }
-    return { ...entry, path: destination, usagePath };
-  } finally {
-    rmSync2(lock, { recursive: true, force: true });
-  }
-}
-function recipeInstallReport(entry, replace2) {
-  const { recipe } = entry;
-  const checks = (recipe.reachable ?? []).map(
-    (check) => check.check === "http" ? `HTTP GET {${check.entry}}` : check.run.map(shellWord).join(" ")
-  );
-  return [
-    `${replace2 ? "Replaced" : "Added"} recipe ${recipe.name} in .checkmate/recipes/${basename(entry.path)}.`,
-    `Reachability checks: ${checks.join(", ") || "none"}.`,
-    `Entry points: ${recipe.entryPoints?.map(({ name: name2 }) => name2).join(", ") || "none"}.`,
-    `Evidence kinds: ${recipe.evidence.join(", ") || "none"}.`,
-    `Tester usage: .checkmate/recipes/${basename(entry.usagePath)}.`
-  ].join(" ");
 }
 function recipes(workspace2) {
   return listRecipes(workspace2).recipes.map(({ recipe }) => recipe);
@@ -12208,12 +12141,8 @@ function requireValidRecipes(workspace2, toolNames2) {
   const broken = invalid.filter(
     (item) => toolNames2.includes(item.name) && !recipes2.some(({ recipe }) => recipe.name === item.name)
   );
-  if (!broken.length) return recipes2;
-  throw new Refusal(
-    "prohibited",
-    `The recipe of tool ${broken.map((item) => item.name).join(", ")} is not valid. ${broken.map((item) => item.error).join(" ")}`,
-    `Correct ${broken.map((item) => item.path).join(", ")} and the usage file that it names, then run checkmate recipe list to check the recipes. Or remove the tool from the target.`
-  );
+  refuseInvalidRecipes(broken);
+  return recipes2;
 }
 function recipesFor(workspace2, toolNames2) {
   return requireValidRecipes(workspace2, toolNames2).map(({ recipe }) => recipe).filter((recipe) => toolNames2.includes(recipe.name));
@@ -12246,8 +12175,8 @@ function toolFolders(workspace2, toolNames2) {
 function serverName(recipe) {
   return recipe.name.replaceAll("-", "_");
 }
-function usageFiles(workspace2, toolNames2) {
-  return listRecipes(workspace2).recipes.filter(({ recipe }) => toolNames2.includes(recipe.name)).map(({ usagePath }) => usagePath);
+function recipeFilesFor(workspace2, toolNames2) {
+  return requireValidRecipes(workspace2, toolNames2).filter(({ recipe }) => toolNames2.includes(recipe.name)).map(({ path }) => path);
 }
 function choices(workspace2, toolNames2, values) {
   const found = /* @__PURE__ */ new Map();
@@ -12377,7 +12306,7 @@ function serveToolServer(recipeName, workFolder2, session, workspace2, pinned2) 
   }
   const values = { session, workFolder: workFolder2 };
   const cwd = filled(recipe.server.cwd, values);
-  mkdirSync3(cwd, { recursive: true });
+  mkdirSync2(cwd, { recursive: true });
   const environment = Object.entries(recipe.environment).map(([name2, value2]) => [name2, filled(value2, values)]);
   const server = spawn(
     recipe.server.command,
@@ -12468,16 +12397,16 @@ import {
   accessSync,
   chmodSync,
   constants,
-  mkdirSync as mkdirSync4,
+  mkdirSync as mkdirSync3,
   readFileSync as readFileSync2,
   realpathSync,
-  rmSync as rmSync3,
-  statSync as statSync2,
-  writeFileSync as writeFileSync2
+  rmSync as rmSync2,
+  statSync,
+  writeFileSync
 } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { delimiter, dirname as dirname2, join as join4 } from "node:path";
+import { delimiter, dirname, join as join4 } from "node:path";
 import { fileURLToPath } from "node:url";
 var hookTokenName = "CHECKMATE_HOOK_TOKEN";
 var checkmateActionTools = `${claudeToolPrefix}*`;
@@ -12521,7 +12450,7 @@ function usageOf(calls) {
   const observedModels2 = [...recent];
   return { ...costOf(calls), ...observedModels2.length ? { observedModels: observedModels2 } : {} };
 }
-var pluginRoot = dirname2(dirname2(fileURLToPath(import.meta.url)));
+var pluginRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 function childOutputLimit(harness) {
   const mib = harness === "pi" ? 100 : 4;
   return { mib, bytes: mib * 1024 * 1024 };
@@ -12622,12 +12551,12 @@ function liveUi(workspace2) {
   return file && running(file.pid) ? file : null;
 }
 function writeUiFile(workspace2, file) {
-  mkdirSync4(join4(workspace2, ".checkmate"), { recursive: true });
-  writeFileSync2(uiFilePath(workspace2), JSON.stringify(file), { mode: 384 });
+  mkdirSync3(join4(workspace2, ".checkmate"), { recursive: true });
+  writeFileSync(uiFilePath(workspace2), JSON.stringify(file), { mode: 384 });
   chmodSync(uiFilePath(workspace2), 384);
 }
 function removeUiFile(workspace2, port) {
-  if (readUiFile(workspace2)?.port === port) rmSync3(uiFilePath(workspace2), { force: true });
+  if (readUiFile(workspace2)?.port === port) rmSync2(uiFilePath(workspace2), { force: true });
 }
 function hookTokenPath(workspace2) {
   return join4(workspace2, ".checkmate", "hook-token");
@@ -12641,8 +12570,8 @@ function workspaceHookToken(workspace2, renew = false) {
     }
   }
   const made = randomBytes2(32).toString("hex");
-  mkdirSync4(join4(workspace2, ".checkmate"), { recursive: true });
-  writeFileSync2(hookTokenPath(workspace2), made, { mode: 384 });
+  mkdirSync3(join4(workspace2, ".checkmate"), { recursive: true });
+  writeFileSync(hookTokenPath(workspace2), made, { mode: 384 });
   chmodSync(hookTokenPath(workspace2), 384);
   return made;
 }
@@ -12769,7 +12698,7 @@ function executableOnPath(name2, env) {
     const path = join4(directory2, name2);
     try {
       accessSync(path, constants.X_OK);
-      if (statSync2(path).isFile()) return path;
+      if (statSync(path).isFile()) return path;
     } catch {
     }
   }
@@ -14035,18 +13964,16 @@ function givenEntries(input) {
 function listText(words5) {
   return words5.length < 2 ? words5.join("") : `${words5.slice(0, -1).join(", ")} and ${words5.at(-1)}`;
 }
-function fitEntries(workspace2, catalog2, entries, detected) {
+function fitEntries(workspace2, catalog2, entries, detected, invalid) {
   const names = Object.keys(entries);
   const declared = declaredEntryPoints(catalog2);
   const unknown = names.filter((name2) => !declared.has(name2));
   requireWellFormed(
     !unknown.length,
-    `Unknown entry ${unknown.join(", ")}. Entry names come from recipes. Workspace searched: ${workspace2}. Known entries: ${[...declared.keys()].join(", ")}.`,
+    `Unknown entry ${unknown.join(", ")}. Entry names come from recipes. Recipe folder: ${projectRecipeFolder(workspace2)}. Known entries: ${[...declared.keys()].join(", ")}. ${invalid.map(recipeProblem).join(" ")}`.trim(),
     [
-      "If the tool needed for this test has no recipe, add one as part of setup.",
-      `Copy an example from checkmate recipe list --json. Include ${requiredRecipeFields.join(", ")}, and include entryPoints for a target that needs inputs such as a file or alias. Each entry needs name, kind and purpose. For a CLI, use its executable name with kind cli and detect path. For MCP, include server and tools.`,
-      `Write the JSON and its usage Markdown file side by side. Run checkmate recipe add --workspace ${shellWord(workspace2)} --file <recipe.json>. Verify the workspace in the reply and retry setup with the declared entries.`,
-      "Use --replace to correct an installed custom recipe with the same name. Pass the receipt line that starts with \u201CReport to the person:\u201D to the person."
+      `If the tool you need has no recipe, write one JSON file in ${projectRecipeFolder(workspace2)}. Use a built-in example from checkmate recipe list --json. Include ${requiredRecipeFields.join(", ")}. Put the tester instructions in usage as a list of Markdown lines.`,
+      "Declare each needed entry in entryPoints with name, kind and purpose. If Checkmate refuses the recipe, edit that file to fix the listed problems. Tell the person you added the recipe and what it lets testers run."
     ].join(" ")
   );
   for (const name2 of names) {
@@ -14101,12 +14028,22 @@ function setupAssumptions(workspace2, input) {
     );
   const instanceId = input.instanceId ?? "local";
   if (!input.instanceId) assumed.push("instance=local");
-  const catalog2 = recipes(workspace2);
+  const { recipes: valid, invalid } = listRecipes(workspace2);
+  const names = Object.keys(entries);
+  refuseInvalidRecipes(
+    invalid.filter(
+      (item) => !valid.some(
+        ({ recipe }) => recipe.name.toLowerCase() === (item.declaredName ?? item.name).toLowerCase()
+      ) && (item.name === targetId || item.entryNames?.length && item.entryNames.every((name2) => names.includes(name2)))
+    )
+  );
+  const catalog2 = valid.map(({ recipe }) => recipe);
   const { fitting: detected, entryPoints: entryPoints2 } = fitEntries(
     workspace2,
     catalog2,
     entries,
-    detectedTools(catalog2, input.env)
+    detectedTools(catalog2, input.env),
+    invalid
   );
   const capabilities = [...new Set(detected.map(({ recipe }) => recipe.capability))].sort();
   assumed.push(
@@ -14122,14 +14059,14 @@ function setupAssumptions(workspace2, input) {
   assumed.push("authentication=none");
   return { entries, entryPoints: entryPoints2, targetId, instanceId, detected, capabilities, allowedOperations, assumed };
 }
-function pathTools(catalog2, detected, entryNames) {
+function pathTools(catalog2, detected, entryNames2) {
   const found = [
     ...new Set(
       detected.filter(({ recipe }) => recipe.detect === "path").map(({ recipe }) => toolExecutable(recipe))
     )
   ];
   if (found.length) return `${found.join(" and ")} ${found.length === 1 ? "is" : "are"} on PATH`;
-  const missing = catalog2.filter((recipe) => recipe.detect === "path" && fitsEntries(recipe, entryNames));
+  const missing = catalog2.filter((recipe) => recipe.detect === "path" && fitsEntries(recipe, entryNames2));
   return `no ${[...new Set(missing.map((recipe) => recipe.capability))].join(" or ")} tool on PATH`;
 }
 function sameSet(a, b) {
@@ -14184,6 +14121,16 @@ function setupTarget(store, actor, input) {
   if (!Object.keys(givenEntries(input)).length) return recordData(store, actor, input);
   const setup = setupAssumptions(store.workspace, input);
   const { entries, entryPoints: entryPoints2, targetId, instanceId, detected, capabilities, allowedOperations, assumed } = setup;
+  const saved = one(
+    store,
+    "SELECT body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1",
+    targetId
+  );
+  if (saved)
+    requireValidRecipes(
+      store.workspace,
+      JSON.parse(saved.body).tools.map(({ name: name2 }) => name2)
+    );
   const reset = dataOf(input);
   const where = entries.web && Object.keys(entries).length === 1 ? entries.web : `the entries ${entryList(entries)}`;
   const flags = entryFlags(entries);
@@ -14249,14 +14196,14 @@ function setupTarget(store, actor, input) {
         operationId
       );
     }
-    const saved = one(
+    const saved2 = one(
       store,
       "SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1",
       targetId
     );
-    if (!reachable && !saved) assumed.push(`ready=false (${where} did not answer: ${failure})`);
+    if (!reachable && !saved2) assumed.push(`ready=false (${where} did not answer: ${failure})`);
     let profile = null;
-    if (!saved)
+    if (!saved2)
       profile = {
         contractVersion: "toolkit-2",
         targetId,
@@ -14899,7 +14846,7 @@ import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:f
 import { basename as basename2, extname, join as join8 } from "node:path";
 
 // plugin/src/rules.ts
-import { readFileSync as readFileSync5, realpathSync as realpathSync2, statSync as statSync3 } from "node:fs";
+import { readFileSync as readFileSync5, realpathSync as realpathSync2, statSync as statSync2 } from "node:fs";
 import { resolve, sep } from "node:path";
 var outsideRule = "outside";
 var defaultArea = "Rules";
@@ -14948,7 +14895,7 @@ function explorationRules(store, explorationId) {
 function sourceText(store, name2) {
   try {
     const path = realpathSync2(resolve(store.workspace, name2.split("#")[0]));
-    if (!path.startsWith(realpathSync2(store.workspace) + sep) || !statSync3(path).isFile()) return null;
+    if (!path.startsWith(realpathSync2(store.workspace) + sep) || !statSync2(path).isFile()) return null;
     const text2 = readFileSync5(path, "utf8");
     return text2.length > maxSourceCharacters ? `${text2.slice(0, maxSourceCharacters)}
 (The rest of the file is left out.)` : text2;
@@ -14981,7 +14928,7 @@ function ticketFile(store, typed) {
     `The ticket ${name2} is outside the workspace.`,
     `Give a file inside ${workspace2}, or paste the text of the ticket.`
   );
-  requireCondition(statSync3(path).isFile(), `The ticket ${name2} is not a file.`, "Give the path of a file.");
+  requireCondition(statSync2(path).isFile(), `The ticket ${name2} is not a file.`, "Give the path of a file.");
   return path.slice(workspace2.length + 1);
 }
 function ruleSources(store, planId) {
@@ -15101,7 +15048,7 @@ function rulesLine(store, planId) {
 }
 
 // plugin/src/journal.ts
-import { existsSync as existsSync5, readdirSync as readdirSync2, readFileSync as readFileSync6, realpathSync as realpathSync3, statSync as statSync4 } from "node:fs";
+import { existsSync as existsSync5, readdirSync as readdirSync2, readFileSync as readFileSync6, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
 import { isAbsolute as isAbsolute2, join as join7, relative, resolve as resolve2, sep as sep2 } from "node:path";
 var entryKinds = [
   "criterion",
@@ -15240,7 +15187,7 @@ function evidenceFile(store, name2) {
     real.startsWith(realpathSync3(store.workspace) + sep2),
     `Evidence file must be inside the workspace: ${name2}`
   );
-  const stats = statSync4(real);
+  const stats = statSync3(real);
   requireWellFormed(stats.isFile(), `Evidence must be a file: ${name2}`);
   requireWellFormed(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name2}`);
   return readFileSync6(real);
@@ -18544,7 +18491,7 @@ var actions_schema_default = {
 };
 
 // plugin/src/runs.ts
-import { mkdirSync as mkdirSync5, readFileSync as readFileSync8, realpathSync as realpathSync4, rmSync as rmSync4, statSync as statSync5 } from "node:fs";
+import { mkdirSync as mkdirSync4, readFileSync as readFileSync8, realpathSync as realpathSync4, rmSync as rmSync3, statSync as statSync4 } from "node:fs";
 import { basename as basename3, extname as extname2, isAbsolute as isAbsolute3, join as join9, resolve as resolve3, sep as sep3 } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -18871,7 +18818,7 @@ function begin(store, actor, input, permanent) {
     }
   );
   if (reply.status === "completed")
-    mkdirSync5(join9(store.workspace, evidenceDirectory(input.runId)), { recursive: true });
+    mkdirSync4(join9(store.workspace, evidenceDirectory(input.runId)), { recursive: true });
   return reply;
 }
 function plannedTarget(store, text2) {
@@ -18936,7 +18883,7 @@ function readEvidence(store, runId, { file: name2, kind }, allowed2) {
     );
   }
   requireWellFormed(real.startsWith(root + sep3), `Evidence file must be inside ${directory2}: ${name2}`);
-  const stats = statSync5(real);
+  const stats = statSync4(real);
   requireWellFormed(stats.isFile(), `Evidence must be a file: ${name2}`);
   requireWellFormed(stats.size <= maxEvidenceBytes2, `Evidence file exceeds 32 MiB: ${name2}`);
   const extension = extname2(name2).toLowerCase();
@@ -18988,7 +18935,7 @@ function evidenceFiles(store, runId, name2, specs = []) {
   return files2;
 }
 function removeFiles(files2) {
-  for (const file of files2) if (file.path) rmSync4(file.path, { force: true });
+  for (const file of files2) if (file.path) rmSync3(file.path, { force: true });
 }
 function optionalText(value2, name2) {
   return value2 === void 0 ? null : requireText(value2, name2);
@@ -20306,7 +20253,7 @@ var exploration_schema_default = {
 };
 
 // plugin/src/explorations.ts
-import { mkdirSync as mkdirSync6, writeFileSync as writeFileSync3 } from "node:fs";
+import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync2 } from "node:fs";
 import { join as join10 } from "node:path";
 var explorationModes = exploration_schema_default.properties.mode.enum;
 function latestRevision(store, planId) {
@@ -20438,8 +20385,8 @@ function writeKnownState(store, planId, explorationId, build) {
     return null;
   const path = `${workFolder(explorationId)}/known-state.md`;
   const { text: text2, answerIds } = knownState(store, planId, build);
-  mkdirSync6(join10(store.workspace, workFolder(explorationId)), { recursive: true });
-  writeFileSync3(join10(store.workspace, path), text2);
+  mkdirSync5(join10(store.workspace, workFolder(explorationId)), { recursive: true });
+  writeFileSync2(join10(store.workspace, path), text2);
   return { path, answerIds };
 }
 function nextExplorationId(store) {
@@ -21746,8 +21693,8 @@ function operationText(operations) {
   return `You can: ${operations.join(", ")}.`;
 }
 function usageLine(workspace2, toolNames2) {
-  const files2 = usageFiles(workspace2, toolNames2);
-  return files2.length ? [`Before you use a tool, read its usage text: ${files2.join(", ")}.`] : [];
+  const files2 = recipeFilesFor(workspace2, toolNames2);
+  return files2.length ? [`Before you use a tool, read its usage field in: ${files2.join(", ")}.`] : [];
 }
 function entryPointLine(entry) {
   if (entry.kind === "command")
@@ -21913,7 +21860,7 @@ function verifierBrief(items, entries, operations, dataRules2, dataPrefix, answe
 
 // plugin/src/recorder.ts
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { existsSync as existsSync7, mkdirSync as mkdirSync7, readFileSync as readFileSync9, rmSync as rmSync5, writeFileSync as writeFileSync4 } from "node:fs";
+import { existsSync as existsSync7, mkdirSync as mkdirSync6, readFileSync as readFileSync9, rmSync as rmSync4, writeFileSync as writeFileSync3 } from "node:fs";
 import { join as join11 } from "node:path";
 var defaultRecorderTimeout = 600;
 var reservedExplorers = ["rules", "merge", "verify"];
@@ -22002,17 +21949,17 @@ function lockHolder(path) {
   }
 }
 function takeLock(path, until) {
-  mkdirSync7(join11(path, ".."), { recursive: true });
+  mkdirSync6(join11(path, ".."), { recursive: true });
   for (; ; ) {
     try {
-      writeFileSync4(path, String(process.pid), { flag: "wx" });
+      writeFileSync3(path, String(process.pid), { flag: "wx" });
       return true;
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
     }
     const holder = lockHolder(path);
     if (holder && !running2(holder) && lockHolder(path) === holder) {
-      rmSync5(path, { force: true });
+      rmSync4(path, { force: true });
       continue;
     }
     if (Date.now() >= until) return false;
@@ -22020,7 +21967,7 @@ function takeLock(path, until) {
   }
 }
 function releaseLock(path) {
-  if (lockHolder(path) === process.pid) rmSync5(path, { force: true });
+  if (lockHolder(path) === process.pid) rmSync4(path, { force: true });
 }
 function promptOf(store, exploration2, actor, earlier, answer2) {
   return recorderPrompt(
@@ -22620,14 +22567,14 @@ import { spawn as spawn4, spawnSync as spawnSync7 } from "node:child_process";
 import { randomUUID as randomUUID4 } from "node:crypto";
 import {
   existsSync as existsSync8,
-  mkdirSync as mkdirSync8,
+  mkdirSync as mkdirSync7,
   openSync,
   readdirSync as readdirSync3,
   readFileSync as readFileSync10,
-  renameSync as renameSync2,
+  renameSync,
   rmdirSync as rmdirSync2,
-  rmSync as rmSync6,
-  statSync as statSync6
+  rmSync as rmSync5,
+  statSync as statSync5
 } from "node:fs";
 import { join as join12 } from "node:path";
 var defaultExplorerTimeout = 1800;
@@ -22762,7 +22709,7 @@ function toolIdentity(marker, explorer) {
 }
 function explorerWork(store, explorationId, explorer, launch) {
   const folder = workFolder(explorationId, explorer);
-  mkdirSync8(join12(store.workspace, folder), { recursive: true });
+  mkdirSync7(join12(store.workspace, folder), { recursive: true });
   const others = explorerNames(launch.explorers).filter((name2) => name2 !== explorer);
   const { session, dataPrefix } = launch.toolIdentities[explorer];
   const values = { session, workFolder: join12(store.workspace, folder) };
@@ -22839,21 +22786,21 @@ function keepToolFolders(store, explorationId) {
     const from = join12(store.workspace, name2);
     if (launch.toolFoldersBefore.includes(name2) || !existsSync8(from)) continue;
     const to = join12(store.workspace, workFolder(explorationId), name2);
-    mkdirSync8(join12(to, ".."), { recursive: true });
-    rmSync6(to, { recursive: true, force: true });
-    renameSync2(from, to);
+    mkdirSync7(join12(to, ".."), { recursive: true });
+    rmSync5(to, { recursive: true, force: true });
+    renameSync(from, to);
   }
 }
 function removeWork(store, explorationId) {
   keepToolFolders(store, explorationId);
-  rmSync6(join12(store.workspace, workFolder(explorationId)), { recursive: true, force: true });
-  rmSync6(join12(store.workspace, ".checkmate", "tmp", `explore-${explorationId}.log`), { force: true });
+  rmSync5(join12(store.workspace, workFolder(explorationId)), { recursive: true, force: true });
+  rmSync5(join12(store.workspace, ".checkmate", "tmp", `explore-${explorationId}.log`), { force: true });
   removeIfEmpty(join12(store.workspace, ".checkmate", "work"));
   removeIfEmpty(join12(store.workspace, ".checkmate", "tmp"));
 }
 function startSupervisor(store, explorationId, actor, env, extra = []) {
   const folder = join12(store.workspace, ".checkmate", "tmp");
-  mkdirSync8(folder, { recursive: true });
+  mkdirSync7(folder, { recursive: true });
   const log = openSync(join12(folder, `explore-${explorationId}.log`), "a");
   const child = spawn4(
     process.execPath,
@@ -22876,6 +22823,11 @@ function startExploration(store, actor, given, env, preferSavedModel = false) {
     scope: given.scope ?? (change ? changedFiles(store.workspace, change) : [])
   };
   const reply = write(store, { actor, command: "explore start", subject: input.planId, input }, (operationId, at2) => {
+    if (input.explorationId)
+      requireValidRecipes(
+        store.workspace,
+        exploration(store, input.explorationId).charter.tools.map(({ name: name2 }) => name2)
+      );
     if (!input.session) {
       requireChild(env, selectedHarness(env));
       for (const { exploration_id: id2 } of all(
@@ -23003,7 +22955,7 @@ function entryValues(store, explorationId) {
 function workFiles(folder) {
   try {
     return new Map(
-      readdirSync3(folder, { withFileTypes: true }).filter((item) => item.isFile()).map((item) => [item.name, statSync6(join12(folder, item.name)).size])
+      readdirSync3(folder, { withFileTypes: true }).filter((item) => item.isFile()).map((item) => [item.name, statSync5(join12(folder, item.name)).size])
     );
   } catch {
     return /* @__PURE__ */ new Map();
@@ -23496,7 +23448,10 @@ async function driveExploration(workspace2, explorationId, env) {
       step: "done",
       explorer: null,
       status: "failed",
-      detail: { reason: error instanceof Error ? error.message : String(error) }
+      detail: {
+        reason: error instanceof Error ? error.message : String(error),
+        ...error instanceof Refusal && error.hint ? { hint: error.hint } : {}
+      }
     });
   } finally {
     settleCleanups(store, [explorationId]);
@@ -23756,7 +23711,10 @@ async function driveFollow(workspace2, explorationId, env) {
       step: "followed",
       explorer: null,
       status: "failed",
-      detail: { reason: error instanceof Error ? error.message : String(error) }
+      detail: {
+        reason: error instanceof Error ? error.message : String(error),
+        ...error instanceof Refusal && error.hint ? { hint: error.hint } : {}
+      }
     });
   } finally {
     closeStore(store);
@@ -23906,7 +23864,7 @@ function endInBackground(workspace2, explorationId, explorer, env) {
 }
 function startEnding(store, explorationId, actor, explorer, env) {
   const folder = join12(store.workspace, ".checkmate", "tmp");
-  mkdirSync8(folder, { recursive: true });
+  mkdirSync7(folder, { recursive: true });
   const log = openSync(join12(folder, `explore-${explorationId}.log`), "a");
   const child = spawn4(
     process.execPath,
@@ -27542,7 +27500,7 @@ async function recoverPiCosts(store, env) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes4 } from "node:crypto";
-import { existsSync as existsSync11, readdirSync as readdirSync4, readFileSync as readFileSync13, realpathSync as realpathSync7, statSync as statSync7 } from "node:fs";
+import { existsSync as existsSync11, readdirSync as readdirSync4, readFileSync as readFileSync13, realpathSync as realpathSync7, statSync as statSync6 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
@@ -32383,8 +32341,8 @@ function claimPage(store, context, explorationId, claimId, state = null) {
 }
 
 // plugin/src/agents.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync9, readFileSync as readFileSync11, rmSync as rmSync7, writeFileSync as writeFileSync5 } from "node:fs";
-import { dirname as dirname3, join as join18 } from "node:path";
+import { existsSync as existsSync10, mkdirSync as mkdirSync8, readFileSync as readFileSync11, rmSync as rmSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { dirname as dirname2, join as join18 } from "node:path";
 var testerAgent = "checkmate:tester";
 var clerkAgent = "checkmate:clerk";
 var doneSteps = ["study", "test", "record", "follow", "rules", "merge", "verify"];
@@ -32601,8 +32559,8 @@ function lineOf(explorationId, action2) {
 }
 function writeFile(store, path, text2) {
   const full = join18(store.workspace, path);
-  mkdirSync9(dirname3(full), { recursive: true });
-  writeFileSync5(full, text2.endsWith("\n") ? text2 : `${text2}
+  mkdirSync8(dirname2(full), { recursive: true });
+  writeFileSync4(full, text2.endsWith("\n") ? text2 : `${text2}
 `);
 }
 function answerNext(store, actor, explorationId, actions, word) {
@@ -32612,7 +32570,7 @@ function answerNext(store, actor, explorationId, actions, word) {
     (operationId, at2) => {
       for (const action2 of actions) {
         writeFile(store, action2.task, action2.text.trimEnd());
-        if (action2.answer) rmSync7(join18(store.workspace, action2.answer), { force: true });
+        if (action2.answer) rmSync6(join18(store.workspace, action2.answer), { force: true });
         addEvent(
           store,
           explorationId,
@@ -32740,6 +32698,10 @@ function pauseRun(store, actor, explorationId, reason) {
 function stepsStarted(store, actor, explorationId, names) {
   const events = explorationEvents(store, explorationId);
   sessionLaunch(events, explorationId);
+  requireValidRecipes(
+    store.workspace,
+    exploration(store, explorationId).charter.tools.map(({ name: name2 }) => name2)
+  );
   clearPause(store, actor, explorationId, events);
   const phase = phaseOf3(events);
   const given = (name2) => {
@@ -33187,7 +33149,7 @@ function actionRecovery(name2, reply) {
 
 // plugin/src/ui/server.ts
 import { join as join21, resolve as resolve7 } from "node:path";
-import { mkdirSync as mkdirSync11, rmSync as rmSync9, writeFileSync as writeFileSync6 } from "node:fs";
+import { mkdirSync as mkdirSync10, rmSync as rmSync8, writeFileSync as writeFileSync5 } from "node:fs";
 
 // plugin/src/ui/bulk.ts
 var kindLabels = {
@@ -35782,7 +35744,6 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 }
 
 // plugin/src/ui/recipes.ts
-var addCommand = "checkmate recipe add --file <name>.json";
 var agentOnly = "\n> **Agent only:** This file contains repository or workflow instructions for coding agents.\n\n";
 function readCatalog(workspace2) {
   try {
@@ -35831,7 +35792,7 @@ function recipesPage(workspace2) {
   const invalidRows = invalid.map(
     (item) => listRow(`invalid:${fileName2(item.path)}`, invalidHref(item), item.name, invalidPill(), [
       "Checkmate does not use this recipe.",
-      html2`<span class="reason">${item.error}</span>`
+      html2`<span class="reason">${recipeProblem(item)}</span>`
     ])
   );
   const custom = recipes2.some((entry) => entry.source === "custom") || invalid.length;
@@ -35847,8 +35808,7 @@ function recipesPage(workspace2) {
 						</ul>` : ""}
 			${custom || error ? "" : emptyNotice(
     "No custom recipe yet.",
-    html2`Write a recipe JSON file and its Markdown usage file in a draft folder. Then run
-								<code>${addCommand}</code> in this workspace.`
+    html2`Drop a recipe JSON file in <code>${projectRecipeFolder(workspace2)}</code>.`
   )}
 		</div>`;
   return settingsPage("/settings/recipes", "Recipes", ["recipes"], body);
@@ -35891,12 +35851,11 @@ function pairs2(values) {
 function refused2(values) {
   return pairs2(Object.fromEntries(Object.entries(values).map(([tool, names]) => [tool, names.join(",")])));
 }
-function recipeFacts({ source, path, usagePath, recipe }) {
+function recipeFacts({ source, path, recipe }) {
   const server = recipe.server;
   return html2`<dl class="facts">
 		${fact("Source", sourcePill(source))}
 		${source === "custom" ? fact("File", html2`<code>${path}</code>`, "path") : ""}
-		${source === "custom" ? fact("Usage file", html2`<code>${usagePath}</code>`, "path") : ""}
 		${fact("Tool for", html2`<code>${recipe.capability}</code> · ${kindText2(recipe)}`)}
 		${fact("Detection", detection(recipe))}
 		${server ? fact("Server", html2`<code>${commandText([server.command, ...server.args])}</code> in <code>${server.cwd}</code>`) : ""}
@@ -35934,11 +35893,11 @@ function invalidRecipePage(workspace2, file) {
 		<div class="main-col">
 			<section aria-labelledby="error">
 				<h2 id="error">Error</h2>
-				<pre class="sp-code" tabindex="0" data-error>${item.error}</pre>
+				<pre class="sp-code" tabindex="0" data-error>${recipeProblem(item)}</pre>
 			</section>
 			<dl class="facts">
 				${fact("Source", sourcePill(item.source))} ${fact("File", html2`<code>${item.path}</code>`, "path")}
-				${fact("Fix", html2`Correct the file and the usage file that it names. The page shows the recipe when it is valid.`)}
+				${fact("Fix", html2`Edit this JSON file to fix the listed problems. The recipe appears in the list when it is valid.`)}
 			</dl>
 			<p class="back"><a href="/settings/recipes">All recipes</a></p>
 		</div>
@@ -35950,9 +35909,9 @@ function recipePage(workspace2, name2) {
   if (error) return catalogFailure(name2, error);
   const entry = recipes2.find(({ recipe: recipe2 }) => recipe2.name === name2);
   if (!entry) return null;
-  const { recipe, usagePath, jsonText } = entry;
-  const usageText = entry.source === "built-in" ? entry.usageText.replace(agentOnly, "\n") : entry.usageText;
-  const usageName = fileName2(usagePath);
+  const { recipe, jsonText } = entry;
+  const usage2 = recipe.usage.join("\n");
+  const usageText = entry.source === "built-in" ? usage2.replace(agentOnly, "\n") : usage2;
   const body = html2`<div data-region="recipe">
 		${heading(recipe.name, recipe.purpose, html2`<div class="meta">${sourcePill(entry.source)}</div>`)}
 		<div class="main-col">
@@ -35976,7 +35935,7 @@ function recipePage(workspace2, name2) {
 				${testingFacts(recipe)}
 			</section>
 			<section aria-labelledby="usage">
-				<h2 id="usage">Usage <span class="muted small mono">${usageName}</span></h2>
+				<h2 id="usage">Usage</h2>
 				<pre class="sp-code" tabindex="0" data-usage>${usageText}</pre>
 			</section>
 			<details class="fold" data-open-key="section:json">
@@ -36483,7 +36442,7 @@ This conversation is about plan ${reference2}. Use the plan and its records as t
 
 // plugin/src/ui/lifecycle.ts
 import { createHmac, randomBytes as randomBytes3, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
-import { mkdirSync as mkdirSync10, readFileSync as readFileSync12, realpathSync as realpathSync6, rmSync as rmSync8 } from "node:fs";
+import { mkdirSync as mkdirSync9, readFileSync as readFileSync12, realpathSync as realpathSync6, rmSync as rmSync7 } from "node:fs";
 import { request } from "node:http";
 import { join as join20 } from "node:path";
 import { DatabaseSync as DatabaseSync2 } from "node:sqlite";
@@ -36494,7 +36453,7 @@ function lifecycleProof(token, workspace2, pid, action2, nonce, body) {
 }
 async function withUiStartupLock(workspace2, run2) {
   const folder = join20(workspace2, ".checkmate", "tmp");
-  mkdirSync10(folder, { recursive: true });
+  mkdirSync9(folder, { recursive: true });
   const lock = new DatabaseSync2(join20(folder, "ui-startup.sqlite"));
   try {
     const deadline = Date.now() + 15e3;
@@ -36568,7 +36527,7 @@ async function contactUi(workspace2, action2) {
     });
   } catch (error) {
     if (error.code !== "ECONNREFUSED") throw unverified();
-    rmSync8(uiFilePath(workspace2), { force: true });
+    rmSync7(uiFilePath(workspace2), { force: true });
     return null;
   }
   const { status, body, proof } = response;
@@ -42476,7 +42435,7 @@ data: ${matched.join(",") || "*"}
   const recipeFiles2 = () => {
     try {
       return readdirSync4(recipeFolder).sort().map((name2) => {
-        const file = statSync7(join21(recipeFolder, name2), { throwIfNoEntry: false });
+        const file = statSync6(join21(recipeFolder, name2), { throwIfNoEntry: false });
         return `${name2}:${file?.size}:${file?.mtimeMs}`;
       }).join(",");
     } catch {
@@ -44020,8 +43979,8 @@ data: ${matched.join(",") || "*"}
     }
     try {
       if (kept) {
-        mkdirSync11(resolve7(store.workspace, ".checkmate", "sources"), { recursive: true });
-        writeFileSync6(resolve7(store.workspace, kept), text2.endsWith("\n") ? text2 : `${text2}
+        mkdirSync10(resolve7(store.workspace, ".checkmate", "sources"), { recursive: true });
+        writeFileSync5(resolve7(store.workspace, kept), text2.endsWith("\n") ? text2 : `${text2}
 `);
       }
       const started = runTest(
@@ -44042,7 +44001,7 @@ data: ${matched.join(",") || "*"}
         cookie("checkmate_toast", `Started ${started.subject} on build ${build}`, 60)
       ]);
     } catch (error) {
-      if (kept && !hasRequest(store, planId)) rmSync9(resolve7(store.workspace, kept), { force: true });
+      if (kept && !hasRequest(store, planId)) rmSync8(resolve7(store.workspace, kept), { force: true });
       refuse5(engineText(error));
     }
   }
@@ -44645,26 +44604,26 @@ function specHandoff(store, actor, input) {
 }
 
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync12, readFileSync as readFileSync15, writeFileSync as writeFileSync7 } from "node:fs";
-import { dirname as dirname5, join as join23, resolve as resolve9 } from "node:path";
+import { mkdirSync as mkdirSync11, readFileSync as readFileSync15, writeFileSync as writeFileSync6 } from "node:fs";
+import { dirname as dirname4, join as join23, resolve as resolve9 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 
 // plugin/src/build.ts
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync12, readdirSync as readdirSync5, readFileSync as readFileSync14, realpathSync as realpathSync8, statSync as statSync8 } from "node:fs";
+import { existsSync as existsSync12, readdirSync as readdirSync5, readFileSync as readFileSync14, realpathSync as realpathSync8, statSync as statSync7 } from "node:fs";
 import { homedir as homedir3 } from "node:os";
-import { dirname as dirname4, isAbsolute as isAbsolute4, join as join22, resolve as resolve8, sep as sep4 } from "node:path";
+import { dirname as dirname3, isAbsolute as isAbsolute4, join as join22, resolve as resolve8, sep as sep4 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 var instructionFolders = ["agents", "contracts", "pi", "recipes", "references", "skills"];
 function filesUnder(folder) {
   if (!existsSync12(folder)) return [];
   return readdirSync5(folder).sort().flatMap((name2) => {
     const path = join22(folder, name2);
-    return statSync8(path).isDirectory() ? filesUnder(path) : [path];
+    return statSync7(path).isDirectory() ? filesUnder(path) : [path];
   });
 }
 function buildDigest(bundle) {
-  const root = dirname4(dirname4(bundle));
+  const root = dirname3(dirname3(bundle));
   const hash = createHash2("sha256").update(readFileSync14(bundle));
   for (const folder of instructionFolders) {
     for (const path of filesUnder(join22(root, folder))) {
@@ -44708,8 +44667,8 @@ function piDeclarations(env, cwd) {
   });
 }
 function packageRootOf(file) {
-  let folder = dirname4(file);
-  while (!existsSync12(join22(folder, "package.json")) && dirname4(folder) !== folder) folder = dirname4(folder);
+  let folder = dirname3(file);
+  while (!existsSync12(join22(folder, "package.json")) && dirname3(folder) !== folder) folder = dirname3(folder);
   return folder;
 }
 function piCopyWarnings(bundle, env, cwd) {
@@ -44921,22 +44880,6 @@ function short3(sha256) {
   return typeof sha256 === "string" ? sha256.slice(0, 8) : sha256;
 }
 var commands = {
-  "recipe add": {
-    positionals: [],
-    flags: { file: "value", replace: "switch" },
-    required: ["file"],
-    workspaceRun: (args, context) => {
-      const replace2 = args.replace === true;
-      const entry = addRecipe(context.workspace, resolve9(context.cwd, value(args, "file")), replace2);
-      return completed(entry.recipe.name, {
-        workspace: context.workspace,
-        path: entry.path,
-        usagePath: entry.usagePath,
-        report: recipeInstallReport(entry, replace2)
-      });
-    },
-    print: ({ data: { report, ...facts3 } }) => ({ facts: facts3, lines: [[`Report to the person: ${report}`]] })
-  },
   "recipe list": {
     positionals: [],
     workspaceRun: (_args, context) => completed("recipes", listRecipes(context.workspace)),
@@ -44945,7 +44888,7 @@ var commands = {
       return {
         lines: [
           ...recipes2.map(({ recipe, source, path }) => [recipe.name, source, path]),
-          ...invalid.map(({ name: name2, path, error }) => [name2, "invalid", path, error])
+          ...invalid.map((item) => [item.name, "invalid", recipeProblem(item)])
         ]
       };
     }
@@ -46887,9 +46830,9 @@ function legacyLine(checks, planId) {
 }
 function writeOutput(store, out, content) {
   const path = resolve9(store.workspace, out);
-  mkdirSync12(dirname5(path), { recursive: true });
+  mkdirSync11(dirname4(path), { recursive: true });
   try {
-    writeFileSync7(path, content, { flag: "wx" });
+    writeFileSync6(path, content, { flag: "wx" });
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "EEXIST")
       throw new Error(`Output file exists: ${out}. Choose a new path.`, { cause: error });
@@ -47126,10 +47069,10 @@ function run(argv, io) {
   try {
     const actor = command.write ? value(args, "actor") ?? defaultActor(workspace2, io.env) : void 0;
     const context = {
+      cwd: io.cwd,
       actor,
       stdin: () => readJson2(io.stdin()),
       text: io.stdin,
-      cwd: io.cwd,
       workspace: workspace2,
       env: io.env
     };
@@ -48457,13 +48400,13 @@ function contextLines(execution, workspace2, tools) {
   const sources = planning.context?.sources ?? [];
   const values = sessionValues(workspace2, run2);
   const names = toolNames(workspace2, execution);
-  const usage2 = usageFiles(workspace2, names);
+  const usage2 = recipeFilesFor(workspace2, names);
   return [
     ...sources.length ? [
       `Source files: ${sources.map((source) => resolve10(workspace2, source)).join(", ")}. Read them with the read tool. Do not search the file system: do not use rg, grep, or find.`
     ] : [],
     `Tools: ${tools.join(", ")}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error. A tool with an attached server whose tools you do not have is missing too.`,
-    ...usage2.length ? [`Read the usage text of the tool you use: ${usage2.join(", ")}.`] : [],
+    ...usage2.length ? [`Read the usage field of the recipe you use: ${usage2.join(", ")}.`] : [],
     ...recipesFor(workspace2, names).flatMap(
       (recipe) => recipe.delegatedInstruction ? [filled(recipe.delegatedInstruction, values)] : []
     )
@@ -49144,7 +49087,7 @@ ${source.text}`)
 }
 
 // cli/src/main.ts
-import { existsSync as existsSync13, mkdirSync as mkdirSync13, openSync as openSync2, readFileSync as readFileSync18, rmSync as rmSync10, writeFileSync as writeFileSync8 } from "node:fs";
+import { existsSync as existsSync13, mkdirSync as mkdirSync12, openSync as openSync2, readFileSync as readFileSync18, rmSync as rmSync9, writeFileSync as writeFileSync7 } from "node:fs";
 import { spawn as spawn7, spawnSync as spawnSync9 } from "node:child_process";
 import { join as join26 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
@@ -49331,8 +49274,8 @@ function detachDelegate(tokens) {
       tokens.includes("--json")
     );
   const file = resultFile(workspace2, stage, subject);
-  mkdirSync13(join26(workspace2, ".checkmate", "tmp"), { recursive: true });
-  rmSync10(file, { force: true });
+  mkdirSync12(join26(workspace2, ".checkmate", "tmp"), { recursive: true });
+  rmSync9(file, { force: true });
   const quote = (text2) => `'${text2.replaceAll("'", "'\\''")}'`;
   const command = [process.execPath, fileURLToPath4(import.meta.url), "delegate", ...rest, "--json"].map(quote).join(" ");
   const child = spawn7(
@@ -49345,8 +49288,8 @@ function detachDelegate(tokens) {
     }
   );
   child.unref();
-  writeFileSync8(file + ".started", String(Date.now()));
-  writeFileSync8(file + ".pid", String(child.pid));
+  writeFileSync7(file + ".started", String(Date.now()));
+  writeFileSync7(file + ".pid", String(child.pid));
   print(
     {
       status: "running",
@@ -49384,8 +49327,8 @@ function waitDelegate(tokens) {
   while (!existsSync13(file) && Date.now() < until && delegateAlive(file))
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
   if (!existsSync13(file) && !delegateAlive(file)) {
-    rmSync10(file + ".started", { force: true });
-    rmSync10(file + ".pid", { force: true });
+    rmSync9(file + ".started", { force: true });
+    rmSync9(file + ".pid", { force: true });
     print(
       {
         status: "operational_error",
@@ -49414,10 +49357,10 @@ function waitDelegate(tokens) {
     return;
   }
   const text2 = readFileSync18(file, "utf8");
-  rmSync10(file, { force: true });
-  rmSync10(file + ".started", { force: true });
-  rmSync10(file + ".pid", { force: true });
-  rmSync10(file + ".log", { force: true });
+  rmSync9(file, { force: true });
+  rmSync9(file + ".started", { force: true });
+  rmSync9(file + ".pid", { force: true });
+  rmSync9(file + ".log", { force: true });
   process.stdout.write(text2.endsWith("\n") ? text2 : text2 + "\n");
 }
 async function runDelegate(tokens) {

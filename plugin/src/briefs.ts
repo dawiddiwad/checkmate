@@ -1,7 +1,7 @@
 import type { Charter } from './explorations.ts'
 import { changesData } from './resets.ts'
 import { anyTestOperation, anyTestOperationText, readOnlyOperation, readOnlyOperationText } from './targets.ts'
-import { testerTools, usageFiles } from './recipes.ts'
+import { testerTools, recipeFilesFor } from './recipes.ts'
 import entrySchema from '../contracts/journal-entry.schema.json' with { type: 'json' }
 import criterionSchema from '../contracts/journal-criterion.schema.json' with { type: 'json' }
 import observationSchema from '../contracts/journal-observation.schema.json' with { type: 'json' }
@@ -236,8 +236,8 @@ function operationText(operations: string[]) {
 export type EntryPointValue = { name: string; kind: string; purpose: string; value: string }
 
 function usageLine(workspace: string, toolNames: string[]) {
-	const files = usageFiles(workspace, toolNames)
-	return files.length ? [`Before you use a tool, read its usage text: ${files.join(', ')}.`] : []
+	const files = recipeFilesFor(workspace, toolNames)
+	return files.length ? [`Before you use a tool, read its usage field in: ${files.join(', ')}.`] : []
 }
 
 function entryPointLine(entry: EntryPointValue) {

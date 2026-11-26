@@ -38,7 +38,7 @@ import {
 import { lastEntry, recordAnswer, recordTask } from './recorder.ts'
 import { firstRevision } from './testRevision.ts'
 import { replyArray } from './sessions.ts'
-import { shellInstructions, testerTools } from './recipes.ts'
+import { requireValidRecipes, shellInstructions, testerTools } from './recipes.ts'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
@@ -480,6 +480,10 @@ export function pauseRun(store: Store, actor: string | undefined, explorationId:
 export function stepsStarted(store: Store, actor: string | undefined, explorationId: string, names: string[]): Reply {
 	const events = explorationEvents(store, explorationId)
 	sessionLaunch(events, explorationId)
+	requireValidRecipes(
+		store.workspace,
+		exploration(store, explorationId).charter.tools.map(({ name }) => name)
+	)
 	clearPause(store, actor, explorationId, events)
 	const phase = phaseOf(events)
 	const given = (name: string) => {

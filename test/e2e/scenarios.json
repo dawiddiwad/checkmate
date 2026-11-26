@@ -265,8 +265,8 @@
 	},
 	{
 		"number": 43,
-		"name": "Install and use a project tool recipe from the packed CLI",
+		"name": "Drop and use a project tool recipe from the packed CLI",
 		"status": "covered",
-		"test": "Install and use a project tool recipe from the packed CLI"
+		"test": "Drop and use a project tool recipe from the packed CLI"
 	}
 ]

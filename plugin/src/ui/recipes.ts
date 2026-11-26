@@ -1,13 +1,12 @@
 import type { Html } from './html.ts'
 import type { Page } from './layout.ts'
 import type { InvalidRecipe, ReachCheck, Recipe, RecipeCatalog, RecipeEntry } from '../recipes.ts'
-import { listRecipes, toolExecutable } from '../recipes.ts'
+import { listRecipes, projectRecipeFolder, recipeProblem, toolExecutable } from '../recipes.ts'
 import { html, join } from './html.ts'
 import { banner, emptyNotice, heading } from './layout.ts'
 import { settingsPage } from './settings.ts'
 import { listRow } from './lists.ts'
 
-const addCommand = 'checkmate recipe add --file <name>.json'
 const agentOnly = '\n> **Agent only:** This file contains repository or workflow instructions for coding agents.\n\n'
 
 function readCatalog(workspace: string): RecipeCatalog & { error: string | null } {
@@ -70,7 +69,7 @@ export function recipesPage(workspace: string): Page {
 	const invalidRows = invalid.map((item) =>
 		listRow(`invalid:${fileName(item.path)}`, invalidHref(item), item.name, invalidPill(), [
 			'Checkmate does not use this recipe.',
-			html`<span class="reason">${item.error}</span>`,
+			html`<span class="reason">${recipeProblem(item)}</span>`,
 		])
 	)
 	const custom = recipes.some((entry) => entry.source === 'custom') || invalid.length
@@ -93,8 +92,7 @@ export function recipesPage(workspace: string): Page {
 					? ''
 					: emptyNotice(
 							'No custom recipe yet.',
-							html`Write a recipe JSON file and its Markdown usage file in a draft folder. Then run
-								<code>${addCommand}</code> in this workspace.`
+							html`Drop a recipe JSON file in <code>${projectRecipeFolder(workspace)}</code>.`
 						)
 			}
 		</div>`
@@ -148,12 +146,11 @@ function refused(values: Record<string, string[]>) {
 	return pairs(Object.fromEntries(Object.entries(values).map(([tool, names]) => [tool, names.join(',')])))
 }
 
-function recipeFacts({ source, path, usagePath, recipe }: RecipeEntry) {
+function recipeFacts({ source, path, recipe }: RecipeEntry) {
 	const server = recipe.server
 	return html`<dl class="facts">
 		${fact('Source', sourcePill(source))}
 		${source === 'custom' ? fact('File', html`<code>${path}</code>`, 'path') : ''}
-		${source === 'custom' ? fact('Usage file', html`<code>${usagePath}</code>`, 'path') : ''}
 		${fact('Tool for', html`<code>${recipe.capability}</code> · ${kindText(recipe)}`)}
 		${fact('Detection', detection(recipe))}
 		${server ? fact('Server', html`<code>${commandText([server.command, ...server.args])}</code> in <code>${server.cwd}</code>`) : ''}
@@ -194,11 +191,11 @@ export function invalidRecipePage(workspace: string, file: string): Page | null 
 		<div class="main-col">
 			<section aria-labelledby="error">
 				<h2 id="error">Error</h2>
-				<pre class="sp-code" tabindex="0" data-error>${item.error}</pre>
+				<pre class="sp-code" tabindex="0" data-error>${recipeProblem(item)}</pre>
 			</section>
 			<dl class="facts">
 				${fact('Source', sourcePill(item.source))} ${fact('File', html`<code>${item.path}</code>`, 'path')}
-				${fact('Fix', html`Correct the file and the usage file that it names. The page shows the recipe when it is valid.`)}
+				${fact('Fix', html`Edit this JSON file to fix the listed problems. The recipe appears in the list when it is valid.`)}
 			</dl>
 			<p class="back"><a href="/settings/recipes">All recipes</a></p>
 		</div>
@@ -211,9 +208,9 @@ export function recipePage(workspace: string, name: string): Page | null {
 	if (error) return catalogFailure(name, error)
 	const entry = recipes.find(({ recipe }) => recipe.name === name)
 	if (!entry) return null
-	const { recipe, usagePath, jsonText } = entry
-	const usageText = entry.source === 'built-in' ? entry.usageText.replace(agentOnly, '\n') : entry.usageText
-	const usageName = fileName(usagePath)
+	const { recipe, jsonText } = entry
+	const usage = recipe.usage.join('\n')
+	const usageText = entry.source === 'built-in' ? usage.replace(agentOnly, '\n') : usage
 	const body = html`<div data-region="recipe">
 		${heading(recipe.name, recipe.purpose, html`<div class="meta">${sourcePill(entry.source)}</div>`)}
 		<div class="main-col">
@@ -237,7 +234,7 @@ export function recipePage(workspace: string, name: string): Page | null {
 				${testingFacts(recipe)}
 			</section>
 			<section aria-labelledby="usage">
-				<h2 id="usage">Usage <span class="muted small mono">${usageName}</span></h2>
+				<h2 id="usage">Usage</h2>
 				<pre class="sp-code" tabindex="0" data-usage>${usageText}</pre>
 			</section>
 			<details class="fold" data-open-key="section:json">

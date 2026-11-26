@@ -873,7 +873,6 @@ test(
 	{ skip: browserSkip, timeout: 60_000 },
 	async (t) => {
 		const workspace = realpathSync(directory(t))
-		const draft = directory(t)
 		t.after(() => endProcessesIn(workspace))
 		must(workspace, ['init'])
 		const { url } = await startUi(t, workspace)
@@ -892,13 +891,11 @@ test(
 			builtIn.map((name) => [name, 'built-in'])
 		)
 		const empty = page.locator('[data-region="recipes"] .sp-empty')
-		assert.match(
-			(await empty.textContent()) ?? '',
-			/No custom recipe yet\.[\s\S]*checkmate recipe add --file <name>\.json/
-		)
+		assert.match((await empty.textContent()) ?? '', /No custom recipe yet\.[\s\S]*Drop a recipe JSON file in/)
 		assert.equal(await page.locator('main form, main button').count(), 0)
 
 		const injected = `<img src=x onerror="document.body.dataset.injected='yes'">`
+		const usage = `# Acme\n\nRun acme stock --store <store>.\n\n<script>document.body.dataset.injected = 'script'</script>\n${injected}\n`
 		const recipe = {
 			name: 'acme',
 			capability: 'inventory',
@@ -911,13 +908,13 @@ test(
 			workspaceFolders: [],
 			observeFrom: { stock: 'state' },
 			evidence: ['stock_report'],
-			usage: 'acme.md',
+			usage: usage.split('\n'),
 		}
-		const usage = `# Acme\n\nRun acme stock --store <store>.\n\n<script>document.body.dataset.injected = 'script'</script>\n${injected}\n`
 		const json = JSON.stringify(recipe, null, 2) + '\n'
-		writeFileSync(join(draft, 'acme.json'), json)
-		writeFileSync(join(draft, 'acme.md'), usage)
-		const added = must(workspace, ['recipe', 'add', '--file', join(draft, 'acme.json')])
+		const folder = join(workspace, '.checkmate', 'recipes')
+		const path = join(folder, 'acme.json')
+		mkdirSync(folder, { recursive: true })
+		writeFileSync(path, json)
 		await page.locator('[data-region="recipes"] [data-label="acme"]').waitFor()
 		assert.deepEqual(await sources(), [...builtIn.map((name) => [name, 'built-in']), ['acme', 'custom']])
 		assert.equal(await empty.count(), 0)
@@ -930,8 +927,7 @@ test(
 		await page.waitForURL(/\/settings\/recipes\/acme$/)
 		const facts = await page.locator('#recipe + .facts').innerText()
 		assert.equal(await page.locator('#recipe + .facts [data-source]').getAttribute('data-source'), 'custom')
-		assert.ok(facts.includes(added.path), facts)
-		assert.ok(facts.includes(added.usagePath), facts)
+		assert.ok(facts.includes(path), facts)
 		assert.match(facts, /inventory · command-line tool/)
 		assert.match(facts, /acme on PATH/)
 		const requires = await page.locator('section[aria-labelledby="requires"]').innerText()
@@ -965,13 +961,13 @@ test(
 			['bad.json', 'invalid'],
 		])
 		assert.equal(await page.locator('.banner').count(), 0)
-		assert.match((await bad.textContent()) ?? '', /bad\.json is not valid: it is not JSON \(.*<img src=x/)
+		assert.match((await bad.textContent()) ?? '', /bad\.json is not valid: Cannot read JSON: .*<img src=x/)
 		await bad.click()
 		await page.waitForURL(/\/settings\/invalid-recipes\?file=bad\.json$/)
 		const error = (await page.locator('[data-error]').textContent()) ?? ''
 		assert.ok(
 			error.startsWith(
-				`Tool recipe ${join(workspace, '.checkmate', 'recipes', 'bad.json')} is not valid: it is not JSON (`
+				`Tool recipe ${join(workspace, '.checkmate', 'recipes', 'bad.json')} is not valid: Cannot read JSON: `
 			),
 			error
 		)
@@ -984,5 +980,13 @@ test(
 		assert.equal(await page.locator('main img, main form, main button').count(), 0)
 		assert.equal(await page.evaluate(() => document.body.dataset.injected ?? null), null)
 		assert.equal((await fetch(new URL('/settings/invalid-recipes?file=acme.json', url))).status, 404)
+		assert.match(await page.locator('main .facts').innerText(), /Edit this JSON file to fix the listed problems/)
+		await page.goto(new URL('/settings/recipes', url).href)
+		await page.locator('[data-live]:not(.down):not([hidden])').waitFor()
+		writeFileSync(join(folder, 'bad.json'), JSON.stringify({ ...recipe, name: 'bad' }))
+		await page.locator('[data-label="bad"] [data-source="custom"]').waitFor()
+		rmSync(join(folder, 'bad.json'))
+		rmSync(path)
+		await page.locator('[data-region="recipes"] .sp-empty').waitFor()
 	}
 )

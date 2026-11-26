@@ -53,21 +53,19 @@ The prompts of delegated workers name the entries from the profile, for example 
 
 ## Add a project tool recipe
 
-Checkmate loads built-in recipes and project recipes from `.checkmate/recipes/`. A recipe has a JSON file and the Markdown usage file it names. Run `checkmate recipe list --json` to read existing recipes and their usage text. Its `invalid` list gives each project recipe that Checkmate cannot use, with its file path and error. Checkmate does not use an invalid recipe. A target, plan, run, or test that names its tool is refused until you correct the file. The review UI shows the same recipes on the Settings > Recipes page. The page is read-only.
+Put one JSON file in the project’s `.checkmate/recipes/` folder. Match the file name to the recipe name. Put the tester instructions in `usage` as a list of Markdown lines. Edit the file to update the recipe. Delete the file to remove it.
 
-To add a recipe, write both files in a draft folder. The JSON file name must match the recipe name. Run `checkmate recipe add --workspace <project> --file <recipe.json>`. Use the same workspace as setup. The recipe commands use `--workspace` first, then the Claude Code project directory when the host supplies it, then the current directory. A relative `--file` path starts in the current directory. The project directory must already exist. The command validates both files and reports their paths and the workspace. The compact receipt has a `Report to the person:` line with the recipe's reachability checks, entry points, evidence kinds, and tester usage file. The JSON receipt has a `report` field.
+Run `checkmate recipe list --json` for built-in examples and for the `invalid` list with each file path and its validation problems. `checkmate recipe list` shows the same problems as text. Checkmate checks the files as it reads the catalog and refuses to use invalid recipes. Its refusal gives the file and what to edit. Built-in names are reserved. If custom names clash, Checkmate marks the later file invalid. Settings > Recipes shows the same catalog and reflects changes to the folder.
 
-To correct an installed recipe, keep its exact recipe name and run `checkmate recipe add --replace --workspace <project> --file <recipe.json>`. Built-in names stay reserved regardless of case. Checkmate validates the replacement before it writes either file. If the replacement names a different usage file, the previous Markdown file stays in the project.
-
-Checkmate leaves saved targets and plans as they are. Future recipe lookups use the replacement by name. If the replacement needs different target entries or capabilities, set up a target that fits it. Review plans that use changed observation or evidence values before you run tests again. Finish active tests before replacing a recipe. Remove an unused recipe pair through Git after you check that no saved target or plan needs it.
+Saved targets and plans keep their records. Future recipe lookups use the current file by name. If you change entry points or capabilities, set up a target that fits the recipe. Review the plans that use changed observation or evidence values.
 
 In `environment`, use literal values or the tester placeholders `{session}` and `{workFolder}`. To pass an instance entry such as `inventory` to a tool, use a command argument. A reachability command can use `{inventory}` in its argument list if the recipe declares that entry.
 
-When a test needs a tool with no recipe, the setup workflow asks the host model to add a recipe and report what it can run. The host controls file writes and command permissions. Commit both installed files to share the recipe with your team. Checkmate loads them from the checkout. Review recipes as project code because setup and testers can run commands that recipes specify.
+Review and share recipes in Git as project code. A recipe can tell Checkmate to run a reachability command or start an MCP server. The host controls file writes and tester tool permissions.
 
 ### Salesforce CLI example
 
-Save this as `draft/sf.json`. Setup looks for `sf` on `PATH` and checks the org with a read-only SOQL query. [Salesforce CLI command reference](https://developer.salesforce.com/docs/platform/salesforce-cli-reference/guide/cli_reference_data_query.html)
+Save this as `.checkmate/recipes/sf.json`. Setup looks for `sf` on `PATH` and checks the org with a read-only SOQL query. [Salesforce CLI command reference](https://developer.salesforce.com/docs/platform/salesforce-cli-reference/guide/cli_reference_data_query.html)
 
 ```json
 {
@@ -96,14 +94,18 @@ Save this as `draft/sf.json`. Setup looks for `sf` on `PATH` and checks the org 
 	"workspaceFolders": [],
 	"observeFrom": { "soql": "state" },
 	"evidence": ["soql_result"],
-	"usage": "sf.md"
+	"usage": [
+		"# Salesforce CLI",
+		"",
+		"Run sf data query --target-org <org entry> --query '<SOQL>' --json.",
+		"Record the relevant result as soql_result evidence."
+	]
 }
 ```
 
-In `draft/sf.md`, tell the tester to run `sf data query --target-org <org entry> --query '<SOQL>' --json` and record the relevant result as `soql_result` evidence. Use an org alias that your Salesforce CLI already knows:
+Use an org alias that your Salesforce CLI already knows:
 
 ```sh
-checkmate recipe add --workspace "$PWD" --file draft/sf.json
 checkmate setup --target salesforce --entry org=my-sandbox --operations read_records
 ```
 

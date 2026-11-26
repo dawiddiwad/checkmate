@@ -41,7 +41,7 @@ import {
 	recipesFor,
 	testerEnvironment,
 	testerTools,
-	usageFiles,
+	recipeFilesFor,
 	type Recipe,
 	type SessionValues,
 } from '../../plugin/src/recipes.ts'
@@ -931,7 +931,7 @@ function contextLines(execution: Execution, workspace: string, tools: string[]) 
 	const sources = planning.context?.sources ?? []
 	const values = sessionValues(workspace, run)
 	const names = toolNames(workspace, execution)
-	const usage = usageFiles(workspace, names)
+	const usage = recipeFilesFor(workspace, names)
 	return [
 		...(sources.length
 			? [
@@ -939,7 +939,7 @@ function contextLines(execution: Execution, workspace: string, tools: string[]) 
 				]
 			: []),
 		`Tools: ${tools.join(', ')}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error. A tool with an attached server whose tools you do not have is missing too.`,
-		...(usage.length ? [`Read the usage text of the tool you use: ${usage.join(', ')}.`] : []),
+		...(usage.length ? [`Read the usage field of the recipe you use: ${usage.join(', ')}.`] : []),
 		...recipesFor(workspace, names).flatMap((recipe) =>
 			recipe.delegatedInstruction ? [filled(recipe.delegatedInstruction, values)] : []
 		),

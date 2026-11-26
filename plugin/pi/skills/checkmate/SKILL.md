@@ -7,13 +7,9 @@ Use native `checkmate_*` tools. They take named arguments and return the recorde
 
 ## Set up and plan
 
-If the tool needed for the test has no recipe, add one as part of setup. Use the entry names from its recipe.
+If the tool you need has no recipe, write `<tool>.json` in the project's `.checkmate/recipes/` folder. Use a built-in JSON file from the Checkmate plugin’s `recipes/` folder as an example. Include `name`, `capability`, `kind`, `purpose`, `detect`, `environment`, `workspaceFolders`, `observeFrom`, `evidence`, `usage`. Put the tester instructions in `usage` as a list of Markdown lines. For each needed input, put its `name`, `kind`, and `purpose` in `entryPoints`.
 
-1. Read an example with `checkmate recipe list --json`. Write `<tool>.json` and the Markdown file named in `usage` side by side in a draft folder. Include `name`, `capability`, `kind`, `purpose`, `detect`, `environment`, `workspaceFolders`, `observeFrom`, `evidence`, `usage`, and include `entryPoints` for a target that needs inputs such as an inventory file or org alias. Give each entry a `name`, `kind`, and `purpose`. For a CLI, use its executable name with `kind: "cli"` and `detect: "path"`. For MCP, include `server` and `tools`.
-2. Run `checkmate recipe add --workspace <absolute project path> --file <recipe.json>`. Use the project folder where this host session started, or the workspace named in the setup refusal. The tool and draft can be elsewhere. Add `--replace` to correct an installed custom recipe with the same name.
-3. Verify the reported workspace and fix any validation error. Call `checkmate_setup` with the declared entries. Pass the receipt line that starts with “Report to the person:” to the person.
-
-If `checkmate` is unavailable, use `node "<plugin root>/dist/checkmate.js"` in its place.
+Continue with `checkmate_setup` and the declared entries. If Checkmate refuses the recipe, edit the file to fix the listed problems. Tell the person you added the recipe and what it lets testers run.
 
 1. Ask for the application address or the entries its tool needs. Confirm the environment and permitted operations for a remote target. Use `checkmate_setup` and report its reachability result. Use `checkmate_replace_instance` for an instance correction and use the instance ID it returns.
 2. Report assumptions and readiness. Ask for the missing reset or isolation policy when data can change. Do not write a policy or a hook yourself. Stop for setup-only requests.

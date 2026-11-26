@@ -6987,12 +6987,12 @@ function recipePlan(capability: string, observeFrom: Array<string | undefined>) 
 	}
 }
 
-test('Install and use a project tool recipe from the packed CLI', async (t) => {
+test('Drop and use a project tool recipe from the packed CLI', async (t) => {
 	const workspace = realpathSync(directory(t))
-	const draft = directory(t)
+	const bin = directory(t)
 	const env = {
 		...process.env,
-		PATH: `${draft}${delimiter}${process.env.PATH}`,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
 		CHECKMATE_ACTOR: 'oracle',
 	}
 	const ok = async (args: string[], input = '') => {
@@ -7002,8 +7002,11 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 	}
 	for (const skill of ['skills/setup/SKILL.md', 'pi/skills/checkmate/SKILL.md']) {
 		const text = readFileSync(join(project, 'node_modules/@xoxoai/checkmate/plugin', skill), 'utf8')
-		assert.match(text, /Include `name`, .*include `entryPoints` for a target that needs inputs/)
-		assert.match(text, /Pass the receipt line that starts with “Report to the person:”/)
+		assert.match(
+			text,
+			/write `<tool>\.json` in the project's `\.checkmate\/recipes\/` folder.*Include `name`, .* in `entryPoints`/
+		)
+		assert.match(text, /Tell the person you added the recipe and what it lets testers run/)
 	}
 	const recipe = {
 		name: 'sf',
@@ -7023,107 +7026,18 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 		shellInstruction: 'Use the Salesforce org alias from the target.',
 		observeFrom: { soql: 'state' },
 		evidence: ['soql_result'],
-		usage: 'sf.md',
+		usage: ['# Salesforce CLI', '', 'Use the org entry as the target org.'],
 	}
-	const usage = '# Salesforce CLI\n\nUse the org entry as the target org.\n'
+	const folder = join(workspace, '.checkmate', 'recipes')
+	const path = join(folder, 'sf.json')
 	const json = JSON.stringify(recipe, null, 2) + '\n'
-	const recipePath = join(draft, 'sf.json')
-	const installed = join(workspace, '.checkmate', 'recipes')
-	writeFileSync(join(draft, 'sf.md'), usage)
-	writeFileSync(recipePath, JSON.stringify({ ...recipe, observeFrom: { soql: 'wrong' } }))
-	const invalid = await command(workspace, env, 'recipe', 'add', '--file', recipePath)
-	assert.equal(invalid.code, 1, invalid.output)
-	assert.match(invalid.output, /sf\.json is not valid: observeFrom must be an object/)
-	assert.equal(existsSync(join(installed, 'sf.json')), false)
-	assert.equal(existsSync(join(installed, 'sf.md')), false)
-
-	writeFileSync(recipePath, json)
-	rmSync(join(draft, 'sf.md'))
-	const noUsage = await command(workspace, env, 'recipe', 'add', '--file', recipePath)
-	assert.equal(noUsage.code, 1, noUsage.output)
-	assert.match(noUsage.output, /usage must name a regular Markdown file beside the recipe/)
-	writeFileSync(join(draft, 'sf.md'), usage)
-	writeFileSync(recipePath, JSON.stringify({ ...recipe, environment: { SF_TARGET_ORG: '{org}' } }))
-	const placeholder = await command(workspace, env, 'recipe', 'add', '--file', recipePath)
-	assert.equal(placeholder.code, 1, placeholder.output)
-	assert.match(placeholder.output, /environment\.SF_TARGET_ORG cannot use \{org\}.*pass the entry as a tool argument/)
-	assert.equal(existsSync(join(installed, 'sf.json')), false)
-	writeFileSync(recipePath, json)
-	const hostEnv = { ...env, CLAUDE_PROJECT_DIR: workspace }
-	const missing = join(workspace, 'encoded-draft-path')
-	const wrongFolder = await command(draft, hostEnv, 'recipe', 'add', '--workspace', missing, '--file', 'sf.json')
-	assert.equal(wrongFolder.code, 1, wrongFolder.output)
-	assert.ok(wrongFolder.output.includes(`Recipe workspace is not an existing directory: ${missing}`))
-	assert.equal(existsSync(missing), false)
-	const added = await command(draft, hostEnv, 'recipe', 'add', '--file', 'sf.json')
-	assert.equal(added.code, 0, added.output)
-	assert.equal(added.body.workspace, workspace)
-	assert.equal(added.body.path, join(installed, 'sf.json'))
-	assert.equal(existsSync(join(draft, '.checkmate', 'recipes', 'sf.json')), false)
-	assert.equal(added.body.usagePath, join(installed, 'sf.md'))
-	assert.equal(
-		added.body.report,
-		"Added recipe sf in .checkmate/recipes/sf.json. Reachability checks: sf data query --target-org '{org}' --query 'SELECT Id FROM Organization LIMIT 1'. Entry points: org. Evidence kinds: soql_result. Tester usage: .checkmate/recipes/sf.md."
-	)
+	mkdirSync(folder, { recursive: true })
+	writeFileSync(path, json)
+	const { recipes } = await ok(['recipe', 'list'])
+	assert.deepEqual(recipes.at(-1), { source: 'custom', path, recipe, jsonText: json })
 	assert.equal(existsSync(join(workspace, '.checkmate', 'checkmate.db')), false)
-	assert.equal(readFileSync(added.body.path, 'utf8'), json)
-	assert.equal(readFileSync(added.body.usagePath, 'utf8'), usage)
-
-	const hostList = await command(draft, hostEnv, 'recipe', 'list')
-	assert.equal(hostList.code, 0, hostList.output)
-	const { recipes } = hostList.body
-	assert.deepEqual(
-		recipes.map((entry: { recipe: { name: string }; source: string }) => [entry.recipe.name, entry.source]),
-		[
-			['maestro-mcp', 'built-in'],
-			['maestro', 'built-in'],
-			['node', 'built-in'],
-			['playwright-cli', 'built-in'],
-			['sf', 'custom'],
-		]
-	)
-	assert.deepEqual(recipes.at(-1), {
-		source: 'custom',
-		path: added.body.path,
-		recipe,
-		jsonText: json,
-		usagePath: added.body.usagePath,
-		usageText: usage,
-	})
-	const other = await command(draft, env, 'recipe', 'list')
-	assert.equal(other.code, 0, other.output)
-	assert.equal(
-		other.body.recipes.some((entry: { source: string }) => entry.source === 'custom'),
-		false
-	)
-
-	copyFileSync(join(root, 'plugin/recipes/node.json'), join(draft, 'node.json'))
-	copyFileSync(join(root, 'plugin/recipes/node.md'), join(draft, 'node.md'))
-	for (const flags of [[], ['--replace']]) {
-		const clash = await command(workspace, env, 'recipe', 'add', ...flags, '--file', join(draft, 'node.json'))
-		assert.equal(clash.code, 1, clash.output)
-		assert.match(clash.output, /name node is in use by the built-in recipe/)
-	}
-	assert.deepEqual(readdirSync(installed).sort(), ['sf.json', 'sf.md'])
-	const duplicate = await command(draft, hostEnv, 'recipe', 'add', '--file', recipePath)
-	assert.equal(duplicate.code, 1, duplicate.output)
-	assert.match(duplicate.output, /name sf is in use by the custom recipe.*recipe add --replace/)
-	const explicit = realpathSync(directory(t))
-	const compact = spawnSync(
-		process.execPath,
-		[binary, 'recipe', 'add', '--workspace', explicit, '--file', 'sf.json'],
-		{ cwd: draft, env: hostEnv, encoding: 'utf8' }
-	)
-	assert.equal(compact.status, 0, compact.stdout + compact.stderr)
-	assert.ok(compact.stdout.includes(`completed sf workspace=${explicit} path=`), compact.stdout)
-	assert.equal(existsSync(join(explicit, '.checkmate', 'recipes', 'sf.json')), true)
-	assert.equal(
-		compact.stdout.split('\n').find((line) => line.startsWith('Report to the person:')),
-		`Report to the person: ${added.body.report}`
-	)
-
 	writeFileSync(
-		join(draft, 'sf'),
+		join(bin, 'sf'),
 		'#!/bin/sh\nif [ "$1" = "--version" ]; then echo 1.0; exit 0; fi\n[ "$*" = "data query --target-org sandbox --query SELECT Id FROM Organization LIMIT 1" ]\n',
 		{ mode: 0o755 }
 	)
@@ -7153,19 +7067,8 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 	const request = await ok(['plan', 'request', 'catalog'])
 	assert.deepEqual(request.observeFrom, [{ value: 'soql', reading: 'state', tool: 'sf' }])
 	await ok(['plan', 'save', 'catalog'], JSON.stringify(recipePlan('salesforce', ['soql'])))
-	const replace = ['recipe', 'add', '--replace', '--file', recipePath]
-	writeFileSync(recipePath, JSON.stringify({ ...recipe, entryPoints: [] }))
-	writeFileSync(join(draft, 'sf.md'), '# Updated usage\n')
-	const invalidUpdate = await command(workspace, env, ...replace)
-	assert.equal(invalidUpdate.code, 1, invalidUpdate.output)
-	assert.match(invalidUpdate.output, /entryPoints must be a list/)
-	assert.equal(readFileSync(added.body.path, 'utf8'), json)
-	assert.equal(readFileSync(added.body.usagePath, 'utf8'), usage)
 	const instruction = 'Read the org alias before running a query.'
-	writeFileSync(recipePath, JSON.stringify({ ...recipe, shellInstruction: instruction }))
-	const updated = await ok(replace)
-	assert.match(updated.report, /^Replaced recipe sf in /)
-	assert.equal(readFileSync(updated.usagePath, 'utf8'), '# Updated usage\n')
+	writeFileSync(path, JSON.stringify({ ...recipe, shellInstruction: instruction }))
 	await ok(['run', 'begin', 'org-run', 'catalog@1', '--build', 'b1', '--instance', 'local'])
 	await ok(['run', 'check', 'org-run', 'T1', 'A1', '--observed', 'Kettle', '--evidence', '-:soql_result'], 'Kettle')
 	const evidence = await ok(['query', "SELECT kind FROM evidence WHERE run_id = 'org-run'"])
@@ -7192,165 +7095,126 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 	await ok(['explore', 'done', id, 'rules', 'rules', '--agent', 'clerk-1'])
 	await ok(['explore', 'next', id])
 	const task = readFileSync(join(workspace, '.checkmate/work', id, 'a1/task-study.md'), 'utf8')
-	assert.ok(task.includes(`Before you use a tool, read its usage text: ${added.body.usagePath}.`), task)
+	assert.ok(task.includes(`Before you use a tool, read its usage field in: ${path}.`), task)
 	assert.ok(task.includes(instruction), task)
+	rmSync(path)
+	const after = await ok(['recipe', 'list'])
+	assert.equal(
+		after.recipes.some((entry: { source: string }) => entry.source === 'custom'),
+		false
+	)
 })
 
 test('Keep the recipe catalog usable when a custom recipe is invalid — one bad file hides the other recipes, or a target, plan, or run uses it.', async (t) => {
 	const workspace = realpathSync(directory(t))
-	const draft = directory(t)
-	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
-	const ok = async (args: string[], value?: object | string) => {
-		const input = value === undefined ? '' : typeof value === 'string' ? value : JSON.stringify(value)
-		const result = await inputCommand(workspace, env, input, ...args)
+	const bin = directory(t)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+	}
+	const invoke = (args: string[], input?: object) =>
+		inputCommand(workspace, env, input ? JSON.stringify(input) : '', ...args)
+	const ok = async (args: string[], input?: object) => {
+		const result = await invoke(args, input)
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
-	const refused = async (args: string[], value?: object) => {
-		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
-		assert.equal(result.code, 1, result.output)
-		return result.output
-	}
 	const folder = join(workspace, '.checkmate', 'recipes')
 	mkdirSync(folder, { recursive: true })
-	const recipe = (name: string, fields: object = {}) =>
-		JSON.stringify({
-			name,
-			capability: 'inventory',
-			kind: 'cli',
-			purpose: 'Read stock levels.',
-			detect: 'path',
-			environment: {},
-			workspaceFolders: [],
-			observeFrom: { stock: 'state' },
-			evidence: ['stock_report'],
-			usage: `${name}.md`,
-			...fields,
-		})
-	writeFileSync(join(folder, 'good.json'), recipe('good'))
-	writeFileSync(join(folder, 'good.md'), '# Good\n\nRun good stock.\n')
-	writeFileSync(join(folder, 'broken.json'), '{ "name": "broken",')
-	writeFileSync(join(folder, 'nousage.json'), recipe('nousage'))
-	writeFileSync(join(folder, 'emptyusage.json'), recipe('emptyusage'))
-	writeFileSync(join(folder, 'emptyusage.md'), ' \n')
-	writeFileSync(join(folder, 'schema.json'), recipe('schema', { kind: 'shell' }))
-	writeFileSync(join(folder, 'schema.md'), '# Schema\n')
-
-	const listed = await ok(['recipe', 'list'])
-	assert.deepEqual(
-		listed.recipes.map((entry: { recipe: { name: string }; source: string }) => [entry.recipe.name, entry.source]),
-		[
-			['maestro-mcp', 'built-in'],
-			['maestro', 'built-in'],
-			['node', 'built-in'],
-			['playwright-cli', 'built-in'],
-			['good', 'custom'],
-		]
-	)
-	const problems: Record<string, RegExp> = {
-		broken: /broken\.json is not valid: it is not JSON/,
-		emptyusage: /emptyusage\.json is not valid: the usage file .*emptyusage\.md is empty\./,
-		nousage:
-			/nousage\.json is not valid: usage must name a regular Markdown file beside the recipe: .*nousage\.md\./,
-		schema: /schema\.json is not valid: kind must be cli or mcp\./,
+	const recipe = {
+		name: 'good',
+		capability: 'inventory',
+		kind: 'cli',
+		purpose: 'Read stock.',
+		detect: 'path',
+		entryPoints: [{ name: 'stock', kind: 'value', purpose: 'Inventory file.' }],
+		environment: {},
+		workspaceFolders: [],
+		observeFrom: { stock: 'state' },
+		evidence: ['stock_report'],
+		usage: ['Read stock from the inventory file.'],
 	}
-	assert.deepEqual(
-		listed.invalid.map((item: { name: string; source: string; path: string }) => [
-			item.name,
-			item.source,
-			item.path,
-		]),
-		Object.keys(problems).map((name) => [name, 'custom', join(folder, `${name}.json`)])
-	)
-	for (const item of listed.invalid) assert.match(item.error, problems[item.name])
-
-	writeFileSync(join(draft, 'broken.json'), recipe('broken', { usage: 'broken-usage.md' }))
-	writeFileSync(join(draft, 'broken-usage.md'), '# Broken\n')
-	const taken = await refused(['recipe', 'add', '--file', join(draft, 'broken.json')])
-	assert.match(
-		taken,
-		/name broken is in use by the invalid custom recipe .*broken\.json\. To replace it, keep its exact name and run checkmate recipe add --replace/
-	)
-	assert.equal(existsSync(join(folder, 'broken-usage.md')), false)
-
-	await ok([
-		'target',
-		'open',
-		'bad',
-		'--entry-point',
-		'app:value:The application.',
-		'--capabilities',
-		'inventory',
-		'--operations',
-		'read_catalog',
-	])
-	const badTarget = await refused(['target', 'save', 'bad'], recipeTarget('bad', ['schema'], ['inventory'], 'value'))
-	assert.match(
-		badTarget,
-		/The recipe of tool schema is not valid\. Tool recipe .*schema\.json is not valid: kind must be cli or mcp\./
-	)
-	assert.match(badTarget, /Correct .*schema\.json and the usage file that it names, then run checkmate recipe list/)
-
-	await ok([
-		'target',
-		'open',
-		'shop',
-		'--entry-point',
-		'app:value:The application.',
-		'--capabilities',
-		'inventory',
-		'--operations',
-		'read_catalog',
-	])
-	await ok(['target', 'save', 'shop'], recipeTarget('shop', ['good', 'node'], ['inventory'], 'value'))
-	await ok(['target', 'instance', 'add', 'shop', 'local', '--entry', 'app=com.example.shop'])
+	const put = (name: string, fields: object = {}) =>
+		writeFileSync(join(folder, `${name}.json`), JSON.stringify({ ...recipe, name, ...fields }))
+	const path = join(folder, 'good.json')
+	put('good')
+	writeFileSync(join(bin, 'good'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
+	await ok(['setup', '--entry', 'stock=inventory.json', '--target', 'shop', '--operations', 'read_catalog'])
 	writeFileSync(join(workspace, 'ticket.md'), 'The catalog shows the kettle.\n')
-	await ok([
-		'plan',
-		'open',
-		'stock',
+	const openPlan = (id: string) =>
+		ok(['plan', 'open', id, '--target', 'shop@1', '--objective', 'Check stock.', '--source', 'ticket.md'])
+	await openPlan('stock')
+	await openPlan('draft')
+	const candidate = recipePlan('inventory', ['stock'])
+	await ok(['plan', 'save', 'stock'], candidate)
+	const session = await ok([
+		'test',
+		'stock-session',
 		'--target',
-		'shop@1',
-		'--objective',
-		'Check the stock.',
+		'shop',
 		'--source',
 		'ticket.md',
+		'--build',
+		'b1',
+		'--session',
 	])
-	const request = await ok(['plan', 'request', 'stock'])
-	assert.deepEqual(request.observeFrom, [
-		{ value: 'api', reading: 'state', tool: 'node' },
-		{ value: 'stock', reading: 'state', tool: 'good' },
-	])
-	await ok(['plan', 'save', 'stock'], recipePlan('inventory', ['stock']))
+	await ok(['explore', 'next', session.explorationId])
+	const opened = await ok(['explore', 'open', 'stock', '--build', 'b1'])
 
-	writeFileSync(join(folder, 'good.md'), '')
-	const after = await ok(['recipe', 'list'])
-	assert.deepEqual(
-		after.invalid.map((item: { name: string }) => item.name),
-		['broken', 'emptyusage', 'good', 'nousage', 'schema']
-	)
-	for (const args of [
-		['plan', 'request', 'stock'],
-		['run', 'begin', 'stock-run', 'stock@1', '--build', 'b1', '--instance', 'local'],
-		['test', 'stock-session', '--target', 'shop', '--source', 'ticket.md', '--build', 'b1', '--session'],
-	]) {
-		const output = await refused(args)
-		assert.match(
-			output,
-			/The recipe of tool good is not valid\. Tool recipe .*good\.json is not valid: the usage file .*good\.md is empty\./
+	put('good', { kind: 'shell', environment: { STOCK: '{stock}' }, usage: [] })
+	writeFileSync(join(folder, 'broken.json'), '{ "name": "broken",')
+	put('node', { usage: [] })
+	put('first')
+	put('later', { name: 'first' })
+	put('conflicts', { observeFrom: { api: 'view' }, entryPoints: [{ name: 'web', kind: 'value', purpose: 'Wrong.' }] })
+	const listed = await ok(['recipe', 'list'])
+	assert.ok(listed.recipes.some(({ recipe }: { recipe: { name: string } }) => recipe.name === 'node'))
+	assert.ok(listed.recipes.some(({ recipe }: { recipe: { name: string } }) => recipe.name === 'first'))
+	const problems = (name: string) =>
+		listed.invalid.find((item: { name: string }) => item.name === name).problems as string[]
+	assert.match(problems('broken').join(' '), /Cannot read JSON/)
+	assert.match(problems('node').join(' '), /Name node is in use by the built-in recipe/)
+	assert.match(problems('later').join(' '), /Name first is in use by the custom recipe/)
+	assert.match(problems('conflicts').join(' '), /observeFrom api is view.*entry point web differs/)
+	assert.deepEqual(problems('good'), [
+		'kind must be cli or mcp.',
+		'environment.STOCK cannot use {stock}. Use {session} or {workFolder}, or pass the entry as a tool argument.',
+		'usage must be a non-empty list of Markdown lines.',
+	])
+	const compact = spawnSync(process.execPath, [binary, 'recipe', 'list'], { cwd: workspace, env, encoding: 'utf8' })
+	assert.equal(compact.status, 0, compact.stderr)
+	const reason = `Tool recipe ${path} is not valid: ${problems('good').join(' ')}`
+	assert.ok(compact.stdout.includes(reason), compact.stdout)
+	for (const [args, input] of [
+		[['setup', '--entry', 'stock=inventory.json', '--target', 'shop']],
+		[['plan', 'save', 'draft'], candidate],
+		[['run', 'begin', 'stock-run', 'stock@1', '--build', 'b1']],
+		[['explore', 'open', 'stock', '--build', 'b1']],
+		[['explore', 'finish', opened.subject]],
+		[['test', 'stock-other', '--target', 'shop', '--source', 'ticket.md', '--build', 'b1', '--session']],
+		[['explore', 'started', session.explorationId, 'rules']],
+	] as Array<[string[], object?]>) {
+		const result = await invoke(args, input)
+		assert.equal(result.code, 1, result.output)
+		assert.ok(result.body.reasons.includes(reason), result.output)
+		assert.equal(
+			result.body.hint,
+			`Edit ${path} to fix the listed problems. Run checkmate recipe list to check the files.`
 		)
 	}
-	const repaired = await ok(['recipe', 'add', '--replace', '--file', join(draft, 'broken.json')])
-	assert.match(repaired.report, /^Replaced recipe broken in .*Reachability checks: none\./)
-	assert.ok(
-		(await ok(['recipe', 'list'])).recipes.some(
-			({ recipe }: { recipe: { name: string } }) => recipe.name === 'broken'
-		)
-	)
-	writeFileSync(join(draft, 'emptyusage.json'), recipe('emptyusage'))
-	writeFileSync(join(draft, 'emptyusage.md'), '# Fixed usage\n')
-	const fixedUsage = await ok(['recipe', 'add', '--replace', '--file', join(draft, 'emptyusage.json')])
-	assert.equal(readFileSync(fixedUsage.usagePath, 'utf8'), '# Fixed usage\n')
+
+	put('good')
+	await ok(['plan', 'save', 'draft'], candidate)
+	await ok(['run', 'begin', 'stock-run', 'stock@1', '--build', 'b1'])
+	rmSync(path)
+	const after = await ok(['recipe', 'list'])
+	for (const entries of [
+		after.recipes.map((entry: { path: string }) => entry.path),
+		after.invalid.map((entry: { path: string }) => entry.path),
+	])
+		assert.ok(!entries.includes(path))
 })
 
 test('A plan and a run accept only the observeFrom values and evidence kinds that the recipes of the target tools give — the refusal names the value, the allowed values, and the recipes.', async (t) => {
@@ -7648,7 +7512,6 @@ test('Keep each tool folder that testers left, and leave each tool folder that w
 			purpose: 'Write scratch files.',
 			detect: 'path',
 			workspaceFolders: ['.scratch-tool'],
-			usage: 'node.md',
 		})
 	)
 	const entry = join(plugin, 'dist/checkmate.js')
@@ -7767,9 +7630,9 @@ test('Test a mobile app with maestro: the tester gets the Maestro environment an
 	assert.match(study.prompt, /- app: com\.example\.shop\. The app ID\./)
 	assert.match(study.prompt, /- device: emulator-5554\. The device ID\./)
 	assert.match(study.prompt, /Tools you can use: maestro\./)
-	const usage = /^Before you use a tool, read its usage text: (.+)\.$/m.exec(study.prompt)
+	const usage = /^Before you use a tool, read its usage field in: (.+)\.$/m.exec(study.prompt)
 	assert.ok(usage, study.prompt)
-	assert.match(usage[1], /\/plugin\/recipes\/maestro\.md$/)
+	assert.match(usage[1], /\/plugin\/recipes\/maestro\.json$/)
 	assert.ok(existsSync(usage[1]), `${usage[1]} must exist in the installed package`)
 	const guidance = readFileSync(usage[1], 'utf8')
 	const { delegatedInstruction } = JSON.parse(readFileSync(join(dirname(usage[1]), 'maestro.json'), 'utf8'))
@@ -7869,7 +7732,10 @@ test('Name the usage text of each tool in the brief of a web target and keep its
 	const lines = study.prompt.split('\n')
 	const tools = lines.indexOf('Tools you can use: node.')
 	assert.ok(tools >= 0, study.prompt)
-	assert.match(lines[tools + 1], /^Before you use a tool, read its usage text: \S+\/plugin\/recipes\/node\.md\.$/)
+	assert.match(
+		lines[tools + 1],
+		/^Before you use a tool, read its usage field in: \S+\/plugin\/recipes\/node\.json\.$/
+	)
 	assert.equal(
 		lines[tools + 2],
 		'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.'
@@ -11688,16 +11554,14 @@ test('Set up a mobile app from its entries — the profile gets the entry points
 		unknown.body.reasons
 			.join(' ')
 			.includes(
-				`Unknown entry colour. Entry names come from recipes. Workspace searched: ${realpathSync(workspace)}.`
+				`Unknown entry colour. Entry names come from recipes. Recipe folder: ${join(realpathSync(workspace), '.checkmate', 'recipes')}.`
 			),
 		unknown.output
 	)
 	assert.equal(unknown.body.refusal, 'malformed')
 	assert.match(unknown.body.reasons.join(' '), /Known entries: .*app.*web/)
-	assert.match(unknown.body.hint, /If the tool needed for this test has no recipe, add one as part of setup/)
-	assert.match(unknown.body.hint, /recipe list --json.*JSON and its usage Markdown file side by side/)
-	assert.ok(unknown.body.hint.includes(`recipe add --workspace ${realpathSync(workspace)} --file <recipe.json>`))
-	assert.match(unknown.body.hint, /include entryPoints.*Report to the person:/)
+	assert.match(unknown.body.hint, /write one JSON file.*checkmate recipe list --json/)
+	assert.match(unknown.body.hint, /edit that file to fix the listed problems/)
 	await refused(['setup', '--entry', 'web=ftp://x', '--target', 'phone'], /Entry web must match \^https\?:\/\//)
 	await refused(
 		['setup', ...mobileEntries, '--target', 'phone'],
@@ -12545,7 +12409,7 @@ test('A tester gets one of two Maestro recipes — the MCP server in a new proce
 		assert.match(study.prompt, /^Tools you can use: maestro-mcp\.$/m)
 		assert.match(
 			study.prompt,
-			/^Before you use a tool, read its usage text: \S+\/plugin\/recipes\/maestro-mcp\.md\.$/m
+			/^Before you use a tool, read its usage field in: \S+\/plugin\/recipes\/maestro-mcp\.json\.$/m
 		)
 		if (harness === 'claude') {
 			const config = JSON.parse(study.args[study.args.indexOf('--mcp-config') + 1])
@@ -12580,6 +12444,6 @@ test('A tester gets one of two Maestro recipes — the MCP server in a new proce
 		await ok(['explore', 'next', id])
 		const task = readFileSync(join(workspace, '.checkmate/work', id, 'a1/task-study.md'), 'utf8')
 		assert.match(task, /^Tools you can use: maestro\.$/m)
-		assert.match(task, /^Before you use a tool, read its usage text: \S+\/plugin\/recipes\/maestro\.md\.$/m)
+		assert.match(task, /^Before you use a tool, read its usage field in: \S+\/plugin\/recipes\/maestro\.json\.$/m)
 	}
 })

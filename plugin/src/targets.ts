@@ -23,10 +23,14 @@ import { changesData, resetCommand } from './resets.ts'
 import {
 	declaredEntryPoints,
 	fitsEntries,
-	recipes,
+	listRecipes,
+	projectRecipeFolder,
+	recipeProblem,
+	refuseInvalidRecipes,
 	requireValidRecipes,
 	requiredRecipeFields,
 	toolExecutable,
+	type InvalidRecipe,
 	type ReachCheck,
 	type Recipe,
 } from './recipes.ts'
@@ -929,19 +933,18 @@ function fitEntries(
 	workspace: string,
 	catalog: Recipe[],
 	entries: Record<string, string>,
-	detected: Array<{ recipe: Recipe; path: string }>
+	detected: Array<{ recipe: Recipe; path: string }>,
+	invalid: InvalidRecipe[]
 ) {
 	const names = Object.keys(entries)
 	const declared = declaredEntryPoints(catalog)
 	const unknown = names.filter((name) => !declared.has(name))
 	requireWellFormed(
 		!unknown.length,
-		`Unknown entry ${unknown.join(', ')}. Entry names come from recipes. Workspace searched: ${workspace}. Known entries: ${[...declared.keys()].join(', ')}.`,
+		`Unknown entry ${unknown.join(', ')}. Entry names come from recipes. Recipe folder: ${projectRecipeFolder(workspace)}. Known entries: ${[...declared.keys()].join(', ')}. ${invalid.map(recipeProblem).join(' ')}`.trim(),
 		[
-			'If the tool needed for this test has no recipe, add one as part of setup.',
-			`Copy an example from checkmate recipe list --json. Include ${requiredRecipeFields.join(', ')}, and include entryPoints for a target that needs inputs such as a file or alias. Each entry needs name, kind and purpose. For a CLI, use its executable name with kind cli and detect path. For MCP, include server and tools.`,
-			`Write the JSON and its usage Markdown file side by side. Run checkmate recipe add --workspace ${shellWord(workspace)} --file <recipe.json>. Verify the workspace in the reply and retry setup with the declared entries.`,
-			'Use --replace to correct an installed custom recipe with the same name. Pass the receipt line that starts with “Report to the person:” to the person.',
+			`If the tool you need has no recipe, write one JSON file in ${projectRecipeFolder(workspace)}. Use a built-in example from checkmate recipe list --json. Include ${requiredRecipeFields.join(', ')}. Put the tester instructions in usage as a list of Markdown lines.`,
+			'Declare each needed entry in entryPoints with name, kind and purpose. If Checkmate refuses the recipe, edit that file to fix the listed problems. Tell the person you added the recipe and what it lets testers run.',
 		].join(' ')
 	)
 	for (const name of names) {
@@ -1003,12 +1006,25 @@ export function setupAssumptions(workspace: string, input: SetupInput) {
 		)
 	const instanceId = input.instanceId ?? 'local'
 	if (!input.instanceId) assumed.push('instance=local')
-	const catalog = recipes(workspace)
+	const { recipes: valid, invalid } = listRecipes(workspace)
+	const names = Object.keys(entries)
+	refuseInvalidRecipes(
+		invalid.filter(
+			(item) =>
+				!valid.some(
+					({ recipe }) => recipe.name.toLowerCase() === (item.declaredName ?? item.name).toLowerCase()
+				) &&
+				(item.name === targetId ||
+					(item.entryNames?.length && item.entryNames.every((name) => names.includes(name))))
+		)
+	)
+	const catalog = valid.map(({ recipe }) => recipe)
 	const { fitting: detected, entryPoints } = fitEntries(
 		workspace,
 		catalog,
 		entries,
-		detectedTools(catalog, input.env)
+		detectedTools(catalog, input.env),
+		invalid
 	)
 	const capabilities = [...new Set(detected.map(({ recipe }) => recipe.capability))].sort()
 	assumed.push(
@@ -1105,6 +1121,16 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 	if (!Object.keys(givenEntries(input)).length) return recordData(store, actor, input)
 	const setup = setupAssumptions(store.workspace, input)
 	const { entries, entryPoints, targetId, instanceId, detected, capabilities, allowedOperations, assumed } = setup
+	const saved = one<{ body: string }>(
+		store,
+		'SELECT body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
+		targetId
+	)
+	if (saved)
+		requireValidRecipes(
+			store.workspace,
+			(JSON.parse(saved.body) as Profile).tools.map(({ name }) => name)
+		)
 	const reset = dataOf(input)
 	const where = entries.web && Object.keys(entries).length === 1 ? entries.web : `the entries ${entryList(entries)}`
 	const flags = entryFlags(entries)

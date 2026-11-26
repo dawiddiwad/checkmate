@@ -214,9 +214,10 @@ function assets() {
 	const files = directory(['./assets/', '../src/ui/assets/', '../plugin/src/ui/assets/'], 'style.css')
 	const fonts = `${files}fonts/`
 	const read = (name: string) => readFileSync(files + name)
+	const client = directory(['./', '../../dist/'], 'client.js')
 	return {
 		'/assets/style.css': { type: 'text/css; charset=utf-8', body: read('style.css') },
-		'/assets/client.js': { type: 'text/javascript; charset=utf-8', body: read('client.js') },
+		'/assets/client.js': { type: 'text/javascript; charset=utf-8', body: readFileSync(`${client}client.js`) },
 		'/assets/favicon.svg': { type: 'image/svg+xml', body: read('favicon.svg') },
 		font: (name: string) => readFileSync(`${fonts}${name}.woff2`),
 	}

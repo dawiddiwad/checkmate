@@ -39,7 +39,7 @@ export default [
 		},
 	},
 	{
-		files: ['plugin/src/ui/assets/*.js'],
+		files: ['plugin/src/ui/client/*.js'],
 		languageOptions: {
 			globals: Object.fromEntries(
 				['document', 'location', 'EventSource', 'DOMParser', 'FormData', 'URLSearchParams', 'CSS'].map(

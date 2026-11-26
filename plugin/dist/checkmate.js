@@ -42357,9 +42357,10 @@ function assets() {
   const files2 = directory(["./assets/", "../src/ui/assets/", "../plugin/src/ui/assets/"], "style.css");
   const fonts = `${files2}fonts/`;
   const read = (name2) => readFileSync13(files2 + name2);
+  const client = directory(["./", "../../dist/"], "client.js");
   return {
     "/assets/style.css": { type: "text/css; charset=utf-8", body: read("style.css") },
-    "/assets/client.js": { type: "text/javascript; charset=utf-8", body: read("client.js") },
+    "/assets/client.js": { type: "text/javascript; charset=utf-8", body: readFileSync13(`${client}client.js`) },
     "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
     font: (name2) => readFileSync13(`${fonts}${name2}.woff2`)
   };

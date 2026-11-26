@@ -478,22 +478,15 @@ export function addRecipe(workspace: string, path: string, replace: boolean) {
 
 export function recipeInstallReport(entry: RecipeEntry, replace: boolean) {
 	const { recipe } = entry
-	const commands = [
-		...(recipe.detect === 'path' ? [`${shellWord(toolExecutable(recipe))} --version`] : []),
-		...(recipe.reachable ?? []).map((check) =>
-			check.check === 'http' ? `HTTP GET {${check.entry}}` : check.run.map(shellWord).join(' ')
-		),
-		...(recipe.server ? [[recipe.server.command, ...recipe.server.args].map(shellWord).join(' ')] : []),
-		...(recipe.closeSession ? [[recipe.name, ...recipe.closeSession].map(shellWord).join(' ')] : []),
-	]
-	const guidance = [recipe.shellInstruction, recipe.delegatedInstruction].filter(Boolean)
+	const checks = (recipe.reachable ?? []).map((check) =>
+		check.check === 'http' ? `HTTP GET {${check.entry}}` : check.run.map(shellWord).join(' ')
+	)
 	return [
-		`${replace ? 'Replaced' : 'Added'} recipe ${recipe.name}.`,
-		`Installed files: ${entry.path}, ${entry.usagePath}.`,
-		`Declared commands and checks: ${commands.length ? commands.join(', ') : 'none'}.`,
-		...(recipe.tools ? [`MCP tools: ${recipe.tools.join(', ')}.`] : []),
-		...(guidance.length ? [`Tester instructions: ${guidance.join(' ')}`] : []),
-		`Tester usage: ${entry.usagePath}.`,
+		`${replace ? 'Replaced' : 'Added'} recipe ${recipe.name} in .checkmate/recipes/${basename(entry.path)}.`,
+		`Reachability checks: ${checks.join(', ') || 'none'}.`,
+		`Entry points: ${recipe.entryPoints?.map(({ name }) => name).join(', ') || 'none'}.`,
+		`Evidence kinds: ${recipe.evidence.join(', ') || 'none'}.`,
+		`Tester usage: .checkmate/recipes/${basename(entry.usagePath)}.`,
 	].join(' ')
 }
 

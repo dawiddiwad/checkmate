@@ -7061,8 +7061,10 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 	assert.equal(added.body.path, join(installed, 'sf.json'))
 	assert.equal(existsSync(join(draft, '.checkmate', 'recipes', 'sf.json')), false)
 	assert.equal(added.body.usagePath, join(installed, 'sf.md'))
-	assert.match(added.body.report, /Added recipe sf\..*Declared commands and checks: sf --version, sf data query/)
-	assert.ok(added.body.report.includes(`Installed files: ${added.body.path}, ${added.body.usagePath}.`))
+	assert.equal(
+		added.body.report,
+		"Added recipe sf in .checkmate/recipes/sf.json. Reachability checks: sf data query --target-org '{org}' --query 'SELECT Id FROM Organization LIMIT 1'. Entry points: org. Evidence kinds: soql_result. Tester usage: .checkmate/recipes/sf.md."
+	)
 	assert.equal(existsSync(join(workspace, '.checkmate', 'checkmate.db')), false)
 	assert.equal(readFileSync(added.body.path, 'utf8'), json)
 	assert.equal(readFileSync(added.body.usagePath, 'utf8'), usage)
@@ -7115,9 +7117,9 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 	assert.equal(compact.status, 0, compact.stdout + compact.stderr)
 	assert.ok(compact.stdout.includes(`completed sf workspace=${explicit} path=`), compact.stdout)
 	assert.equal(existsSync(join(explicit, '.checkmate', 'recipes', 'sf.json')), true)
-	assert.match(
-		compact.stdout,
-		/^Report to the person: Added recipe sf\. Installed files: .*sf\.json, .*sf\.md\. Declared commands and checks: sf --version, sf data query/m
+	assert.equal(
+		compact.stdout.split('\n').find((line) => line.startsWith('Report to the person:')),
+		`Report to the person: ${added.body.report}`
 	)
 
 	writeFileSync(
@@ -7162,7 +7164,7 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 	const instruction = 'Read the org alias before running a query.'
 	writeFileSync(recipePath, JSON.stringify({ ...recipe, shellInstruction: instruction }))
 	const updated = await ok(replace)
-	assert.match(updated.report, /^Replaced recipe sf\./)
+	assert.match(updated.report, /^Replaced recipe sf in /)
 	assert.equal(readFileSync(updated.usagePath, 'utf8'), '# Updated usage\n')
 	await ok(['run', 'begin', 'org-run', 'catalog@1', '--build', 'b1', '--instance', 'local'])
 	await ok(['run', 'check', 'org-run', 'T1', 'A1', '--observed', 'Kettle', '--evidence', '-:soql_result'], 'Kettle')
@@ -7339,7 +7341,7 @@ test('Keep the recipe catalog usable when a custom recipe is invalid — one bad
 		)
 	}
 	const repaired = await ok(['recipe', 'add', '--replace', '--file', join(draft, 'broken.json')])
-	assert.match(repaired.report, /^Replaced recipe broken\./)
+	assert.match(repaired.report, /^Replaced recipe broken in .*Reachability checks: none\./)
 	assert.ok(
 		(await ok(['recipe', 'list'])).recipes.some(
 			({ recipe }: { recipe: { name: string } }) => recipe.name === 'broken'

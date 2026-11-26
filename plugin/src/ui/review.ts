@@ -1,6 +1,4 @@
 import type { Store } from '../store.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
 import type { CellStatus, ClaimBuildState } from '../rulemap.ts'
 import { claimDetails, ruleMap } from '../rulemap.ts'
 import type { Permission } from '../permissions.ts'
@@ -18,31 +16,20 @@ import {
 	planHasRevision,
 	planStatus,
 } from '../views.ts'
-import { planCost } from '../costs.ts'
-import { age, asList, costText, glyph, html, plural, words } from './html.ts'
-import { crumbBar } from './layout.ts'
-import { keptText, messages } from './forms.ts'
-import { askBadge, askTitle, requestHref, requestName, rowOptions, waitsFor } from './permissions.ts'
-import { defaultBuild } from '../modes.ts'
 import { explorationEvents } from '../explorations.ts'
+import type { BoardCell } from './components/board.ts'
+import type { Html } from './html.ts'
+import type { Context } from './layout.ts'
 import { phaseOf } from './activity.ts'
-import {
-	copyDialog,
-	followDialog,
-	instanceChoice,
-	ruleDialog,
-	storeButton,
-	storeDialog,
-	testButton,
-	testDialog,
-	actionButton,
-} from './actions.ts'
-import { optionsBox } from './activity.ts'
-import type { Refusal } from './records.ts'
-import { evidenceViewer, recordDrawer } from './records.ts'
+import { button, optionButton } from './components/button.ts'
+import { listRow, optionsBox } from './components/list-row.ts'
+import { navRail, railBuilds, railCells, railCount, railRow, railSeparator } from './components/nav-rail.ts'
+import { wordMark } from './components/status-mark.ts'
+import { age, glyph, html, plural, words } from './html.ts'
+import { askBadge, askTitle, requestHref, requestName, rowOptions, waitsFor } from './permissions.ts'
 
 type Map = ReturnType<typeof ruleMap>
-type Rule = Map['rows'][number]['rule']
+export type Rule = Map['rows'][number]['rule']
 type ClaimRow = ReturnType<typeof mergedClaims>[number]
 type Detail = ReturnType<typeof claimDetails>[number]
 type QuestionRow = ReturnType<typeof mergedQuestions>[number]
@@ -75,7 +62,7 @@ export type Area = { label: string; rules: string[]; cells: CellStatus[] }
 
 export type Review = ReturnType<typeof reviewOf>
 
-const severityOrder = ['critical', 'high', 'medium', 'low']
+export const severityOrder = ['critical', 'high', 'medium', 'low']
 const shownBuilds = 3
 
 export const outside = 'outside'
@@ -298,88 +285,25 @@ export function itemsOf(review: Review, view: string) {
 	return []
 }
 
-const blockingLabel = 'Questions that block testing'
-
-type Group = { label: string; items: Item[] }
-
-function groupsOf(items: Item[]): Group[] {
-	const of = (label: string, chosen: Item[]) => ({ label, items: chosen })
-	const open = (item: Item) => item.kind === 'question' || item.kind === 'gap'
-	const topics = [...new Set(items.filter((item) => open(item) && !item.blocking).map((item) => item.topic))]
-	const bySeverity = (a: Item, b: Item) =>
-		severityOrder.indexOf(a.severity ?? '') - severityOrder.indexOf(b.severity ?? '')
-	return [
-		of(
-			'Permission requests',
-			items.filter((item) => item.kind === 'permission')
-		),
-		of(
-			blockingLabel,
-			items.filter((item) => open(item) && item.blocking)
-		),
-		of('Is this a defect?', items.filter((item) => item.kind === 'finding').sort(bySeverity)),
-		of(
-			'Approvals',
-			items.filter((item) => item.kind === 'approval')
-		),
-		...topics
-			.sort((a, b) => (a === null ? 1 : b === null ? -1 : a.localeCompare(b)))
-			.map((topic) =>
-				of(
-					topic ? `Questions · ${topic}` : 'Questions',
-					items.filter((item) => open(item) && !item.blocking && item.topic === topic)
-				)
-			),
-		...severityOrder.map((severity) =>
-			of(
-				`${severity} defects`,
-				items.filter((item) => item.kind === 'defect' && item.severity === severity)
-			)
-		),
-		of(
-			'Answered questions',
-			items.filter((item) => item.kind === 'answered')
-		),
-		of(
-			'Deferred questions',
-			items.filter((item) => item.kind === 'deferred')
-		),
-		of(
-			'Rejected findings',
-			items.filter((item) => item.kind === 'rejected')
-		),
-	].filter((group) => group.items.length)
-}
-
-function ruleGroups(review: Review, view: string, items: Item[]): Group[] {
-	const area = review.areas.find((each) => each.label === view.slice(5))
-	if (!area) return []
-	return area.rules.flatMap((id) => {
-		const own = items.filter((item) => item.rule === id)
-		const text = review.map.rows.find((row) => row.rule.id === id)?.rule.text ?? ''
-		return own.length ? [{ label: `${id} · ${text}`, items: groupsOf(own).flatMap((group) => group.items) }] : []
-	})
-}
-
-const tags: Record<string, [string, string]> = {
-	finding: ['Finding', 'you triage'],
-	question: ['Question', ''],
-	answered: ['Answered', 'pass'],
-	deferred: ['Deferred', ''],
-	gap: ['Gap', ''],
-	approval: ['Approve', 'you'],
-	rejected: ['Rejected', ''],
-	critical: ['Critical', 'crit'],
-	high: ['High', 'fail'],
-	medium: ['Medium', ''],
-	low: ['Low', ''],
+const tags: Record<string, string> = {
+	finding: 'Finding',
+	question: 'Question',
+	answered: 'Answered',
+	deferred: 'Deferred',
+	gap: 'Gap',
+	approval: 'Approve',
+	rejected: 'Rejected',
+	critical: 'Critical',
+	high: 'High',
+	medium: 'Medium',
+	low: 'Low',
 }
 
 export function itemTag(item: Item) {
 	if (item.permission) return askBadge()
-	if (item.blocking) return html`<span class="sp-pill you"><span class="dot" aria-hidden="true"></span>Blocks</span>`
-	const [label, color] = tags[item.kind === 'defect' ? (item.severity ?? 'low') : item.kind] ?? tags.low
-	return html`<span class="sp-pill ${color}">${label}</span>`
+	if (item.blocking) return wordMark({ state: 'blocks', label: 'Blocks', live: true })
+	const state = item.kind === 'defect' ? (item.severity ?? 'low') : item.kind
+	return tags[state] ? wordMark({ state, label: tags[state] }) : wordMark({ state: 'low', label: tags.low })
 }
 
 export type Option = { label: string; control: Html }
@@ -397,12 +321,6 @@ function action(item: Item) {
 	return item.href
 }
 
-function optionButton(n: number, label: string, name = label) {
-	return html`<button class="sp-btn" data-option aria-label="${n}: ${name}" title="${name}">
-		<kbd aria-hidden="true">${n}</kbd><span>${label}</span>
-	</button>`
-}
-
 function optionForm(
 	context: Context,
 	item: Item,
@@ -412,20 +330,12 @@ function optionForm(
 	name = label
 ) {
 	return html`<form method="post" action="${action(item)}" class="sp-opt">
-		${hiddenFields(context, item, fields)}${optionButton(n, label, name)}
+		${hiddenFields(context, item, fields)}${optionButton({ n, label, name })}
 	</form>`
 }
 
 function reveal(n: number, label: string, field: string, item: Item, name = label) {
-	return html`<a
-		class="sp-btn"
-		href="${item.href}#${field}"
-		data-option
-		data-reveal="${field}"
-		aria-label="${n}: ${name}"
-		title="${name}"
-		><kbd aria-hidden="true">${n}</kbd><span>${label}</span></a
-	>`
+	return optionButton({ n, label, name, href: `${item.href}#${field}`, attrs: { 'data-reveal': field } })
 }
 
 export function rightAsBuilt(question: { actual: string | null }) {
@@ -445,19 +355,21 @@ export function optionsOf(context: Context, review: Review, item: Item): Html[] 
 						${hiddenFields(context, item, [
 							['claim', item.id],
 							['undo', '1'],
-						])}${optionButton(1, 'Undo hand-over', 'Undo the hand-over')}
+						])}${optionButton({ n: 1, label: 'Undo hand-over', name: 'Undo the hand-over' })}
 					</form>`
 				: reveal(1, 'Hand over', 'handoff', item, 'Mark as handed over'),
-			html`<button
-				type="button"
-				class="sp-btn"
-				data-option
-				data-copy="${item.id}"
-				aria-label="2: Copy for the developer"
-				title="Copy the defect as text for the developer"
-			>
-				<kbd aria-hidden="true">2</kbd><span>Copy for the developer</span>
-			</button>`,
+			button({
+				label: 'Copy for the developer',
+				keyName: 2,
+				keySpoken: false,
+				attrs: {
+					type: 'button',
+					'data-option': true,
+					'data-copy': item.id,
+					'aria-label': '2: Copy for the developer',
+					title: 'Copy the defect as text for the developer',
+				},
+			}),
 		]
 	if (item.kind === 'question' || item.kind === 'gap' || item.kind === 'deferred') {
 		const fields: Array<[string, string]> = item.kind === 'gap' ? [['sha', review.sha]] : []
@@ -490,7 +402,7 @@ export function extraOf(context: Context, review: Review, item: Item) {
 				<label for="${field}-${item.key}">${label}</label>
 				<textarea id="${field}-${item.key}" name="${name}" rows="2" required></textarea>
 				<div class="btns">
-					<button class="sp-btn pri"><span>Send</span></button>
+					${button({ label: 'Send', emphasis: 'primary' })}
 					<span class="small">Enter sends. Shift+Enter starts a new line. Esc keeps the draft.</span>
 				</div>
 			</form>
@@ -507,7 +419,7 @@ export function extraOf(context: Context, review: Review, item: Item) {
 	return ''
 }
 
-function openedHref(review: Review, item: Item, view: string) {
+export function openedHref(review: Review, item: Item, view: string) {
 	if (item.permission)
 		return requestHref(
 			item.permission,
@@ -525,36 +437,29 @@ export function itemRow(context: Context, review: Review, item: Item, id: string
 	const listed = optionsOf(context, review, item)
 	const options = asked ? rowOptions(context, asked, list) : listed.length ? optionsBox(listed) : ''
 	const extra = extraOf(context, review, item)
-	return html`<div
-		class="sp-row${dim ? ' dim' : ''}"
-		role="listitem"
-		tabindex="-1"
-		id="${id}"
-		data-row
-		data-key="${item.key}"
-		data-href="${opened}"
-		data-label="${item.id}"
-		data-builds="${JSON.stringify(item.builds)}"
-		${item.needs ? html`data-needs` : ''}
-		${pickable ? html`data-pick="${pickKey(review, item)}"` : ''}
-	>
-		${
-			pickable
-				? html`<label class="sp-c-cb"
-						><input type="checkbox" tabindex="-1" aria-label="Select ${item.id}" data-pick-box
-					/></label>`
-				: html`<span class="sp-c-cb"></span>`
-		}
-		<span class="sp-c-tag">${itemTag(item)}</span>
-		<span class="sp-c-id" title="${item.id}">${item.id}</span>
-		<a class="sp-c-title ell" title="${item.title}" tabindex="-1" href="${opened}">${item.title}</a>
-		${
-			asked
-				? html`<span class="sp-c-meta ell">${waitsFor(asked)}</span>`
-				: html`<span class="sp-c-meta ell" title="${item.meta}">${item.meta}</span>`
-		}
-		${options} ${extra}
-	</div>`
+	return listRow({
+		id,
+		key: item.key,
+		href: opened,
+		label: item.id,
+		settled: dim,
+		attrs: {
+			'data-builds': JSON.stringify(item.builds),
+			'data-needs': item.needs,
+			'data-pick': pickable ? pickKey(review, item) : null,
+		},
+		pickLabel: pickable ? item.id : undefined,
+		tag: itemTag(item),
+		shownId: item.id,
+		idTitle: item.id,
+		title: item.title,
+		titleText: item.title,
+		titleHref: opened,
+		meta: asked ? waitsFor(asked) : item.meta,
+		metaText: asked ? undefined : item.meta,
+		options,
+		extra,
+	})
 }
 
 export function pickKey(review: Review, item: Item) {
@@ -565,61 +470,25 @@ export function pickKey(review: Review, item: Item) {
 	return `question:${review.planId}:${item.id}`
 }
 
-function listOf(context: Context, review: Review, view: string, groups: Group[], label: string) {
-	if (!groups.length) return html`<p class="sp-empty">${emptyText(view)}</p>`
-	let n = 0
-	return html`<div class="sp-list" role="list" aria-label="${label}" data-list>
-		${groups.map(
-			(group) =>
-				html`<div class="sp-gh" role="presentation">${group.label} <span>${group.items.length}</span></div>
-					${group.items.map((item) => itemRow(context, review, item, `row-${slug(view)}-${n++}`, view))}`
-		)}
-	</div>`
-}
-
-function blockingBanner(review: Review, groups: Group[], view: string) {
-	const blocking = groups.find((group) => group.label === blockingLabel)?.items ?? []
-	if (!blocking.length) return ''
-	return html`<div class="sp-banner">
-		<b class="sp-banner-n">${blocking.length}</b>
-		<div class="sp-banner-t">
-			<b>${blocking.length === 1 ? 'question blocks' : 'questions block'} testing</b>
-			<span>Testers wait on these answers. Everything else can wait.</span>
-		</div>
-		<a class="sp-btn pri you big" href="${openedHref(review, blocking[0], view)}">Answer the first</a>
-	</div>`
-}
-
-function slug(view: string) {
+export function slug(view: string) {
 	return view.replace(/[^A-Za-z0-9-]/g, '-')
 }
 
-function emptyText(view: string) {
-	if (view === 'needs') return 'Nothing waits for you in this plan.'
-	if (view.startsWith('build:')) return 'No open defect or question was seen on this build.'
-	return 'No defect or question here yet.'
+const cellNames: Record<CellStatus, string> = {
+	failed: 'wrong',
+	question: 'uncertain',
+	passed: 'ok',
+	not_checked: 'not tested',
 }
 
-const cellMarks: Record<CellStatus, [string, string, string]> = {
-	failed: ['✗', 'k-fail', 'wrong'],
-	question: ['?', 'k-q', 'uncertain'],
-	passed: ['✓', 'k-pass', 'ok'],
-	not_checked: ['', 'k-none', 'not tested'],
-}
-
-function markOf(review: Review, status: CellStatus, build: string) {
+function cellOf(review: Review, status: CellStatus, build: string): BoardCell {
 	const testing = review.running?.build === build && status === 'not_checked'
-	const [symbol, look, name] = testing ? ['●', 'k-run', 'under test now'] : cellMarks[status]
-	const label = `${buildLabel(review, build)} ${name}`
-	return html`<span
-		class="sp-mk ${look}"
-		role="img"
-		aria-label="${label}"
-		title="${label}"
-		data-mark="${build}"
-		data-b="${buildLabel(review, build)}"
-		>${glyph(symbol)}</span
-	>`
+	return {
+		state: testing ? 'running' : status,
+		label: `${buildLabel(review, build)} ${testing ? 'under test now' : cellNames[status]}`,
+		build,
+		buildLabel: buildLabel(review, build),
+	}
 }
 
 function shown(review: Review) {
@@ -629,9 +498,9 @@ function shown(review: Review) {
 function marks(review: Review, cells: CellStatus[]) {
 	const builds = review.map.builds
 	const from = Math.max(0, builds.length - shownBuilds)
-	return html`<span class="sp-nmarks"
-		>${cells.slice(from).map((status, index) => markOf(review, status, builds[from + index].build))}</span
-	>`
+	return railCells({
+		cells: cells.slice(from).map((status, index) => cellOf(review, status, builds[from + index].build)),
+	})
 }
 
 function navRow(
@@ -642,28 +511,26 @@ function navRow(
 	id: string | Html,
 	text: string,
 	end: Html,
-	extra: { level?: number; area?: string; expanded?: boolean; look?: string; hidden?: boolean } = {}
+	extra: { level?: number; area?: string; expanded?: boolean; look?: 'link' | 'area' | 'rule'; hidden?: boolean } = {}
 ) {
-	const on = view === current
-	return html`<a
-		${extra.hidden ? html`hidden` : ''}
-		class="sp-nrow${extra.look ? ` ${extra.look}` : ''}${on ? ' on' : ''}"
-		role="treeitem"
-		aria-level="${extra.level ?? 1}"
-		aria-selected="${on ? 'true' : 'false'}"
-		${extra.expanded === undefined ? '' : html`aria-expanded="${extra.expanded ? 'true' : 'false'}"`}
-		${extra.area ? html`data-in-area="${extra.area}"` : ''}
-		tabindex="${view === 'chats' ? '0' : '-1'}"
-		href="${href}"
-		data-nav
-		data-target="${view}"
-		data-label="${text}"
-		><span class="sp-nid">${id}</span><span class="sp-ntx ell" title="${text}">${text}</span>${end}</a
-	>`
+	return railRow({
+		target: view,
+		href,
+		id,
+		text,
+		end,
+		current: view === current,
+		focusable: view === 'chats',
+		kind: extra.look,
+		level: extra.level,
+		area: extra.area,
+		expanded: extra.expanded,
+		hidden: extra.hidden,
+	})
 }
 
 function count(value: number, hot = false) {
-	return html`<span class="sp-ncount${hot ? ' att' : ''}">${value}</span>`
+	return railCount({ value, waitsOnYou: hot })
 }
 
 export function reviewHref(planId: string, view: string, extra = '') {
@@ -673,11 +540,11 @@ export function reviewHref(planId: string, view: string, extra = '') {
 function testersEnd(review: Review, testers: Review['explorations'][number]) {
 	const running = review.running
 	if (running)
-		return html`<span
-			class="sp-ncount${running.paused ? ' att' : ''}"
-			title="${review.phase ?? running.state}, since ${running.startedAt}"
-			>${age(running.startedAt)}</span
-		>`
+		return railCount({
+			value: age(running.startedAt),
+			waitsOnYou: Boolean(running.paused),
+			title: `${review.phase ?? running.state}, since ${running.startedAt}`,
+		})
 	return count(testers.explorers ?? 0, false)
 }
 
@@ -753,83 +620,58 @@ export function navigator(
 			}),
 		]
 	})
-	return html`<nav
-		class="sp-nav"
-		aria-label="Plan ${planId}"
-		data-navigator
-		data-builds="${builds.length}"
-		data-region="navigator"
-	>
-		<h2 class="sr-only">Plan ${planId}</h2>
-		<div class="sp-nlist" role="tree" aria-label="Views of ${planId}">
-			<div class="sp-npin" role="none">
-				${review.running ? testersRow : ''}
-				${navRow(
-					review,
-					active,
-					'needs',
-					href('needs'),
-					'',
-					'Needs you',
-					count(
-						needs.length,
-						needs.some((item) => item.blocking)
-					)
-				)}
-				${navRow(review, active, 'all', href('all'), '', 'All items', count(review.items.length))}
-				${navRow(review, active, 'chats', chat.href, '', 'Plan chats', html``, { look: 'link' })}
-				<div class="sp-sep" aria-hidden="true"></div>
-			</div>
-			<div class="sp-nhead" aria-hidden="true">
-				<span></span><span>Rule</span
-				><span class="sp-nmarks"
-					>${builds.map(
-						(item, index) =>
-							html`<span title="${item.build}"
-								><kbd>${index + 1}</kbd
-								><span class="sp-blab">${buildLabel(review, item.build)}</span></span
-							>`
-					)}</span
-				>
-			</div>
-			${ruleRows}
-			${navRow(
+	return navRail({
+		planId,
+		builds: builds.length,
+		pinned: html`${review.running ? testersRow : ''}
+		${navRow(
+			review,
+			active,
+			'needs',
+			href('needs'),
+			'',
+			'Needs you',
+			count(
+				needs.length,
+				needs.some((item) => item.blocking)
+			)
+		)}
+		${navRow(review, active, 'all', href('all'), '', 'All items', count(review.items.length))}
+		${navRow(review, active, 'chats', chat.href, '', 'Plan chats', html``, { look: 'link' })}`,
+		rows: html`${railBuilds({ builds: builds.map((item) => ({ build: item.build, label: buildLabel(review, item.build) })) })}
+		${ruleRows}
+		${navRow(
+			review,
+			active,
+			`rule:${outside}`,
+			href(`rule:${outside}`),
+			'Out',
+			'Outside the rules',
+			marks(
+				review,
+				outsideRow.cells.map((cell) => cell.status)
+			),
+			{
+				look: 'rule',
+			}
+		)}
+		${railSeparator}
+		${review.map.builds.map((item) =>
+			navRow(
 				review,
 				active,
-				`rule:${outside}`,
-				href(`rule:${outside}`),
-				'Out',
-				'Outside the rules',
-				marks(
-					review,
-					outsideRow.cells.map((cell) => cell.status)
-				),
-				{
-					look: 'rule',
-				}
-			)}
-			<div class="sp-sep" aria-hidden="true"></div>
-			${review.map.builds.map((item) =>
-				navRow(
-					review,
-					active,
-					`build:${item.build}`,
-					href(`build:${item.build}`),
-					buildLabel(review, item.build),
-					item.build,
-					count(itemsOf(review, `build:${item.build}`).length)
-				)
-			)}
-			${review.map.builds.length ? html`<div class="sp-sep" aria-hidden="true"></div>` : ''}
-			${navRow(review, active, 'rules', href('rules'), '', 'Rules of the plan', count(review.map.rows.length - 1))}
-			${review.running ? '' : testersRow}
-			${navRow(review, active, 'plan', review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, '', review.revision ? `Plan @${review.revision}` : 'Plan request', html`<span></span>`, { look: 'link' })}
-		</div>
-	</nav>`
-}
-
-function canChoose(view: string) {
-	return view.startsWith('rule:') || view.startsWith('area:')
+				`build:${item.build}`,
+				href(`build:${item.build}`),
+				buildLabel(review, item.build),
+				item.build,
+				count(itemsOf(review, `build:${item.build}`).length)
+			)
+		)}
+		${review.map.builds.length ? railSeparator : ''}
+		${navRow(review, active, 'rules', href('rules'), '', 'Rules of the plan', count(review.map.rows.length - 1))}
+		${review.running ? '' : testersRow}
+		${navRow(review, active, 'plan', review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, '', review.revision ? `Plan @${review.revision}` : 'Plan request', html`<span></span>`, { look: 'link' })}`,
+	})
 }
 
 export function viewTitle(review: Review, view: string) {
@@ -841,13 +683,6 @@ export function viewTitle(review: Review, view: string) {
 	if (view.startsWith('area:')) return view.slice(5)
 	if (view.startsWith('build:')) return `Build ${buildLabel(review, view.slice(6))}`
 	return view
-}
-
-const cellWords: Record<CellStatus, [string, string]> = {
-	failed: ['failed', 'fail'],
-	question: ['uncertain', 'you'],
-	passed: ['passed', 'pass'],
-	not_checked: ['not tested', ''],
 }
 
 function buildHeadline(review: Review, defects: number, critical: number) {
@@ -884,150 +719,6 @@ export function verdictLine(review: Review) {
 	return { head, tail, defects: defects.length, critical, findings, open: open.length, blocking }
 }
 
-function viewHead(review: Review, view: string) {
-	const verdict = verdictLine(review)
-	if (view === 'needs')
-		return {
-			sub: `${verdict.head} Questions to answer and findings to decide, blocking ones first.`,
-			pills: html``,
-		}
-	if (view === 'all') return { sub: `${verdict.head} ${verdict.tail}`, pills: html`` }
-	if (view === 'rules') {
-		const origin = review.map.rulesOrigin
-		const rows = review.map.rows.filter((row) => row.rule.id !== outside)
-		const stored = rows.filter((row) => row.storedTests).length
-		const edit =
-			origin === 'harvested'
-				? `The tester derived these rules from the sources. Edit the rules that have no stored test here, or with checkmate plan edit ${review.planId} --patch. Edit the others in the plan editor.`
-				: origin === 'derived' || origin === 'corrected'
-					? `The tester derived these rules from the sources${origin === 'corrected' ? ', and they were corrected' : ''}. Edit them here, or with checkmate plan edit ${review.planId} --patch.`
-					: origin
-						? 'The rules come from the plan. Edit them in the plan editor.'
-						: 'This plan has no rules yet.'
-		return {
-			sub: stored ? `${stored} of ${rows.length} rules have a stored test. ${edit}` : edit,
-			pills: html``,
-		}
-	}
-	if (view.startsWith('rule:')) {
-		const row = review.map.rows.find((each) => each.rule.id === view.slice(5))
-		return {
-			sub: row?.rule.text ?? '',
-			pills: html`${row?.cells.map((cell) => {
-				const [label, color] = cellWords[cell.status]
-				return html`<span class="sp-pill ${color}" title="${cell.build}"
-					>${buildLabel(review, cell.build)}: ${label}</span
-				>`
-			})}${row?.storedTests ? html`<span class="sp-pill" title="${storedNote(review, row.rule.id)}">${plural(row.storedTests, 'stored test')}</span>` : ''}`,
-		}
-	}
-	if (view.startsWith('area:')) {
-		const area = review.areas.find((each) => each.label === view.slice(5))
-		return { sub: `${plural(area?.rules.length ?? 0, 'rule')}. The items are grouped by rule.`, pills: html`` }
-	}
-	if (view.startsWith('build:')) {
-		const build = review.map.builds.find((item) => item.build === view.slice(6))
-		return { sub: `${build?.build ?? ''}. The defects and questions seen on this build.`, pills: html`` }
-	}
-	return { sub: '', pills: html`` }
-}
-
-function storedNote(review: Review, ruleId: string) {
-	return `${ruleId} has a stored test, so it belongs to revision ${review.revision}. Edit it in the plan editor.`
-}
-
-function ruleButtons(context: Context, review: Review, rule: Rule, count: number, numbered: boolean) {
-	if (review.map.rows.find((row) => row.rule.id === rule.id)?.storedTests)
-		return [
-			html`<a
-				class="sp-btn"
-				${numbered ? html`data-option` : ''}
-				href="/plans/${review.planId}@${review.revision}/edit"
-				aria-label="${numbered ? '1: ' : ''}Edit ${rule.id} in the plan editor"
-				title="${storedNote(review, rule.id)}"
-			>
-				${numbered ? html`<kbd aria-hidden="true">1</kbd>` : ''}<span>Edit in the plan editor</span>
-			</a>`,
-		]
-	const cited = review.items.filter((item) => item.rule === rule.id).length
-	const area = review.areas.find((each) => each.rules.includes(rule.id))?.label ?? ''
-	const fill = JSON.stringify({ text: rule.text, area, newArea: '' })
-	const ends = cited
-		? `${plural(cited, 'item')} ${cited === 1 ? 'cites it. It moves' : 'cite it. They move'} to Outside the rules.`
-		: 'No item cites it.'
-	const key = (n: number) => (numbered ? html`<kbd aria-hidden="true">${n}</kbd>` : '')
-	const option = numbered ? html`data-option` : ''
-	return [
-		html`<button
-			type="button"
-			class="sp-btn"
-			${option}
-			data-act="rule-edit"
-			data-action="/plans/${review.planId}/rules/${rule.id}"
-			data-title="Edit rule ${rule.id}"
-			data-fill="${fill}"
-			aria-label="${numbered ? '1: ' : ''}Edit rule ${rule.id}"
-			title="Edit the text and the area of ${rule.id}"
-		>
-			${key(1)}<span>${numbered ? 'Edit…' : `Edit ${rule.id}…`}</span>
-		</button>`,
-		html`<form method="post" action="/plans/${review.planId}/rules/${rule.id}/remove" class="sp-opt">
-			<input type="hidden" name="csrf" value="${context.csrf}" />
-			<button
-				class="sp-btn"
-				${option}
-				data-ask-title="Remove rule ${rule.id}?"
-				data-ask-text="${ends} The plan keeps the other ${plural(count - 1, 'rule')}."
-				data-ask-yes="Remove ${rule.id}"
-				aria-label="${numbered ? '2: ' : ''}Remove rule ${rule.id}"
-				title="${count === 1 ? 'Keep at least one rule.' : `Remove ${rule.id} from the rules of the plan`}"
-				${count === 1 ? html`disabled` : ''}
-			>
-				${key(2)}<span>${numbered ? 'Remove…' : `Remove ${rule.id}…`}</span>
-			</button>
-		</form>`,
-	]
-}
-
-function ruleEditable(review: Review) {
-	return ['derived', 'corrected', 'harvested'].includes(review.map.rulesOrigin ?? '')
-}
-
-function ruleMeta(row: Review['map']['rows'][number]) {
-	const source = row.rule.source ?? ''
-	if (!row.storedTests) return source
-	return `${plural(row.storedTests, 'stored test')} · ${source}`
-}
-
-function rulesList(context: Context, review: Review) {
-	const rows = review.map.rows.filter((row) => row.rule.id !== outside)
-	if (!rows.length) return html`<p class="sp-empty">This plan has no rules yet.</p>`
-	const editable = ruleEditable(review)
-	return html`<div class="sp-list wide-title" role="list" aria-label="Rules of the plan" data-list>
-		<div class="sp-gh" role="presentation">Rules <span>${rows.length}</span></div>
-		${rows.map(
-			(row, index) =>
-				html`<div
-					class="sp-row"
-					role="listitem"
-					tabindex="-1"
-					id="row-rules-${index}"
-					data-row
-					data-key="rule:${row.rule.id}"
-					data-href="${reviewHref(review.planId, `rule:${row.rule.id}`)}"
-					data-label="${row.rule.id}"
-				>
-					<span class="sp-c-cb"></span>
-					<span class="sp-c-tag"><span class="sp-pill">Rule</span></span>
-					<span class="sp-c-id">${row.rule.id}</span>
-					<span class="sp-c-title ell" title="${row.rule.text}">${row.rule.text}</span>
-					<span class="sp-c-meta ell" title="${ruleMeta(row)}">${ruleMeta(row)}</span>
-					${editable ? optionsBox(ruleButtons(context, review, row.rule, rows.length, true)) : ''}
-				</div>`
-		)}
-	</div>`
-}
-
 export function viewsOf(review: Review) {
 	return [
 		'needs',
@@ -1038,184 +729,3 @@ export function viewsOf(review: Review) {
 		'rules',
 	]
 }
-
-function panel(context: Context, review: Review, view: string, current: string, cost: string | null) {
-	const head = viewHead(review, view)
-	const items = itemsOf(review, view)
-	const groups = view.startsWith('area:') ? ruleGroups(review, view, items) : groupsOf(items)
-	const title = viewTitle(review, view)
-	const edit =
-		view === 'rules' && review.revision
-			? html`<a class="sp-btn" href="/plans/${review.planId}@${review.revision}/edit"
-					><span>Edit the rules</span></a
-				>`
-			: ''
-	const add =
-		view === 'rules' && ruleEditable(review)
-			? actionButton(
-					'rule-add',
-					'Add a rule…',
-					html`data-action="/plans/${review.planId}/rules" data-title="Add a rule to ${review.planId}"`
-				)
-			: ''
-	const rule = view.startsWith('rule:') ? review.map.rows.find((row) => row.rule.id === view.slice(5)) : undefined
-	const own =
-		rule && rule.rule.id !== outside && ruleEditable(review)
-			? ruleButtons(context, review, rule.rule, review.map.rows.length - 1, false)
-			: ''
-	const store =
-		(view === 'all' || view === 'rules') && review.storable ? storeButton(review.planId, review.storable, view) : ''
-	const tools = html`${edit}${add}${own}${review.running ? '' : testButton(review.planId)}${
-		review.answers ? actionButton('follow', `Test the answers (${review.answers.count})…`) : ''
-	}${store}`
-	return html`<section
-		class="sp-panel"
-		data-panel="${view}"
-		data-title="${title}"
-		aria-labelledby="title-${slug(view)}"
-		${view === current ? '' : html`hidden`}
-	>
-		<div class="sp-ch">
-			${crumbBar([
-				[review.planId, `/plans/${review.planId}`],
-				[review.target, null],
-			])}
-			${
-				view === current
-					? html`<h1 id="title-${slug(view)}" data-view-title>${title}</h1>`
-					: html`<h2 id="title-${slug(view)}" data-view-title>${title}</h2>`
-			}
-			${head.sub ? html`<p class="sp-sub">${head.sub}</p>` : ''}
-			<div class="sp-pills">${head.pills}</div>
-			${
-				cost === null
-					? ''
-					: html`<p
-							class="sp-sub"
-							title="Reported cost across this plan’s explorations, chats, and structured runs"
-						>
-							Total cost ${cost}
-						</p>`
-			}
-			${canChoose(view) ? html`<p class="sp-sub att" data-build-note></p>` : ''}
-		</div>
-		<div class="sp-tools" data-actions>${tools}</div>
-		${view === 'needs' ? blockingBanner(review, groups, view) : ''}
-		${view === 'rules' ? rulesList(context, review) : listOf(context, review, view, groups, title)}
-	</section>`
-}
-
-export function reviewPage(
-	store: Store,
-	context: Context,
-	planId: string,
-	params: URLSearchParams,
-	refusal: Refusal | null = null,
-	notice: string | null = null
-): Page {
-	const review = reviewOf(store, planId, context.harness)
-	const views = viewsOf(review)
-	const asked = params.get('view') ?? 'needs'
-	const current = views.includes(asked) ? asked : 'needs'
-	const chatting = params.has('chat') || params.get('newChat') === '1'
-	const title = viewTitle(review, current)
-	const key = refusal?.key ?? params.get('item')
-	const item =
-		key && !(refusal?.subject && refusal.state.stale)
-			? (review.items.find((each) => each.key === key && each.kind !== 'permission') ?? null)
-			: null
-	const refusedAnswer =
-		refusal?.subject && !item
-			? html`<section aria-labelledby="refused-answer">
-					<h2 id="refused-answer">Answer for ${refusal.subject}</h2>
-					${messages(refusal.state)}${keptText(refusal.state)}
-				</section>`
-			: ''
-	const file = params.get('file')
-	const record = item
-		? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim
-			? evidenceViewer(store, review, item, current, Number(file))
-			: recordDrawer(store, context, review, item, current, refusal)
-		: ''
-	const cost = planCost(store, planId)
-	const panels = views.map((view) =>
-		panel(context, review, view, current, cost.costUsd === null ? null : costText(cost.costUsd, cost.costPartial))
-	)
-	return {
-		title: `${item ? `${item.id} · ` : ''}${title} · ${planId}`,
-		section: 'home',
-		subjects: [
-			`plan:${planId}`,
-			'inbox',
-			...review.explorations.map((each) => `exploration:${each.explorationId}`),
-		],
-		status: refusal || notice ? 422 : 200,
-		crumbs: [
-			['Plans', '/'],
-			[planId, `/plans/${planId}`],
-			[title, item ? reviewHref(planId, current) : null],
-			...(item ? [[item.id, null] as [string, null]] : []),
-		],
-		back: item
-			? reviewHref(planId, current, `&at=${encodeURIComponent(item.key)}&focus=list`)
-			: `/?at=${encodeURIComponent(`plan:${planId}`)}`,
-		drawer: Boolean(item),
-		nav: navigator(review, current, null, { href: reviewHref(planId, current, '&chat=list'), active: chatting }),
-		body: html`${notice ? html`<p class="form-error" role="alert" data-notice>${notice}</p>` : ''}${refusedAnswer}
-			<div
-				class="sp-review"
-				data-review
-				data-plan="${planId}"
-				data-qa-status="${JSON.stringify(review.qa)}"
-				data-region="review"
-				${item ? html`data-open="${item.key}"` : ''}
-			>
-				${panels}
-			</div>
-			${record}
-			<div data-region="plan-actions">
-				${review.running ? '' : testDialog(context, planId, { build: '', level: 'normal', since: '', until: '', repo: '' }, defaultBuild(store.workspace), asList(instanceChoice(store, planId)))}
-				${review.answers ? followDialog(context, planId, { ...review.answers, planId }, review.answers.count) : ''}
-				${
-					ruleEditable(review)
-						? html`${ruleDialog(
-								'edit',
-								context,
-								planId,
-								review.areas.map((area) => area.label)
-							)}${ruleDialog(
-								'add',
-								context,
-								planId,
-								review.areas.map((area) => area.label)
-							)}`
-						: ''
-				}
-				${review.storable ? storeDialog(context, planId, review.storable, review.approvalRequired) : ''}
-				${review.items.some((item) => item.kind === 'defect') ? copyDialog() : ''}
-			</div>
-			<div
-				class="sp-bulk"
-				data-bulk
-				data-plan="${planId}"
-				data-csrf="${context.csrf}"
-				role="group"
-				aria-label="Selection"
-				hidden
-			>
-				<span class="sp-path" data-bulk-count aria-live="polite"></span>
-				<button type="button" class="sp-btn" data-bulk-action="accept"><kbd></kbd><span></span></button>
-				<button type="button" class="sp-btn" data-bulk-action="right"><kbd></kbd><span></span></button>
-				<button type="button" class="sp-btn" data-bulk-action="defer"><kbd></kbd><span></span></button>
-				<button type="button" class="sp-btn" data-bulk-action="handoff"><kbd></kbd><span></span></button>
-				<button type="button" class="sp-btn" data-bulk-action="copy"><kbd></kbd><span></span></button>
-				<button type="button" class="sp-btn" data-bulk-action="allow"><kbd></kbd><span></span></button>
-				<button type="button" class="sp-btn" data-bulk-action="deny"><kbd></kbd><span></span></button>
-				<button type="button" class="sp-btn" data-bulk-action="clear">
-					<kbd></kbd><span>Clear the selection</span>
-				</button>
-			</div>`,
-	}
-}
-
-export type { Rule }

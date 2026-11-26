@@ -95,7 +95,11 @@ Use the host commands to test the conversation. The agent runs the bundled CLI a
 
 ## Review UI design
 
-The review UI follows [The Scoresheet design system](design-system.md). Read it before you change `plugin/src/ui/assets/style.css` or a page of the UI.
+The review UI follows [The Scoresheet design system](design-system.md). Read it before you change a stylesheet or a page of the UI.
+
+The UI serves one stylesheet, `/assets/style.css`. `npm run build` writes it to `plugin/dist/style.css`: `plugin/src/ui/tokens.css`, then the other stylesheets of `plugin/src/ui/` in the order that `scripts/build-plugin.ts` gives. `plugin/src/ui/components/` has one stylesheet for each component. `base.css`, `layout.css`, `print.css`, `forced-colors.css`, and `pressed.css` have the rules that are not for one component. The order keeps the cascade. Before you move a file in the list, make sure that no rule changes which rule wins. Run `npm run build` after you change a stylesheet.
+
+The markup of a component is in `plugin/src/ui/components/<name>.ts`, next to its stylesheet. It is one function with typed props, for example `statusMark({ state, label })`. A prop gives the meaning, for example the status, not a colour. Give other attributes as an object in `attrs`. Each page is in `plugin/src/ui/screens/`. A screen composes components. Do not write the markup of a component in a screen.
 
 ## Documentation media
 

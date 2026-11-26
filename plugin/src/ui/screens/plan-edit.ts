@@ -1,0 +1,404 @@
+import type { Store } from '../../store.ts'
+import { frozenRevision, jsonPatch, planCandidate } from '../../plans.ts'
+import { planDetail } from '../../views.ts'
+import type { Html } from '../html.ts'
+import type { Context, Page } from '../layout.ts'
+import { banner } from '../components/banner.ts'
+import { formButton } from '../components/button.ts'
+import { dataTable } from '../components/data-table.ts'
+import { field, textArea, textInput } from '../components/field.ts'
+import { heading } from '../components/page-heading.ts'
+import { actorLimit, html, short } from '../html.ts'
+import { navigator, reviewOf } from '../review.ts'
+
+type Candidate = ReturnType<typeof planCandidate>
+type Requirement = Candidate['requirements'][number]
+type Test = Candidate['tests'][number]
+type CheckKind = Test['assertions'][number]['checkKind']
+
+export type EditState = {
+	mode: 'form' | 'json'
+	candidate: Candidate
+	json: string
+	actor: string
+	error: string | null
+	field?: string | null
+	stale: Html | null
+	unsaved: string | null
+	orig: string
+	removed: string[]
+	rationale: string
+}
+
+function words(values: string) {
+	return values
+		.split(/[\s,]+/)
+		.map((value) => value.trim())
+		.filter(Boolean)
+}
+
+function lines(values: string) {
+	return values
+		.split('\n')
+		.map((value) => value.trim())
+		.filter(Boolean)
+}
+
+function checkKind(value: string | null, fallback: CheckKind): CheckKind {
+	return value === 'deterministic' || value === 'agent_observation' ? value : fallback
+}
+
+export function candidateFromForm(base: Candidate, form: URLSearchParams): Candidate {
+	const text = (name: string, fallback: string) => (form.get(name) ?? fallback).trim()
+	const covered = new Set(form.getAll('cover'))
+	return {
+		requirements: base.requirements.map((requirement, i) => ({
+			...requirement,
+			text: text(`r${i}.text`, requirement.text),
+			source: text(`r${i}.source`, requirement.source),
+		})),
+		tests: base.tests.map((test, i) => ({
+			...test,
+			title: text(`t${i}.title`, test.title),
+			capability: text(`t${i}.capability`, test.capability),
+			operations: words(form.get(`t${i}.operations`) ?? test.operations.join(', ')),
+			dependsOn: words(form.get(`t${i}.dependsOn`) ?? test.dependsOn.join(', ')),
+			preconditions: lines(form.get(`t${i}.preconditions`) ?? test.preconditions.join('\n')),
+			action: text(`t${i}.action`, test.action),
+			requirementIds: base.requirements
+				.filter((requirement) => covered.has(`${test.id} ${requirement.id}`))
+				.map((requirement) => requirement.id),
+			assertions: test.assertions.map((assertion, j) => ({
+				...assertion,
+				check: text(`t${i}.a${j}.check`, assertion.check),
+				checkKind: checkKind(form.get(`t${i}.a${j}.kind`), assertion.checkKind),
+			})),
+		})),
+		gaps: base.gaps,
+	}
+}
+
+export function emptyField(base: Candidate, form: URLSearchParams) {
+	const fields = [
+		...base.requirements.flatMap((requirement, i) => [
+			[`r${i}.text`, `${requirement.id} Text`],
+			[`r${i}.source`, `${requirement.id} Source`],
+		]),
+		...base.tests.flatMap((test, i) => [
+			[`t${i}.title`, `${test.id} Title`],
+			[`t${i}.capability`, `${test.id} Capability`],
+			[`t${i}.action`, `${test.id} Action`],
+			...test.assertions.map((assertion, j) => [`t${i}.a${j}.check`, `${assertion.id}`]),
+		]),
+	]
+	const found = fields.find(([name]) => form.has(name) && !form.get(name)!.trim())
+	return found ? { name: found[0], label: found[1] } : null
+}
+
+export function candidateJson(candidate: unknown) {
+	return JSON.stringify(candidate, null, 2)
+}
+
+function pathName(candidate: Candidate, path: string) {
+	const [, list, index, ...rest] = path.split('/')
+	const items: Array<{ id: string }> =
+		list === 'requirements' ? candidate.requirements : list === 'tests' ? candidate.tests : candidate.gaps
+	return [items[Number(index)]?.id ?? index, ...rest].join('.')
+}
+
+function changeLines(before: Candidate, after: unknown) {
+	return jsonPatch(before, after)
+		.map((operation) => `${pathName(before, operation.path)}: ${JSON.stringify(operation.value ?? null)}`)
+		.join('\n')
+}
+
+export function removedTests(base: Candidate, candidate: unknown) {
+	const tests = (candidate as { tests?: unknown } | null)?.tests
+	if (!Array.isArray(tests)) return []
+	const kept = new Set(tests.map((test) => (test as { id?: unknown } | null)?.id))
+	return base.tests.map((test) => test.id).filter((id) => !kept.has(id))
+}
+
+export function ownChanges(form: URLSearchParams, fresh: Candidate) {
+	if (form.get('mode') === 'remove') return `${form.get('test') ?? ''}: removed`
+	const json = form.get('json') ?? ''
+	try {
+		const orig = JSON.parse(form.get('orig') ?? '') as Candidate
+		if (form.get('mode') === 'json') return changeLines(orig, JSON.parse(json))
+		return changeLines(orig, candidateFromForm(orig, form))
+	} catch {
+		return form.get('mode') === 'json' ? json : changeLines(fresh, candidateFromForm(fresh, form))
+	}
+}
+
+function unsavedPanel(unsaved: string) {
+	return html`<section class="panel unsaved" aria-labelledby="unsaved-title">
+		<h2 class="lab" id="unsaved-title">Your changes (not saved)</h2>
+		<p class="help">
+			The editor below shows the latest version. These are the values that you changed. Apply the changes again,
+			then save.
+		</p>
+		<pre class="code">${unsaved || 'You changed no values.'}</pre>
+	</section>`
+}
+
+function removalField(state: EditState) {
+	return html`<div class="field-group" data-removal${state.removed.length ? '' : html` hidden`}>
+		<label class="lab" for="removal">Reason for removal</label>
+		<p class="help" id="removal-help">
+			The edit removes <span class="mono" data-removal-tests>${state.removed.join(', ')}</span>. Checkmate records
+			who removed which tests and why.
+		</p>
+		<textarea id="removal" name="rationale" rows="2" aria-describedby="removal-help">${state.rationale}</textarea>
+	</div>`
+}
+
+function inputField(label: string, name: string, value: string, help = '') {
+	return field({ id: name, label, control: textInput({ id: name, name, value }), help: help || undefined })
+}
+
+function areaField(label: string, name: string, value: string, rows: number, help = '') {
+	return field({ id: name, label, control: textArea({ id: name, name, rows, value }), help: help || undefined })
+}
+
+function requirementFields(requirement: Requirement, i: number) {
+	return html`<fieldset class="edit-card" id="edit-${requirement.id}">
+		<legend class="mono">${requirement.id}</legend>
+		${areaField('Text', `r${i}.text`, requirement.text, 2)}
+		${inputField('Source', `r${i}.source`, requirement.source, 'Where the requirement comes from.')}
+	</fieldset>`
+}
+
+function testFields(test: Test, i: number) {
+	return html`<fieldset class="edit-card" id="edit-${test.id}">
+		<legend><span class="mono">${test.id}</span> ${test.title}</legend>
+		${inputField('Title', `t${i}.title`, test.title)}
+		<div class="edit-row">
+			${inputField('Capability', `t${i}.capability`, test.capability)}
+			${inputField('Operations', `t${i}.operations`, test.operations.join(', '), 'Separate with commas.')}
+		</div>
+		${inputField(
+			'Depends on',
+			`t${i}.dependsOn`,
+			test.dependsOn.join(', '),
+			'Test IDs, separated with commas. Use plan:T1 for a test in another plan.'
+		)}
+		${areaField('Preconditions', `t${i}.preconditions`, test.preconditions.join('\n'), 2, 'One per line.')}
+		${areaField('Action', `t${i}.action`, test.action, 2)}
+		<div class="field-group">
+			<p class="lab">Assertions</p>
+			${
+				test.assertions.length
+					? html`<ul class="edit-asrs">
+							${test.assertions.map(
+								(assertion, j) =>
+									html`<li>
+										<label class="aid" for="t${i}.a${j}.check">${assertion.id}</label>
+										<textarea id="t${i}.a${j}.check" name="t${i}.a${j}.check" rows="1">
+${assertion.check}</textarea>
+										<label class="sr-only" for="t${i}.a${j}.kind"
+											>Check kind of ${assertion.id}</label
+										>
+										<select id="t${i}.a${j}.kind" name="t${i}.a${j}.kind">
+											${['deterministic', 'agent_observation'].map(
+												(kind) =>
+													html`<option
+														value="${kind}"
+														${kind === assertion.checkKind ? html`selected` : ''}
+													>
+														${kind.replace('_', ' ')}
+													</option>`
+											)}
+										</select>
+									</li>`
+							)}
+						</ul>`
+					: html`<p class="help">No assertions. Add them in the JSON editor.</p>`
+			}
+		</div>
+	</fieldset>`
+}
+
+function coverageMatrix(candidate: Candidate) {
+	return dataTable({
+		columns: ['Requirement', ...candidate.tests.map((test) => ({ label: test.id, attrs: { class: 'mono' } }))],
+		scroll: true,
+		attrs: { class: 'matrix' },
+		rows: candidate.requirements.map(
+			(requirement) =>
+				html`<tr>
+					<th scope="row">
+						<span class="mono">${requirement.id}</span>
+						<span class="muted small matrix-text">${requirement.text}</span>
+					</th>
+					${candidate.tests.map(
+						(test) =>
+							html`<td>
+								<label class="cell-check"
+									><input
+										type="checkbox"
+										name="cover"
+										value="${test.id} ${requirement.id}"
+										aria-label="${test.id} covers ${requirement.id}"
+										${test.requirementIds.includes(requirement.id) ? html`checked` : ''}
+								/></label>
+							</td>`
+					)}
+				</tr>`
+		),
+	})
+}
+
+function hidden(context: Context, sha256: string, mode: string, orig: string) {
+	return html`<input type="hidden" name="csrf" value="${context.csrf}" />
+		<input type="hidden" name="sha" value="${sha256}" />
+		<input type="hidden" name="mode" value="${mode}" />
+		<input type="hidden" name="orig" value="${orig}" />`
+}
+
+function actorLine(context: Context, state: EditState, path: string, mode: string) {
+	if (context.actor)
+		return html`<p class="help">
+			Saving as <strong>${context.actor}</strong>.
+			<a class="tap" href="/actor?back=${encodeURIComponent(path)}">Change name</a>
+		</p>`
+	return html`${field({ id: `actor-${mode}`, label: 'Your name', control: textInput({ id: `actor-${mode}`, name: 'actor', value: state.actor, attrs: { required: true, maxlength: actorLimit, autocomplete: 'name' } }), help: 'Checkmate records it with the edit.' })}`
+}
+
+export function editPage(
+	store: Store,
+	context: Context,
+	planId: string,
+	revision: number,
+	state: EditState | null = null
+): Page {
+	const detail = planDetail(store, planId, revision)
+	const subject = `${planId}@${revision}`
+	const path = `/plans/${subject}/edit`
+	const title = `Edit ${subject}`
+	if (detail.revision !== detail.latestRevision)
+		return {
+			title,
+			section: 'home',
+			subjects: [`plan:${planId}`],
+			body: html`${heading({ title, sub: detail.plan.objective })}
+			${banner({
+				kind: 'info',
+				content: html`Only the latest revision can change.
+					<a href="/plans/${planId}@${detail.latestRevision}/edit"
+						>Edit ${planId}@${detail.latestRevision}</a
+					>`,
+			})}`,
+		}
+	const frozen = frozenRevision(store, planId, revision)
+	const needsApproval = detail.approval.policy !== 'none'
+	const next = revision + 1
+	const save = frozen ? `Save as ${planId}@${next}` : 'Save changes'
+	const why =
+		frozen === 'run'
+			? `A run uses ${subject}.`
+			: frozen === 'promotion'
+				? `${subject} was promoted.`
+				: `${subject} is approved.`
+	const notice = frozen
+		? banner({
+				kind: 'warn',
+				content: html`<strong
+						>${why} Saving creates revision ${next}${needsApproval ? ', which needs approval' : ''}.</strong
+					>
+					${subject} stays as it is.`,
+			})
+		: banner({
+				kind: 'info',
+				content: html`<strong>Edits change this revision in place.</strong> ${subject} is not approved and no
+					run uses it.`,
+			})
+	const shown = state ?? {
+		mode: 'form' as const,
+		candidate: planCandidate(detail.plan),
+		json: candidateJson(planCandidate(detail.plan)),
+		actor: '',
+		error: null,
+		stale: null,
+		unsaved: null,
+		orig: JSON.stringify(planCandidate(detail.plan)),
+		removed: [],
+		rationale: '',
+	}
+	const messages = html`${shown.stale ? banner({ kind: 'warn', content: shown.stale }) : ''}
+	${shown.error ? html`<p class="form-error" role="alert" data-field="${shown.field ?? ''}">${shown.error}</p>` : ''}`
+	const buttons = (mode: string) =>
+		html`<div class="btns">
+				${formButton({ label: save, emphasis: 'primary' })}
+				${formButton({ label: 'Cancel', href: `/plans/${subject}` })}
+			</div>
+			${actorLine(context, shown, path, mode)}`
+	const body = html`${heading({
+			title,
+			sub: detail.plan.objective,
+			extra: html`<div class="meta">
+				<a class="pill" href="/plans/${subject}">${subject}</a>
+				<span class="pill" title="${detail.sha256}"
+					>sha256 <span class="mono">${short(detail.sha256)}</span></span
+				>
+			</div>`,
+		})}
+		${shown.unsaved === null ? '' : unsavedPanel(shown.unsaved)}
+		<div data-region="edit" data-stale-message="${planId} changed. Review it before you save.">
+			<div data-stale-slot>${notice} ${messages}</div>
+			<form method="post" action="${path}" class="edit-form" data-edit-form>
+				${hidden(context, detail.sha256, 'form', shown.orig)}
+				<section aria-labelledby="edit-requirements">
+					<h2 id="edit-requirements">
+						Requirements <span class="n">${shown.candidate.requirements.length}</span>
+					</h2>
+					<div class="stack">${shown.candidate.requirements.map(requirementFields)}</div>
+				</section>
+				<section aria-labelledby="edit-tests">
+					<h2 id="edit-tests">Tests <span class="n">${shown.candidate.tests.length}</span></h2>
+					<div class="stack">${shown.candidate.tests.map(testFields)}</div>
+				</section>
+				<section aria-labelledby="edit-coverage">
+					<h2 id="edit-coverage">Coverage</h2>
+					<p class="help">Mark the requirements that each test covers. Each test covers one or more.</p>
+					${coverageMatrix(shown.candidate)}
+				</section>
+				<div class="edit-save">${buttons('form')}</div>
+			</form>
+			<details class="edit-json" ${shown.mode === 'json' ? html`open` : ''}>
+				<summary>Edit as JSON</summary>
+				<form
+					method="post"
+					action="${path}"
+					class="edit-form"
+					data-edit-form
+					data-test-ids="${detail.plan.tests.map((test) => test.id).join(' ')}"
+				>
+					${hidden(context, detail.sha256, 'json', shown.orig)}
+					<p class="help">
+						Add or remove requirements, tests, assertions, and gaps. The JSON has the fields of a plan
+						candidate:
+						<code>requirements</code>, <code>tests</code>, and <code>gaps</code>.
+					</p>
+					<label class="sr-only" for="json">Plan candidate JSON</label>
+					<textarea id="json" name="json" rows="24" class="code" spellcheck="false">${shown.json}</textarea>
+					${removalField(shown)} ${buttons('json')}
+				</form>
+			</details>
+		</div>`
+	return {
+		title,
+		section: 'home',
+		subjects: [`plan:${planId}`],
+		body,
+		crumbs: [
+			['Plans', '/'],
+			[planId, `/plans/${planId}`],
+			[subject, `/plans/${subject}`],
+			['Edit', null],
+		],
+		back: `/plans/${subject}`,
+		address: `/plans/${subject}/edit`,
+		nav: navigator(reviewOf(store, planId), 'plan'),
+	}
+}

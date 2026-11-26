@@ -1,0 +1,20 @@
+@media (forced-colors: active) {
+	.glyph {
+		forced-color-adjust: none;
+		background: CanvasText;
+	}
+	:is(.sp-row, .sp-nrow, .sp-ct, .sp-dhead, .sp-file, .sp-mk).hl {
+		forced-color-adjust: none;
+		background: Highlight;
+		color: HighlightText;
+		outline: 2px solid HighlightText;
+		outline-offset: -2px;
+	}
+	.hl :is(*) {
+		color: HighlightText;
+		border-color: HighlightText;
+	}
+	.hl .glyph {
+		background: HighlightText;
+	}
+}

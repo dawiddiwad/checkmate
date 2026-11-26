@@ -1,7 +1,9 @@
 import type { Html } from './html.ts'
 import type { Context } from './layout.ts'
+import { banner } from './components/banner.ts'
+import { formButton } from './components/button.ts'
+import { field, textArea, textInput } from './components/field.ts'
 import { actorLimit, html, short } from './html.ts'
-import { banner } from './layout.ts'
 
 export type FormState = {
 	values: Record<string, string>
@@ -36,23 +38,11 @@ export function hidden(context: Context, sha256: string, token = '') {
 
 export function actorField(context: Context, state: FormState) {
 	if (context.actor) return ''
-	return html`<div class="field-group">
-		<label class="lab" for="actor">Your name</label>
-		<input
-			id="actor"
-			name="actor"
-			required
-			maxlength="${actorLimit}"
-			autocomplete="name"
-			value="${state.values.actor ?? ''}"
-			data-missing="Enter your name. Checkmate records it with your decision."
-		/>
-		<p class="help">Checkmate asks once, keeps it in a cookie, and records it with each decision.</p>
-	</div>`
+	return html`${field({ id: 'actor', label: 'Your name', control: textInput({ id: 'actor', name: 'actor', value: state.values.actor ?? '', attrs: { required: true, maxlength: actorLimit, autocomplete: 'name', 'data-missing': 'Enter your name. Checkmate records it with your decision.' } }), help: 'Checkmate asks once, keeps it in a cookie, and records it with each decision.' })}`
 }
 
 export function messages(state: FormState) {
-	return html`${state.stale ? banner('warn', state.stale) : ''}
+	return html`${state.stale ? banner({ kind: 'warn', content: state.stale }) : ''}
 	${state.error ? html`<p class="form-error" role="alert">${state.error}</p>` : ''}`
 }
 
@@ -70,19 +60,7 @@ export function rationaleField(
 	placeholder: string,
 	missing = 'Write a rationale. Checkmate records it with your decision.'
 ) {
-	return html`<div class="field-group">
-		<label class="lab" for="rationale">Rationale</label>
-		<textarea
-			id="rationale"
-			name="rationale"
-			rows="4"
-			required
-			data-rationale
-			placeholder="${placeholder}"
-			data-missing="${missing}"
-		>
-${state.values.rationale ?? ''}</textarea>
-	</div>`
+	return html`${field({ id: 'rationale', label: 'Rationale', control: textArea({ id: 'rationale', name: 'rationale', rows: 4, value: state.values.rationale ?? '', attrs: { required: true, 'data-rationale': true, placeholder: placeholder, 'data-missing': missing } }) })}`
 }
 
 function confirmStep(context: Context, verdict: Verdict, state: FormState) {
@@ -98,24 +76,25 @@ function confirmStep(context: Context, verdict: Verdict, state: FormState) {
 			<blockquote>${state.values.rationale ?? ''}</blockquote>
 		</div>
 		<div class="btns">
-			<button class="btn primary" name="confirmed" value="1">${choice.confirm}</button>
-			<button class="btn" name="back" value="1" formnovalidate>Back</button>
+			${formButton({ label: choice.confirm, emphasis: 'primary', attrs: { name: 'confirmed', value: '1' } })}
+			${formButton({ label: 'Back', attrs: { name: 'back', value: '1', formnovalidate: true } })}
 		</div>
 	</form>`
 }
 
 function chooseStep(context: Context, verdict: Verdict, state: FormState) {
 	const button = (choice: Verdict['approve'], primary: boolean) =>
-		html`<button
-			class="btn${primary ? ' primary' : ''}"
-			name="verdict"
-			value="${choice.value}"
-			data-needs-rationale
-			data-confirm-label="${choice.confirm}"
-			data-summary="${choice.summary}"
-		>
-			${choice.label}
-		</button>`
+		formButton({
+			label: choice.label,
+			emphasis: primary ? 'primary' : undefined,
+			attrs: {
+				name: 'verdict',
+				value: choice.value,
+				'data-needs-rationale': true,
+				'data-confirm-label': choice.confirm,
+				'data-summary': choice.summary,
+			},
+		})
 	return html`<form method="post" action="${verdict.action}" class="decision-form" data-verdict-form>
 		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ''} ${actorField(context, state)}
 		${rationaleField(state, 'Why do you decide this?')}
@@ -125,8 +104,8 @@ function chooseStep(context: Context, verdict: Verdict, state: FormState) {
 		</div>
 		<div class="btns" data-choose>${button(verdict.approve, true)} ${button(verdict.reject, false)}</div>
 		<div class="btns" data-confirm-buttons hidden>
-			<button class="btn primary" name="confirmed" value="1" data-confirm-submit>Confirm</button>
-			<button class="btn" type="button" data-confirm-back>Back</button>
+			${formButton({ label: 'Confirm', emphasis: 'primary', attrs: { name: 'confirmed', value: '1', 'data-confirm-submit': true } })}
+			${formButton({ label: 'Back', attrs: { type: 'button', 'data-confirm-back': true } })}
 		</div>
 	</form>`
 }
@@ -212,11 +191,7 @@ export function gapPanel(context: Context, form: GapForm, state: FormState) {
 				</div>
 			</fieldset>
 			${kinds.map((kind) => html`<p class="help kind-help" data-kind="${kind.value}">${kind.help}</p>`)}
-			<div class="field-group">
-				<label class="lab" for="value">Answer</label>
-				<textarea id="value" name="value" rows="3" required data-missing="Write the answer.">
-${state.values.value ?? ''}</textarea>
-			</div>
+			${field({ id: 'value', label: 'Answer', control: textArea({ id: 'value', name: 'value', rows: 3, value: state.values.value ?? '', attrs: { required: true, 'data-missing': 'Write the answer.' } }) })}
 			<div class="field-group source-field">
 				<label class="lab" for="source">Source <span class="req">required for Clarify</span></label>
 				<input
@@ -232,8 +207,8 @@ ${state.values.value ?? ''}</textarea>
 			${rationaleField(state, 'Why is this the right answer?', 'Write a rationale. Checkmate records it with your answer.')}
 			${actorField(context, state)}
 			<div class="btns">
-				<button class="btn primary" data-needs-rationale>Record answer</button>
-				<a class="btn" href="${form.cancel}">Cancel</a>
+				${formButton({ label: 'Record answer', emphasis: 'primary', attrs: { 'data-needs-rationale': true } })}
+				${formButton({ label: 'Cancel', href: form.cancel })}
 			</div>
 		</form>
 	</section>`
@@ -260,18 +235,7 @@ export function sourceAndReason(context: Context, state: FormState, reasonLabel:
 	const used = Boolean(state.values.source || state.values.rationale)
 	return html`<details class="more" data-more ${used ? html`open` : ''}>
 		<summary>Add source and reason</summary>
-		<div class="field-group">
-			<label class="lab" for="source">Source</label>
-			<input
-				id="source"
-				name="source"
-				value="${state.values.source ?? ''}"
-				placeholder="Default: ${context.actor ?? 'you'}, in the review UI"
-			/>
-		</div>
-		<div class="field-group">
-			<label class="lab" for="rationale">${reasonLabel}</label>
-			<textarea id="rationale" name="rationale" rows="2">${state.values.rationale ?? ''}</textarea>
-		</div>
+		${field({ id: 'source', label: 'Source', control: textInput({ id: 'source', name: 'source', value: state.values.source ?? '', attrs: { placeholder: `Default: ${context.actor ?? 'you'}, in the review UI` } }) })}
+		${field({ id: 'rationale', label: reasonLabel, control: textArea({ id: 'rationale', name: 'rationale', rows: 2, value: state.values.rationale ?? '' }) })}
 	</details>`
 }

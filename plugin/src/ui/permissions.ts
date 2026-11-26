@@ -1,12 +1,15 @@
 import type { Store } from '../store.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
 import type { ForceRule, Permission } from '../permissions.ts'
-import { closedText, explorationPermissions, openPermissions, permissionOf, permissionRules } from '../permissions.ts'
-import { ago, duration, glyph, html, pill, plural, time } from './html.ts'
-import { crumbBar, heading } from './layout.ts'
-import { inputLine } from './hooks.ts'
+import { closedText, explorationPermissions, openPermissions } from '../permissions.ts'
 import { requestOf } from '../requests.ts'
+import type { Html } from './html.ts'
+import type { Context } from './layout.ts'
+import { formButton, optionButton } from './components/button.ts'
+import { fold } from './components/fold.ts'
+import { listRow } from './components/list-row.ts'
+import { wordMark } from './components/status-mark.ts'
+import { inputLine } from './hooks.ts'
+import { ago, duration, glyph, html, plural, time } from './html.ts'
 
 export type PermissionRefusal = { error: string; reason: string; field: 'reason' | null }
 
@@ -33,7 +36,7 @@ export function asksFor(item: Permission) {
 	return line ? `${verb}: ${line}` : verb
 }
 
-function askerPath(store: Store, item: Permission) {
+export function askerPath(store: Store, item: Permission) {
 	if (!item.fromRequest) return { label: 'Run', href: `/explorations/${item.askerId}`, fallback: '/activity' }
 	const message = requestOf(store, item.askerId)
 	const href = message ? `/chats/${message.conversation}` : '/chats'
@@ -69,7 +72,7 @@ export function askHeading(item: Permission) {
 	return `${askerName(item)} asks to ${things[item.tool] ?? `use ${item.tool}`}`
 }
 
-function breakAtSlashes(path: string) {
+export function breakAtSlashes(path: string) {
 	return path.split('/').map((part, index) => (index ? html`/<wbr />${part}` : part))
 }
 
@@ -106,7 +109,7 @@ type Choice = {
 	ask?: { title: string; text: string; yes: string }
 }
 
-function choicesOf(item: Permission): Choice[] {
+export function choicesOf(item: Permission): Choice[] {
 	const kind = item.tool.toLowerCase() === 'bash' ? 'command' : 'kind of call'
 	const run = item.askerId
 	const rule = item.rule
@@ -187,7 +190,7 @@ export function optionCount(item: Permission) {
 	return choicesOf(item).length
 }
 
-function hidden(name: string, value: string) {
+export function hidden(name: string, value: string) {
 	return html`<input type="hidden" name="${name}" value="${value}" />`
 }
 
@@ -199,43 +202,29 @@ export function rowOptions(context: Context, item: Permission, returnTo: string)
 	>
 		<form method="post" action="${recordPath(item)}" class="sp-opt">
 			${hidden('csrf', context.csrf)}${hidden('return', returnTo)}${hidden('decision', 'allow')}
-			<button class="sp-btn" data-option aria-label="1: Allow once" title="Allow once">
-				<kbd aria-hidden="true">1</kbd><span>Allow once</span>
-			</button>
+			${optionButton({ n: 1, label: 'Allow once' })}
 		</form>
 		<span class="sp-c-more" aria-hidden="true">${glyph('→')} more</span>
 	</div>`
 }
 
 export function askBadge() {
-	return html`<span class="sp-pill you">Asks</span>`
+	return wordMark({ state: 'asks', label: 'Asks' })
 }
 
 export function askingPill() {
-	return html`<span class="sp-pill you"><span class="dot" aria-hidden="true"></span>Asks</span>`
+	return wordMark({ state: 'asks', label: 'Asks', live: true })
 }
 
-function optionOf(context: Context, item: Permission, from: string | null, choice: Choice, n: number) {
-	const key = html`<kbd aria-hidden="true">${n}</kbd><span>${choice.label}</span>`
+export function optionOf(context: Context, item: Permission, from: string | null, choice: Choice, n: number) {
 	if (choice.reveal)
-		return html`<button
-			type="button"
-			class="sp-btn"
-			data-option
-			data-reveal="${choice.reveal}"
-			aria-label="${n}: ${choice.label}"
-			title="${choice.label}"
-		>
-			${key}
-		</button>`
+		return optionButton({ n, label: choice.label, attrs: { type: 'button', 'data-reveal': choice.reveal } })
 	const ask = choice.ask
-		? html`data-ask-title="${choice.ask.title}" data-ask-text="${choice.ask.text}" data-ask-yes="${choice.ask.yes}"`
-		: ''
+		? { 'data-ask-title': choice.ask.title, 'data-ask-text': choice.ask.text, 'data-ask-yes': choice.ask.yes }
+		: {}
 	return html`<form method="post" action="${recordPath(item)}" class="sp-opt">
 		${hidden('csrf', context.csrf)}${from ? hidden('from', from) : ''}${hidden('decision', choice.decision)}
-		<button class="sp-btn" data-option ${ask} aria-label="${n}: ${choice.label}" title="${choice.label}">
-			${key}
-		</button>
+		${optionButton({ n, label: choice.label, attrs: ask })}
 	</form>`
 }
 
@@ -259,7 +248,7 @@ function edits(input: Record<string, unknown>) {
 		.join('\n')
 }
 
-function asked(item: Permission) {
+export function asked(item: Permission) {
 	const input = item.input && typeof item.input === 'object' ? (item.input as Record<string, unknown>) : {}
 	const path = ['file_path', 'notebook_path', 'path']
 		.map((key) => input[key])
@@ -293,7 +282,7 @@ export function rulesLines(rules: ForceRule[], scope = 'test') {
 	)
 }
 
-function stateOf(item: Permission) {
+export function stateOf(item: Permission) {
 	const decision = item.decision!
 	if (decision.kind === 'closed')
 		return html`<strong>Closed ${ago(decision.at)}:</strong> ${closedText[decision.cause!]}.
@@ -303,153 +292,9 @@ function stateOf(item: Permission) {
 	return html`<strong>Answered ${ago(decision.at)}:</strong> ${decision.text}.`
 }
 
-function stateText(item: Permission) {
+export function stateText(item: Permission) {
 	const decision = item.decision!
 	return decision.kind === 'closed' ? `Closed: ${closedText[decision.cause!]}.` : `Answered: ${decision.text}.`
-}
-
-export function permissionPage(
-	store: Store,
-	context: Context,
-	askerId: string,
-	requestId: string,
-	view: { from: string | null; history: boolean },
-	refusal: PermissionRefusal | null
-): Page | null {
-	const item = permissionOf(store, askerId, requestId)
-	if (!item) return null
-	const { from } = view
-	const asker = askerPath(store, item)
-	const back = from ?? asker.fallback
-	const moves = item.decision && !view.history
-	const next = nextOpen(store, item)
-	const after = next ? requestHref(next, from) : back
-	const name = requestName(item)
-	const rules = permissionRules(store, askerId)
-	const choices = item.decision ? [] : choicesOf(item)
-	const title = askHeading(item)
-	return {
-		title: `${name} · Permission request`,
-		section: 'home',
-		subjects: [
-			item.fromRequest ? `request:${askerId}` : `exploration:${askerId}`,
-			...(item.planId ? [`plan:${item.planId}`] : []),
-		],
-		crumbs: [
-			['Plans', '/'],
-			...(item.planId ? [[item.planId, `/plans/${item.planId}`] as [string, string]] : []),
-			[askerId, asker.href] as [string, string],
-			[item.id, null],
-		],
-		back,
-		status: refusal ? 422 : 200,
-		body: html`<div
-			class="sp-record"
-			data-region="permission-record"
-			data-drawer
-			data-back="${back}"
-			data-key="record:${name}"
-			data-decided-message="${item.decision ? stateText(item) : ''}"
-			${moves ? html`data-moves-on data-next="${after}"` : ''}
-		>
-			${crumbBar([...(item.planId ? [[item.planId, `/plans/${item.planId}`] as [string, string]] : []), [askerId, asker.href]])}
-			<div data-stale-slot>
-				${refusal && !refusal.field ? html`<p class="form-error" role="alert">${refusal.error}</p>` : ''}
-			</div>
-			<section class="sp-dhead" tabindex="-1" data-sub data-label="${name}">
-				<div class="sp-pills">
-					${item.decision ? pill(item.decision.kind === 'closed' ? 'stopped' : 'completed', item.decision.kind === 'closed' ? 'Closed' : 'Answered') : askBadge()}
-					<span class="sp-c-id">${name}</span>
-					<span class="sp-c-id">${item.decision ? ago(item.at) : waitsFor(item)}</span>
-				</div>
-				<h1 id="record-title" class="sp-ask-title" title="${title}">${title}</h1>
-			</section>
-			${
-				item.decision
-					? html`<p class="banner info" role="status" data-key="state">
-							${stateOf(item)}
-							${
-								moves
-									? html`This view moves on in 2 seconds. Press any key to move on now.`
-									: html`This request has no options now.`
-							}
-						</p>`
-					: ''
-			}
-			<section aria-labelledby="asked-title">
-				<h2 class="lab" id="asked-title">What it asks</h2>
-				${asked(item)}
-			</section>
-			${
-				choices.length
-					? html`<section class="sp-options" aria-labelledby="options-title" data-key="options:${name}">
-							<h2 class="lab" id="options-title">Options</h2>
-							<ol class="sp-optlist asks">
-								${choices.map((choice, index) => html`<li>${optionOf(context, item, from, choice, index + 1)}<span class="help">${choice.text}</span></li>`)}
-							</ol>
-							<div class="sp-c-extra" data-extra="deny" ${refusal?.field ? '' : html`hidden`}>
-								<form
-									method="post"
-									action="${recordPath(item)}"
-									class="sp-form"
-									id="deny"
-									data-field-form
-								>
-									${hidden('csrf', context.csrf)}${from ? hidden('from', from) : ''}${hidden('decision', 'deny')}
-									<label for="deny-text">Why do you deny it? The tester gets this text.</label>
-									<textarea
-										id="deny-text"
-										name="reason"
-										rows="3"
-										required
-										data-missing="Write the reason first. The tester gets it."
-									>
-${refusal?.reason ?? ''}</textarea>
-									${refusal?.field ? html`<p class="form-error" role="alert" data-field="reason">${refusal.error}</p>` : ''}
-									<div class="btns">
-										<button class="sp-btn pri"><span>Deny</span></button>
-										<span class="small muted"
-											>Enter sends. Shift+Enter starts a new line. Esc keeps the draft.</span
-										>
-									</div>
-								</form>
-							</div>
-						</section>`
-					: ''
-			}
-			<section aria-labelledby="details-title">
-				<h2 class="lab" id="details-title">Details</h2>
-				<dl class="facts">
-					<dt>Tool</dt>
-					<dd class="mono">${item.tool}</dd>
-					<dt>Folder</dt>
-					<dd class="path">
-						${item.cwd ? html`<code>${breakAtSlashes(item.cwd)}</code>` : html`<span class="muted">not recorded</span>`}
-					</dd>
-					<dt>Asked by</dt>
-					<dd>${askerName(item)}</dd>
-					<dt>Since</dt>
-					<dd>${time(item.at)}</dd>
-					<dt>${asker.label}</dt>
-					<dd><a href="${asker.href}">${askerId}</a></dd>
-					${
-						item.planId
-							? html`<dt>Plan</dt>
-									<dd><a href="/plans/${item.planId}">${item.planId}</a></dd>`
-							: ''
-					}
-				</dl>
-			</section>
-			${
-				rules.length
-					? html`<section aria-labelledby="rules-title">
-							<h2 class="lab" id="rules-title">Rules of this ${item.fromRequest ? 'chat' : 'test'}</h2>
-							${rulesLines(rules, item.fromRequest ? 'chat' : 'test')}
-						</section>`
-					: ''
-			}
-		</div>`,
-	}
 }
 
 export function permissionHistory(store: Store, explorationId: string, params: URLSearchParams, from: string) {
@@ -465,42 +310,38 @@ export function permissionHistory(store: Store, explorationId: string, params: U
 		else next.set('requests', String(target))
 		next.set('at', `request:${requestName(all[(target - 1) * historySize])}`)
 		const query = next.toString()
-		return html`<a class="btn small" href="/explorations/${explorationId}${query ? `?${query}` : ''}" rel="${rel}"
-			>${label}</a
-		>`
+		return formButton({
+			label,
+			href: `/explorations/${explorationId}${query ? `?${query}` : ''}`,
+			inline: true,
+			attrs: { rel },
+		})
 	}
 	const decided = (item: Permission) =>
 		item.decision ? html`${item.decision.text} · ${time(item.decision.at)}` : html`open · ${time(item.at)}`
-	const rows = shown.map(
-		(item, index) =>
-			html`<div
-				class="sp-row"
-				role="option"
-				aria-selected="false"
-				tabindex="-1"
-				id="request-${index}"
-				data-row
-				data-key="request:${requestName(item)}"
-				data-href="${requestHref(item, from, true)}"
-				data-label="${requestName(item)}"
-			>
-				<span class="sp-c-cb"></span>
-				<span class="sp-c-tag">${item.decision ? decisionPill(item) : askingPill()}</span>
-				<span class="sp-c-id" title="${requestName(item)}">${requestName(item)}</span>
-				<span class="sp-c-title ell" title="${askTitle(item)}">${askTitle(item)}</span>
-				<span class="sp-c-meta ell" title="${item.decision?.text ?? 'open'}">${decided(item)}</span>
-			</div>`
+	const rows = shown.map((item, index) =>
+		listRow({
+			id: `request-${index}`,
+			key: `request:${requestName(item)}`,
+			href: requestHref(item, from, true),
+			label: requestName(item),
+			inListbox: true,
+			tag: item.decision ? decisionPill(item) : askingPill(),
+			shownId: requestName(item),
+			idTitle: requestName(item),
+			title: askTitle(item),
+			titleText: askTitle(item),
+			meta: decided(item),
+			metaText: item.decision?.text ?? 'open',
+		})
 	)
-	return html`<details
-		class="fold"
-		data-open-key="section:permission-history"
-		${params.has('requests') || all.some((item) => !item.decision) ? html`open` : ''}
-	>
-		<summary>
-			<h2>Permission requests <span class="n">${all.length}</span></h2>
-		</summary>
-		<div class="fold-b" data-list-region>
-			<div class="sp-list" role="listbox" aria-label="Permission requests of ${explorationId}" data-list>
+	return fold({
+		key: 'section:permission-history',
+		title: 'Permission requests',
+		count: all.length,
+		open: params.has('requests') || all.some((item) => !item.decision),
+		listRegion: true,
+		body: html`<div class="sp-list" role="listbox" aria-label="Permission requests of ${explorationId}" data-list>
 				${rows}
 			</div>
 			${
@@ -511,35 +352,22 @@ export function permissionHistory(store: Store, explorationId: string, params: U
 							${page < last ? link(page + 1, 'Older ›', 'next') : ''}
 						</nav>`
 					: ''
-			}
-		</div>
-	</details>`
+			}`,
+	})
 }
 
 function decisionPill(item: Permission) {
 	const kind = item.decision!.kind
 	const look: Record<string, [string, string]> = {
-		allow: ['Allowed', 'pass'],
-		'allow-kind': ['Allowed', 'pass'],
-		'allow-tool': ['Allowed', 'pass'],
-		always: ['Allowed', 'pass'],
-		rule: ['By rule', 'pass'],
-		deny: ['Denied', 'fail'],
-		stop: ['Stopped', 'fail'],
-		closed: ['Closed', ''],
+		allow: ['Allowed', 'allowed'],
+		'allow-kind': ['Allowed', 'allowed'],
+		'allow-tool': ['Allowed', 'allowed'],
+		always: ['Allowed', 'allowed'],
+		rule: ['By rule', 'allowed'],
+		deny: ['Denied', 'denied'],
+		stop: ['Stopped', 'denied'],
+		closed: ['Closed', 'closed'],
 	}
-	const [label, tone] = look[kind]
-	return html`<span class="sp-pill ${tone}">${label}</span>`
-}
-
-export function emptyRecord(explorationId: string, requestId: string): Page {
-	return {
-		title: 'No such request',
-		section: null,
-		subjects: ['inbox'],
-		status: 404,
-		back: '/activity',
-		body: html`${heading('No such request', `Run ${explorationId} has no permission request ${requestId}.`)}
-			<p class="actions"><a class="btn primary" href="/activity">Activity</a></p>`,
-	}
+	const [label, state] = look[kind]
+	return wordMark({ state, label })
 }

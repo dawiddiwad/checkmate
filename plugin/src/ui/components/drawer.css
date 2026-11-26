@@ -1,0 +1,148 @@
+.sp-drawer {
+	position: fixed;
+	z-index: 50;
+	top: 0;
+	bottom: calc(var(--sp-bar) + var(--dock-h, 0px));
+	right: 0;
+	width: var(--sp-drawer);
+	max-width: 100%;
+	display: flex;
+	flex-direction: column;
+	background: var(--surface);
+	color: var(--ink);
+}
+.sp-drawer::before {
+	content: '';
+	position: absolute;
+	left: -1px;
+	top: 0;
+	bottom: 0;
+	width: 1px;
+	background: var(--hair);
+}
+.sp-dh {
+	position: relative;
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 48px;
+	padding: 0 16px;
+}
+.sp-dh::after {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 1px;
+	background: var(--hair);
+}
+.sp-dh .sp-path {
+	flex: 1;
+}
+.sp-db {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+.sp-dhead {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 12px;
+	border: 1px solid var(--hair);
+}
+.sp-dhead:focus-visible {
+	outline: none;
+}
+.sp-dhead.hl {
+	background: var(--surface-2);
+	border-color: var(--surface-2);
+	color: var(--ink);
+}
+.sp-dhead.hl .sp-c-id {
+	color: var(--muted);
+}
+.sp-dhead h2 {
+	font: 600 20px/28px var(--font-body);
+	overflow-wrap: anywhere;
+}
+.sp-dopts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 0;
+}
+.sp-today,
+.sp-why {
+	padding: 8px 12px;
+	font: 400 14px/20px var(--font-body);
+	background: var(--surface-2);
+	border-left: 2px solid var(--edge);
+}
+.sp-why {
+	background: var(--signal-soft);
+	border-left-color: var(--signal);
+}
+.sp-lbl {
+	display: block;
+	margin-bottom: 4px;
+	font: 500 12px/16px var(--font-mono);
+	color: var(--muted);
+}
+.sp-dhead.hl .sp-lbl,
+.sp-row.hl .sp-lbl {
+	color: inherit;
+}
+.sp-ea {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+}
+.sp-ea > div {
+	padding: 8px 12px;
+	border: 1px solid var(--hair);
+}
+.sp-ea p {
+	font: 400 14px/20px var(--font-body);
+	overflow-wrap: anywhere;
+}
+.sp-steps {
+	margin: 0;
+	padding-left: 24px;
+	font: 400 14px/20px var(--font-body);
+}
+@media (max-width: 1100px) {
+	.sp-drawer {
+		z-index: 70;
+		box-shadow: none;
+	}
+}
+@media (max-width: 760px) {
+	.sp-drawer,
+	.sp-viewer {
+		top: 0;
+		z-index: 80;
+	}
+	.sp-drawer {
+		width: 100%;
+	}
+	.sp-ea {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+@media (max-width: 760px) {
+	.sp-drawer a:is(.mono, .id, .ev-act) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 40px;
+		min-height: 40px;
+	}
+}

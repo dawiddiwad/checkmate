@@ -1,0 +1,26 @@
+.sp-empty {
+	padding: 16px;
+	border: 1px solid var(--hair);
+	background: var(--surface);
+	font: 400 14px/20px var(--font-body);
+	color: var(--muted);
+}
+.sp-empty b {
+	color: var(--ink);
+	font-weight: 600;
+}
+.sp-empty p + p {
+	margin-top: 8px;
+}
+.empty {
+	padding: 16px;
+	border: 1px solid var(--hair);
+	background: var(--surface);
+}
+.empty-title {
+	font-weight: 600;
+}
+.empty-next {
+	margin-top: 4px;
+	color: var(--muted);
+}

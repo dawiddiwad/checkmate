@@ -1,0 +1,118 @@
+.sp-mk[data-mark] {
+	cursor: pointer;
+}
+.sp-mk[data-mark]:hover {
+	outline: 1px solid var(--ink);
+	outline-offset: -1px;
+}
+.sp-mk.chosen {
+	outline: 2px solid var(--ink);
+	outline-offset: -2px;
+}
+.hl .sp-mk.chosen {
+	outline-color: var(--ink);
+}
+
+.sp-mk {
+	display: grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	border: 1px solid transparent;
+	background: transparent;
+	color: var(--muted);
+	font: 600 12px/16px var(--font-mono);
+}
+.sp-mk.k-pass {
+	background: var(--pass);
+	color: transparent;
+}
+.sp-mk.k-fail {
+	border: 1.5px solid var(--fail);
+	color: var(--fail);
+}
+.sp-mk.k-q {
+	background: var(--signal);
+	color: var(--on-signal);
+}
+.sp-mk.k-run {
+	background: repeating-linear-gradient(135deg, var(--ink) 0 1.5px, transparent 1.5px 5px);
+	color: transparent;
+}
+.sp-mk.k-none {
+	border-color: var(--edge-soft);
+}
+.hl .sp-mk.k-none {
+	border-color: var(--muted);
+}
+.sp-mm {
+	display: grid;
+	grid-auto-flow: column;
+	grid-template-columns: 32px;
+	grid-auto-columns: 24px;
+	grid-template-rows: 16px repeat(var(--rows, 1), 24px);
+	gap: 4px;
+	align-items: center;
+	justify-content: start;
+	max-width: 100%;
+	overflow-x: auto;
+	scrollbar-width: thin;
+}
+.sp-mm[data-builds='2'] {
+	--rows: 2;
+}
+.sp-mm .sp-mm-b {
+	align-self: center;
+}
+.sp-mm-l {
+	font: 500 12px/16px var(--font-mono);
+	color: var(--muted);
+	text-align: center;
+	white-space: nowrap;
+}
+.sp-mm-b {
+	font: 500 12px/16px var(--font-mono);
+	color: var(--muted);
+	white-space: nowrap;
+}
+.sp-mk[data-mark]:active {
+	background: var(--surface-2);
+}
+
+.sp-mk[data-mark] {
+	border-color: currentColor;
+}
+.sp-mk[data-mark].k-none {
+	border-color: var(--edge);
+}
+.hl .sp-mk[data-mark] {
+	border-color: var(--ink);
+}
+.sp-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 20px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font: 400 13px/20px var(--font-body);
+	color: var(--muted);
+}
+.sp-legend li {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.sp-legend .sp-mk {
+	width: 12px;
+	height: 12px;
+	font-size: 10px;
+	line-height: 1;
+}
+.sp-legend .sp-mk .glyph {
+	width: 8px;
+	height: 8px;
+	-webkit-mask-size: 8px 8px;
+	mask-size: 8px 8px;
+	vertical-align: 0;
+}

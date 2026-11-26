@@ -1,13 +1,5 @@
-import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Store } from '../store.ts'
 import { recoverPiCosts } from '../pi-session-costs.ts'
-import type { Context, Page, Theme } from './layout.ts'
-import type { FormState } from './forms.ts'
-import type { EditState } from './edit.ts'
-import { createServer } from 'node:http'
-import { randomBytes } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { closeStore, openReadOnlyStore, openStore } from '../store.ts'
 import type { Approval } from '../plans.ts'
 import {
@@ -23,7 +15,6 @@ import {
 } from '../plans.ts'
 import { exportExploration, exportPlan, exportRun } from '../render.ts'
 import { decideClaim, explorationRow, handOffClaims } from '../journal.ts'
-import { claimPage, explorationPage, explorerFile, explorerFilePage, questionPage } from './exploration.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
 import { declaredEntryPoints, recipes } from '../recipes.ts'
 import {
@@ -84,8 +75,6 @@ import { requireCondition, requireIdentifier, unusedId, validate } from '../cont
 import { actionInput } from '../actions.ts'
 import { harvestExploration, storableDefects } from '../harvest.ts'
 import { developerText } from '../developer.ts'
-import { join, resolve } from 'node:path'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import {
 	changesAfter,
 	claimEvidence,
@@ -102,32 +91,57 @@ import {
 	runDetail,
 } from '../views.ts'
 import { defaultActor } from '../actor.ts'
-import type { Html } from './html.ts'
-import { actorLimit, html, plural } from './html.ts'
 import type { BulkState } from './bulk.ts'
+import type { FormState } from './forms.ts'
+import type { HookOptions } from './hooks.ts'
+import type { Html } from './html.ts'
+import type { Context, Page, Theme } from './layout.ts'
+import type { EditState } from './screens/plan-edit.ts'
+import type { AdoptError } from './screens/run.ts'
+import type { InstanceForm } from './screens/settings.ts'
+import { claudeMissing, runningCount } from './activity.ts'
 import { answerDefaults, bulkProblem, claimDefaults } from './bulk.ts'
-import { heading, layout } from './layout.ts'
+import { formButton } from './components/button.ts'
+import { heading } from './components/page-heading.ts'
 import { htmlType, imageTypes } from './evidence.ts'
 import { emptyState } from './forms.ts'
-import { logPage, runsPage } from './lists.ts'
-import { homePage } from './home.ts'
-import { assumedRows, firstRunPage, newChangePage } from './start.ts'
-import { activityPage, claudeMissing, runningCount } from './activity.ts'
-import { reviewHref, reviewOf, reviewPage } from './review.ts'
-import { gapPage, planHistoryList, planPage, requestPage } from './plan.ts'
-import { candidateFromForm, candidateJson, editPage, emptyField, ownChanges, removedTests } from './edit.ts'
-import type { AdoptError } from './run.ts'
-import { runPage } from './run.ts'
-import type { InstanceForm } from './settings.ts'
-import { harnessPage, instanceFromForm, targetPage, targetsPage } from './settings.ts'
-import { invalidRecipePage, recipePage, recipesPage } from './recipes.ts'
-import type { HookOptions } from './hooks.ts'
 import { createHooks, sameSecret } from './hooks.ts'
-import { emptyRecord, nextOpen, permissionPage, requestHref } from './permissions.ts'
-import { createRequester } from './requester.ts'
+import { actorLimit, html, plural } from './html.ts'
+import { layout } from './layout.ts'
 import { lifecyclePath, lifecycleProof } from './lifecycle.ts'
-import { chatMessagePage, screenContext } from './requests.ts'
-import { chatPage, chatsPage, planChat } from './chats.ts'
+import { nextOpen, requestHref } from './permissions.ts'
+import { createRequester } from './requester.ts'
+import { screenContext } from './requests.ts'
+import { reviewHref, reviewOf } from './review.ts'
+import { activityPage } from './screens/activity.ts'
+import { chatMessagePage } from './screens/chat-message.ts'
+import { chatPage, chatsPage, planChat } from './screens/chats.ts'
+import { claimPage, explorationPage, explorerFile, explorerFilePage, questionPage } from './screens/exploration.ts'
+import { logPage } from './screens/log.ts'
+import { assumedRows, firstRunPage, newChangePage } from './screens/new-change.ts'
+import { emptyRecord, permissionPage } from './screens/permission.ts'
+import {
+	candidateFromForm,
+	candidateJson,
+	editPage,
+	emptyField,
+	ownChanges,
+	removedTests,
+} from './screens/plan-edit.ts'
+import { reviewPage } from './screens/plan-review.ts'
+import { gapPage, planHistoryList, planPage, requestPage } from './screens/plan.ts'
+import { homePage } from './screens/plans.ts'
+import { invalidRecipePage, recipePage, recipesPage } from './screens/recipes.ts'
+import { runPage } from './screens/run.ts'
+import { runsPage } from './screens/runs.ts'
+import { harnessPage, instanceFromForm, targetPage, targetsPage } from './screens/settings.ts'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { createServer } from 'node:http'
+import { randomBytes } from 'node:crypto'
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { join, resolve } from 'node:path'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 
 export type UiOptions = HookOptions & {
 	workspace: string
@@ -211,12 +225,15 @@ function directory(candidates: string[], file: string) {
 }
 
 function assets() {
-	const files = directory(['./assets/', '../src/ui/assets/', '../plugin/src/ui/assets/'], 'style.css')
+	const files = directory(['./assets/', '../src/ui/assets/', '../plugin/src/ui/assets/'], 'favicon.svg')
 	const fonts = `${files}fonts/`
 	const read = (name: string) => readFileSync(files + name)
+	const client = directory(['./', '../../dist/'], 'client.js')
+	// scripts/build-plugin.ts joins the stylesheets of plugin/src/ui/ into plugin/dist/style.css.
+	const styles = directory(['./', '../../dist/'], 'style.css')
 	return {
-		'/assets/style.css': { type: 'text/css; charset=utf-8', body: read('style.css') },
-		'/assets/client.js': { type: 'text/javascript; charset=utf-8', body: read('client.js') },
+		'/assets/style.css': { type: 'text/css; charset=utf-8', body: readFileSync(`${styles}style.css`) },
+		'/assets/client.js': { type: 'text/javascript; charset=utf-8', body: readFileSync(`${client}client.js`) },
 		'/assets/favicon.svg': { type: 'image/svg+xml', body: read('favicon.svg') },
 		font: (name: string) => readFileSync(`${fonts}${name}.woff2`),
 	}
@@ -465,10 +482,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			subjects: ['inbox'],
 			status,
 			back: '/',
-			body: html`${heading(title, message)}
+			body: html`${heading({ title, sub: message })}
 				<p class="actions">
-					<a class="btn primary" href="/">Needs you</a> <a class="btn" href="/plans">Plans</a>
-					<a class="btn" href="/runs">Runs</a>
+					${formButton({ label: 'Needs you', href: '/', emphasis: 'primary' })}
+					${formButton({ label: 'Plans', href: '/plans' })} ${formButton({ label: 'Runs', href: '/runs' })}
 				</p>`,
 		})
 	}
@@ -787,7 +804,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			title: 'Your name',
 			section: null,
 			subjects: ['inbox'],
-			body: html`${heading('Your name', 'Checkmate records this name with each decision you make in this browser.')}
+			body: html`${heading({ title: 'Your name', sub: 'Checkmate records this name with each decision you make in this browser.' })}
 				<form method="post" action="/actor" class="panel narrow">
 					<input type="hidden" name="csrf" value="${csrf}" />
 					<input type="hidden" name="back" value="${back}" />
@@ -801,7 +818,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 						value="${shown.actor ?? ''}"
 					/>
 					<div class="btns">
-						<button class="btn primary">Save name</button> <a class="btn" href="${back}">Cancel</a>
+						${formButton({ label: 'Save name', emphasis: 'primary' })}
+						${formButton({ label: 'Cancel', href: back })}
 					</div>
 				</form>`,
 		}
@@ -1139,9 +1157,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			subjects: ['inbox'],
 			status: 422,
 			back,
-			body: html`${heading('Nothing was done')}
+			body: html`${heading({ title: 'Nothing was done' })}
 				<p class="form-error" role="alert" ${field ? html`data-field="${field}"` : ''}>${message}</p>
-				<p class="actions"><a class="btn primary" href="${back}">Go back</a></p>`,
+				<p class="actions">${formButton({ label: 'Go back', href: back, emphasis: 'primary' })}</p>`,
 		})
 	}
 

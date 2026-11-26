@@ -1,0 +1,82 @@
+.seg {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.seg label {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	height: var(--sp-ctl);
+	margin: 0;
+	padding: 0 8px;
+	border: 1px solid var(--edge);
+	color: var(--ink);
+	cursor: pointer;
+}
+.seg label:has(input:checked) {
+	outline: 1px solid var(--ink);
+	outline-offset: -2px;
+}
+.seg label:has(input:focus-visible) {
+	outline: 2px solid var(--focus);
+}
+
+@media (max-width: 760px) {
+	.seg label {
+		min-height: 40px;
+	}
+}
+.sp-seg {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+.sp-seg legend {
+	width: 100%;
+	margin-bottom: 4px;
+	padding: 0;
+}
+.sp-seg-o {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 32px;
+	padding: 0 12px;
+	border: 1px solid var(--edge);
+	background: var(--surface);
+	color: var(--ink);
+	cursor: pointer;
+}
+.sp-seg-o:hover {
+	background: var(--row-hover);
+}
+.sp-seg-o:active {
+	background: var(--surface-2);
+}
+.sp-seg-o:has(input:checked) {
+	border-color: var(--ink);
+	background: var(--surface-2);
+	color: var(--ink);
+}
+.sp-seg-o:has(input:focus-visible) {
+	outline: 2px solid var(--ink);
+	outline-offset: 2px;
+}
+.sp-seg-o input {
+	position: absolute;
+	opacity: 0;
+	width: 1px;
+	height: 1px;
+}
+@media (max-width: 760px) {
+	.sp-seg-o {
+		min-height: 40px;
+	}
+}
+.start-form .sp-seg {
+	margin: 0 0 8px;
+}

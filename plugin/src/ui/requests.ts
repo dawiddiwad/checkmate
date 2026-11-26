@@ -1,17 +1,14 @@
 import type { Store } from '../store.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
 import type { RequestContext, RequestRecord } from '../requests.ts'
 import { one } from '../store.ts'
-import { isEnded, operationCountOf } from '../requests.ts'
-import { explorationPermissions } from '../permissions.ts'
-import { ago, costText, duration, html, pill, plural, time } from './html.ts'
-import { crumbBar } from './layout.ts'
-import { failureOf } from './activity.ts'
-import { requestHref } from './permissions.ts'
+import { isEnded } from '../requests.ts'
 import { piErrorText } from '../pi.ts'
 import { authenticationFailed, piAuthenticationHint } from '../sessions.ts'
-import { chatMarkdown } from './markdown.ts'
+import type { Context } from './layout.ts'
+import { failureOf } from './activity.ts'
+import { button } from './components/button.ts'
+import { statusMark } from './components/status-mark.ts'
+import { duration, html } from './html.ts'
 
 const kinds: Record<string, string> = { c: 'defect', q: 'question', g: 'gap' }
 const planPath = /^\/plans\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:@[1-9][0-9]{0,8})?(?:\/|$)/
@@ -86,7 +83,7 @@ export function screenContext(store: Store, address: string, chat = false): Requ
 	return { planId, record }
 }
 
-function contextLine(context: RequestContext) {
+export function contextLine(context: RequestContext) {
 	if (!context.planId && !context.record) return ''
 	const plan = context.planRevision ? `${context.planId}@${context.planRevision}` : context.planId
 	const record = context.record
@@ -100,42 +97,47 @@ function hidden(name: string, value: string) {
 	return html`<input type="hidden" name="${name}" value="${value}" />`
 }
 
-function followOption(n: number) {
-	return html`<button
-		type="button"
-		class="sp-btn"
-		data-option
-		data-ask-follow
-		aria-label="${n}: Ask a follow-up"
-		title="Ask a follow-up. The conversation goes on."
-	>
-		<kbd aria-hidden="true">${n}</kbd><span>Ask a follow-up</span>
-	</button>`
+export function followOption(n: number) {
+	return button({
+		label: 'Ask a follow-up',
+		keyName: n,
+		keySpoken: false,
+		attrs: {
+			type: 'button',
+			'data-option': true,
+			'data-ask-follow': true,
+			'aria-label': `${n}: Ask a follow-up`,
+			title: 'Ask a follow-up. The conversation goes on.',
+		},
+	})
 }
 
-function formOption(
+export function formOption(
 	context: Context,
 	action: string,
 	n: number,
 	label: string,
-	hints: Html | string,
+	hints: string,
 	fields: Array<[string, string]>,
 	ask?: { title: string; text: string; yes: string }
 ) {
-	const confirm = ask ? html`data-ask-title="${ask.title}" data-ask-text="${ask.text}" data-ask-yes="${ask.yes}"` : ''
+	const confirm = ask ? { 'data-ask-title': ask.title, 'data-ask-text': ask.text, 'data-ask-yes': ask.yes } : {}
 	return html`<form method="post" action="${action}" class="sp-opt">
 		${hidden('csrf', context.csrf)}${fields.map(([name, value]) => hidden(name, value))}
-		<button class="sp-btn" data-option ${confirm} aria-label="${n}: ${label}" title="${hints}">
-			<kbd aria-hidden="true">${n}</kbd><span>${label}</span>
-		</button>
+		${button({
+			label,
+			keyName: n,
+			keySpoken: false,
+			attrs: { 'data-option': true, ...confirm, 'aria-label': `${n}: ${label}`, title: hints },
+		})}
 	</form>`
 }
 
-function stateLabel(request: RequestRecord) {
-	return request.state === 'answered' ? '' : pill(request.state)
+export function stateLabel(request: RequestRecord) {
+	return request.state === 'answered' ? '' : statusMark({ state: request.state })
 }
 
-function elapsed(request: RequestRecord, now: number) {
+export function elapsed(request: RequestRecord, now: number) {
 	const start = Date.parse(request.startedAt ?? request.askedAt)
 	if (!isEnded(request) && request.state === 'running')
 		return html`<span data-since="${request.startedAt}">${duration(Math.max(0, now - start))}</span>`
@@ -163,195 +165,4 @@ export function requestModelLabel(request: RequestRecord) {
 	return request.observedModels.length
 		? request.observedModels.join(', ')
 		: [request.provider, request.model].filter(Boolean).join('/')
-}
-
-export function chatMessagePage(store: Store, context: Context, request: RequestRecord): Page {
-	const requestId = request.id
-	const now = Date.now()
-	const open = explorationPermissions(store, requestId).filter((item) => !item.decision)
-	const ended = isEnded(request)
-	const model = requestModelLabel(request)
-	const { planId, planRevision, planChat } = request.context
-	const plan = planChat ? `/plans/${planId}${planRevision ? `@${planRevision}` : ''}` : null
-	const chat = plan ? `${plan}?chat=${request.conversation}` : `/chats/${request.conversation}`
-	const back = `${chat}${plan ? '&' : '?'}at=${encodeURIComponent(`request:${requestId}`)}`
-	const details = `/chats/${request.conversation}/messages/${requestId}`
-	const again = formOption(
-		context,
-		plan ? `${plan}/chats/${request.conversation}/turns` : `${chat}/turns`,
-		request.state === 'failed' ? 1 : 2,
-		'Ask again',
-		'Send this message again in the same chat.',
-		[
-			['text', request.text],
-			['return', chat],
-		]
-	)
-	const options = !ended
-		? [
-				formOption(
-					context,
-					`/requests/${requestId}/stop`,
-					1,
-					'Stop this turn…',
-					'Stop work on this message.',
-					[['return', context.path.startsWith('/chats/') ? details : `/requests/${requestId}`]],
-					{
-						title: 'Stop this turn?',
-						text: 'You can review any changes it already made.',
-						yes: 'Stop this turn',
-					}
-				),
-			]
-		: request.state === 'failed'
-			? [again]
-			: [followOption(1), again]
-	const failure = request.state === 'failed' ? failureText(request) : null
-	const tried = ended && !request.changes.length ? operationCountOf(store, requestId) : 0
-	return {
-		title: 'Message details',
-		section: 'chats',
-		subjects: [`request:${requestId}`, 'requests'],
-		crumbs: [
-			['Chats', '/chats'],
-			['Chat', back],
-			['Message details', null],
-		],
-		back,
-		body: html`<div
-			class="sp-record"
-			data-region="request-record"
-			data-drawer
-			data-back="${back}"
-			data-chat-back="${chat}"
-			data-key="request:${requestId}"
-		>
-			${crumbBar([
-				['Chats', '/chats'],
-				['Chat', back],
-			])}
-			<section class="sp-dhead" tabindex="-1" data-sub data-label="Message details">
-				<div class="sp-pills">
-					${stateLabel(request)}
-					<span class="sp-c-id">${request.harness === 'pi' ? 'Pi' : 'Claude Code'}</span>
-					${model ? html`<span class="sp-c-id">${model}</span>` : ''}
-					<span class="sp-c-id">${request.asker}</span>
-					<span class="sp-c-id">${ago(request.askedAt)}</span>
-				</div>
-				<h1 id="record-title" class="sp-ask-title">Message details</h1>
-			</section>
-			<section aria-labelledby="asked-title" data-key="asked">
-				<h2 class="lab" id="asked-title">You asked</h2>
-				<p class="sp-reply sp-asked">${request.text}</p>
-				${contextLine(request.context)}
-			</section>
-			${
-				request.state === 'waiting'
-					? html`<p class="banner info" role="status" data-key="state">
-							This message will start when the current turn ends.
-						</p>`
-					: ''
-			}
-			${
-				open.length
-					? html`<p class="banner warn" role="status" data-key="waits">
-							This turn is waiting for permission.
-							<a href="${requestHref(open[0], context.path)}">Answer it</a>
-						</p>`
-					: ''
-			}
-			${
-				request.state === 'running' || request.activity.length
-					? html`<section aria-labelledby="activity-title">
-							<h2 class="lab" id="activity-title">
-								Activity <span class="n">${request.activity.length}</span>
-							</h2>
-							${
-								request.activity.length
-									? html`<ol class="sp-activity" aria-live="polite">
-											${request.activity.map((entry, index) => html`<li data-key="line:${index}" class="ell" title="${entry.line}">${entry.line}</li>`)}
-										</ol>`
-									: html`<p class="help">Waiting for the first tool call.</p>`
-							}
-						</section>`
-					: ''
-			}
-			${
-				request.state === 'running' || request.state === 'waiting'
-					? html`<p class="help" data-key="elapsed">
-							${request.state === 'running' ? html`Running for ${elapsed(request, now)}.` : ''}
-						</p>`
-					: ''
-			}
-			${
-				request.state === 'answered'
-					? html`<section aria-labelledby="reply-title" data-key="reply">
-							<h2 class="lab" id="reply-title">Reply</h2>
-							<div class="sp-reply chat-markdown">
-								${request.reply?.trim() ? chatMarkdown(request.reply) : html`<p class="muted">The reply has no text.</p>`}
-							</div>
-						</section>`
-					: ''
-			}
-			${
-				failure
-					? html`<section aria-labelledby="failed-title" data-key="failure">
-							<h2 class="lab" id="failed-title">What went wrong</h2>
-							<p class="banner fail" role="alert">${failure.cause}</p>
-							${failure.detail ? html`<p class="help">${failure.detail}</p>` : ''}
-							${failure.lines.length ? html`<pre class="sp-code" tabindex="0">${failure.lines.join('\n')}</pre>` : ''}
-						</section>`
-					: ''
-			}
-			${
-				request.state === 'stopped' || request.state === 'interrupted'
-					? html`<p class="banner info" role="status" data-key="state">${request.reason ?? ''}</p>`
-					: ''
-			}
-			${
-				ended
-					? html`<p class="help" data-key="took">
-							${request.costUsd === null ? '' : `Cost ${costText(request.costUsd, request.costPartial)}. `}Took
-							${elapsed(request, now)}.
-						</p>`
-					: ''
-			}
-			${
-				ended && request.denials.length
-					? html`<p class="help" data-key="denials">
-							${plural(request.denials.length, 'tool call was', 'tool calls were')} denied:
-							${request.denials.join(', ')}.
-						</p>`
-					: ''
-			}
-			${
-				ended
-					? html`<section aria-labelledby="changes-title" data-key="changes">
-							<h2 class="lab" id="changes-title">
-								Changed <span class="n">${request.changes.length}</span>
-							</h2>
-							${
-								request.changes.length
-									? html`<ul class="sp-changes">
-											${request.changes.map((change) => html`<li>${change.href ? html`<a href="${change.href}">${change.text}</a>` : change.text} <span class="muted">${time(change.at)}</span></li>`)}
-										</ul>`
-									: tried
-										? html`<p class="help">
-												The Log shows ${plural(tried, 'attempted change')} for this turn.
-											</p>`
-										: html`<p class="help">This turn changed no records.</p>`
-							}
-						</section>`
-					: request.state === 'running'
-						? html`<p class="help" data-key="changes">Changes appear when this turn ends.</p>`
-						: ''
-			}
-			<section class="sp-options" aria-labelledby="options-title" data-key="options:${requestId}">
-				<h2 class="lab" id="options-title">Options</h2>
-				<ol class="sp-optlist asks">
-					${options.map((option) => html`<li>${option}</li>`)}
-				</ol>
-			</section>
-		</div>`,
-	}
 }

@@ -1,0 +1,88 @@
+table {
+	width: 100%;
+	border-collapse: collapse;
+	background: var(--surface);
+	border: 1px solid var(--hair);
+	font: 400 13px/20px var(--font-body);
+}
+th,
+td {
+	padding: 6px 12px;
+	text-align: left;
+	vertical-align: top;
+	border-bottom: 1px solid var(--hair);
+	overflow-wrap: anywhere;
+}
+th {
+	font-size: 12px;
+	line-height: 16px;
+	font-weight: 500;
+	color: var(--muted);
+	background: var(--surface-2);
+	white-space: nowrap;
+}
+.exploration-cost {
+	min-inline-size: calc(7ch + 24px);
+	white-space: nowrap;
+}
+tbody tr:hover {
+	background: var(--row-hover);
+}
+.scroll {
+	max-width: 100%;
+	overflow-x: auto;
+	position: relative;
+}
+.matrix td,
+.matrix th {
+	text-align: center;
+	vertical-align: middle;
+}
+.matrix :is(th, td):first-child {
+	text-align: left;
+	text-transform: none;
+	letter-spacing: 0;
+}
+.matrix tbody th {
+	font: 400 14px/20px var(--font-body);
+	color: var(--ink);
+	background: none;
+	white-space: normal;
+}
+.cell-check {
+	display: inline-grid;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	cursor: pointer;
+}
+.cell-check:hover {
+	background: var(--row-hover);
+}
+.cell-check:active {
+	background: var(--hair);
+}
+.cell-check input {
+	width: 16px;
+	height: 16px;
+	margin: 0;
+}
+td code {
+	overflow-wrap: normal;
+	white-space: nowrap;
+}
+@media (max-width: 760px) {
+	table:not(.sp-ktable) {
+		position: relative;
+		display: block;
+		max-width: 100%;
+		overflow-x: auto;
+	}
+}
+
+@media (max-width: 760px) {
+	.cell-check {
+		width: 40px;
+		height: 40px;
+	}
+}

@@ -51,8 +51,9 @@ plugin/                Claude Code plugin. Self-contained. No npm dependencies.
   skills/              setup, plan, revise, execute, report, ui
   contracts/           JSON Schemas for toolkit-2 payloads
   src/                 core: store, rules, commands, views, export
-  src/ui/              review UI server, pages, and assets (fonts, style, client script)
+  src/ui/              review UI server, pages, assets (fonts, style), and client modules
   dist/checkmate.js    one bundled file, generated at release
+  dist/client.js       the bundled review UI script
 cli/                   npm package @xoxoai/checkmate
   src/                 launcher (delegate), entry point
   plugin/              exact copy of plugin/ at the same version, copied at pack time

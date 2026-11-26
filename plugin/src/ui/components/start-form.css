@@ -1,0 +1,31 @@
+.start-form {
+	max-width: 720px;
+}
+.start-form .btns {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 16px;
+}
+.start-form .btns .sp-btn {
+	text-decoration: none;
+}
+.setup-assumed {
+	margin: 0 0 12px;
+	padding: 12px;
+	border: 1px solid var(--hair);
+}
+.setup-assumed h2 {
+	margin: 0 0 4px;
+}
+.setup-assumed dl {
+	margin: 0;
+	padding: 0;
+	font: 400 14px/20px var(--font-body);
+}
+.start-form [data-act-error]:empty {
+	display: none;
+}
+.start-form [data-new-target-note] {
+	margin-bottom: 12px;
+}

@@ -1,0 +1,44 @@
+.facts,
+.sp-facts {
+	display: grid;
+	grid-template-columns: 136px minmax(0, 1fr);
+	gap: 4px 12px;
+	margin: 0;
+	font: 400 14px/20px var(--font-body);
+}
+.facts dt,
+.sp-facts dt {
+	font: 600 13px/20px var(--font-body);
+	letter-spacing: 0;
+	color: var(--muted);
+}
+.facts dd,
+.sp-facts dd {
+	margin: 0;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.facts dd.path {
+	overflow-wrap: break-word;
+	word-break: normal;
+}
+.facts dd.path code {
+	overflow-wrap: inherit;
+	word-break: inherit;
+}
+.kv {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+@media (max-width: 760px) {
+	.facts,
+	.sp-facts {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 0 12px;
+	}
+	.facts dd + dt,
+	.sp-facts dd + dt {
+		margin-top: 8px;
+	}
+}

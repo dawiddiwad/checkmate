@@ -1,0 +1,31 @@
+.sp-btn.pri:active,
+.btn.primary:active {
+	background: var(--ink);
+	border-color: var(--ink);
+	filter: brightness(0.85);
+}
+.sp-row:active,
+.q-row:active,
+.sp-ct:active,
+tbody tr:active {
+	background: var(--hair);
+}
+.sp-row > .sp-c-cb:hover {
+	background: var(--hair);
+}
+.sp-row > .sp-c-cb:active {
+	background: var(--edge-soft);
+}
+.chips a:hover {
+	background: var(--row-hover);
+}
+.chips a:active,
+.sb-btn:active,
+.sb-btn.att:active {
+	background: var(--hair);
+	border-color: var(--ink);
+}
+main a:active {
+	color: var(--ink);
+	text-decoration-thickness: 2px;
+}

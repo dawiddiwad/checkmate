@@ -1,0 +1,38 @@
+.settings-nav .nav,
+.jump {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0;
+	margin: 0 0 16px;
+	padding: 0;
+	list-style: none;
+	border-bottom: 1px solid var(--hair);
+}
+.settings-nav .nav a,
+.jump a {
+	display: inline-flex;
+	align-items: center;
+	height: 32px;
+	padding: 0 12px;
+	color: var(--muted);
+	text-decoration: none;
+	font: 600 13px/16px var(--font-body);
+	letter-spacing: 0;
+}
+.settings-nav .nav a:hover,
+.jump a:hover {
+	color: var(--ink);
+	background: var(--row-hover);
+}
+.settings-nav .nav a[aria-current='page'] {
+	background: var(--surface-2);
+	color: var(--ink);
+}
+@media (max-width: 760px) {
+	.settings-nav .nav a,
+	.jump a {
+		display: inline-flex;
+		align-items: center;
+		min-height: 40px;
+	}
+}

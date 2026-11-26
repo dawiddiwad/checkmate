@@ -298,7 +298,7 @@ export function recordDrawer(
 				<div class="sp-pills">
 					${itemTag(item)}
 					${item.detail && item.kind !== 'rejected' ? html`<span class="sp-pill">${buildStateWords[latestClaimBuild(item.detail)?.state ?? ''] ?? ''}</span>` : ''}
-					${item.claim?.handoff ? html`<span class="sp-pill green">Handed over</span>` : ''}
+					${item.claim?.handoff ? html`<span class="sp-pill pass">Handed over</span>` : ''}
 					<span class="sp-c-id">${item.id}</span>
 					${when ? html`<span class="sp-c-id">${time(when)}</span>` : ''}
 				</div>

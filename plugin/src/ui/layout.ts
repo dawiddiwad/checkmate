@@ -69,23 +69,17 @@ function themeForm(context: Context) {
 	</form>`
 }
 
-function header(context: Context) {
+function statusWho(context: Context) {
 	const back = encodeURIComponent(context.path)
 	const actor = context.actor
 		? html`<a class="actor" href="/actor?back=${back}" title="${context.actor}. Change your name"
 				>${context.actor}</a
 			>`
 		: html`<a class="actor att" href="/actor?back=${back}">Set your name</a>`
-	return html`<header class="top">
-		<div class="top-in">
-			<a class="brand" href="/" aria-label="Checkmate, home">${mark()}<span>Checkmate</span></a>
-			<span class="top-fill"></span>
-			<div class="who">
-				<span class="live" data-live hidden>Connecting</span>
-				${actor} ${themeForm(context)}
-			</div>
-		</div>
-	</header>`
+	return html`<div class="who">
+		<span class="live" data-live hidden>Connecting</span>
+		${actor} ${themeForm(context)}
+	</div>`
 }
 
 function statusLink(page: Page, section: Section, href: string, label: string) {
@@ -97,6 +91,7 @@ function statusBar(context: Context, page: Page) {
 	const path = page.crumbs?.length ? page.crumbs : [[page.title, null] as [string, null]]
 	const waiting = context.queueCount
 	return html`<footer class="statusbar" aria-label="Status bar">
+		<a class="brand" href="/" aria-label="Checkmate, home">${mark()}<span>Checkmate</span></a>
 		<nav class="sb-where" aria-label="Where you are">
 			<ol>
 				${path.map(([label, href]) =>
@@ -104,49 +99,8 @@ function statusBar(context: Context, page: Page) {
 				)}
 			</ol>
 		</nav>
-		<span class="sb-links">
-			<a
-				class="sb-btn"
-				href="${context.requests.runningChat ? `/chats/${context.requests.runningChat}` : '/chats'}"
-				title="The chat that is active now"
-				data-region="request-link"
-				${context.requests.running ? '' : html`hidden`}
-				>${context.requests.running ? html`<span>Chat<span class="sb-long sb-running"> · working</span></span>` : ''}</a
-			>
-			<a
-				class="sb-btn att"
-				href="/permissions"
-				title="Permission requests of testers that wait for you"
-				data-region="permissions-link"
-				${context.permissions ? '' : html`hidden`}
-				>${context.permissions} ${context.permissions === 1 ? 'permission' : 'permissions'}</a
-			>
-			<a
-				class="sb-btn att"
-				href="${
-					context.requests.unread === 1 && context.requests.firstUnreadChat
-						? `/chats/${context.requests.firstUnreadChat}`
-						: '/chats'
-				}"
-				title="Unread updates in your chats"
-				aria-label="${context.requests.unread} unread chat updates"
-				data-region="replies-link"
-				${context.requests.unread ? '' : html`hidden`}
-				>${context.requests.unread ? html`<span>${context.requests.unread}<span class="sb-long"> unread</span></span>` : ''}</a
-			>
-			<a
-				class="sb-btn att"
-				href="/"
-				title="Items that wait for you in all plans"
-				data-region="nav-count"
-				${waiting ? '' : html`hidden`}
-				><span
-					>${waiting}<span class="sb-long"> ${waiting === 1 ? 'needs' : 'need'} you</span
-					><span class="sb-all"> · all plans</span></span
-				></a
-			>
-			<button class="sb-btn" type="button" data-find-open hidden>Find</button>
-			<button class="sb-btn" type="button" data-keys-open hidden>Keys</button>
+		<nav class="sb-nav" aria-label="Main">
+			<a class="sb-btn" href="/" ${page.section === 'home' ? html`aria-current="page"` : ''}>Plans</a>
 			<span class="sb-btn-set" data-wide
 				><a
 					class="sb-btn"
@@ -168,9 +122,53 @@ function statusBar(context: Context, page: Page) {
 					><a href="/settings">Settings</a>
 				</div>
 			</details>
-		</span>
+		</nav>
+		<span class="sb-fill"></span>
 		<span class="sb-say" aria-live="polite" data-say></span>
 		<span class="sb-keys" data-hints></span>
+		<button class="sb-btn" type="button" data-find-open hidden>Find</button>
+		<span class="sb-div" aria-hidden="true"></span>
+		<a
+			class="sb-btn"
+			href="${context.requests.runningChat ? `/chats/${context.requests.runningChat}` : '/chats'}"
+			title="The chat that is active now"
+			data-region="request-link"
+			${context.requests.running ? '' : html`hidden`}
+			>${context.requests.running ? html`<span>Chat<span class="sb-long sb-running"> · working</span></span>` : ''}</a
+		>
+		<a
+			class="sb-btn att"
+			href="/permissions"
+			title="Permission requests of testers that wait for you"
+			data-region="permissions-link"
+			${context.permissions ? '' : html`hidden`}
+			>${context.permissions} ${context.permissions === 1 ? 'permission' : 'permissions'}</a
+		>
+		<a
+			class="sb-btn att"
+			href="${
+				context.requests.unread === 1 && context.requests.firstUnreadChat
+					? `/chats/${context.requests.firstUnreadChat}`
+					: '/chats'
+			}"
+			title="Unread updates in your chats"
+			aria-label="${context.requests.unread} unread chat updates"
+			data-region="replies-link"
+			${context.requests.unread ? '' : html`hidden`}
+			>${context.requests.unread ? html`<span>${context.requests.unread}<span class="sb-long"> unread</span></span>` : ''}</a
+		>
+		<a
+			class="sb-btn att"
+			href="/"
+			title="Items that wait for you in all plans"
+			data-region="nav-count"
+			${waiting ? '' : html`hidden`}
+			><span
+				>${waiting}<span class="sb-long"> ${waiting === 1 ? 'needs' : 'need'} you</span
+				><span class="sb-all"> · all plans</span></span
+			></a
+		>
+		${statusWho(context)}
 	</footer>`
 }
 
@@ -260,7 +258,6 @@ export function layout(context: Context, page: Page) {
 				${page.address ? html`data-address="${page.address}"` : ''}
 			>
 				<a class="skip" href="#main">Skip to content</a>
-				${header(context)}
 				<div class="app${page.drawer ? ' with-drawer' : ''}">
 					${page.nav ? html`<div class="with-nav">${page.nav}${main}</div>` : main}
 				</div>

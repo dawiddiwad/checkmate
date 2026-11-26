@@ -357,18 +357,18 @@ function rawCount(live: Live, explorer: string) {
 
 function testerState(live: Live, item: LiveExplorer) {
 	if (live.running && live.paused && (item.state === 'running' || item.state === 'given'))
-		return html`<span class="sp-pill amber">Paused</span>`
+		return html`<span class="sp-pill you">Paused</span>`
 	if (!item.state) return html`<span class="sp-pill">Not started</span>`
 	const look: Record<string, string> = {
-		given: 'blue',
-		running: 'blue',
-		ended: 'green',
-		completed: 'green',
-		failed: 'red',
-		operational_error: 'red',
-		interrupted: 'amber',
-		stopping: 'amber',
-		stopped: 'amber',
+		given: 'run',
+		running: 'run',
+		ended: 'pass',
+		completed: 'pass',
+		failed: 'fail',
+		operational_error: 'fail',
+		interrupted: '',
+		stopping: '',
+		stopped: '',
 	}
 	const label: Record<string, string> = {
 		given: 'Given to the session',
@@ -758,7 +758,7 @@ function phaseStrip(run: Run) {
 	return html`<span class="sp-strip" role="list" aria-label="Phase of the test">
 		${phases.map((phase) =>
 			phase === run.phase
-				? html`<span class="sp-pill blue" role="listitem" aria-current="step" data-phase="${phase}"
+				? html`<span class="sp-pill run" role="listitem" aria-current="step" data-phase="${phase}"
 						><span class="dot" aria-hidden="true"></span>${phase}</span
 					>`
 				: html`<span class="sp-pill" role="listitem" data-phase="${phase}">${phase}</span>`
@@ -891,9 +891,15 @@ export function explorationPage(
 										>`
 								)
 					}
-					<span class="sp-pill" title="Reported cost across this exploration and its follow-ups"
-						>Total cost ${costText(live.costUsd, live.costPartial)}</span
-					>
+					${
+						live.costUsd === null
+							? ''
+							: html`<span
+									class="sp-pill"
+									title="Reported cost across this exploration and its follow-ups"
+									>Total cost ${costText(live.costUsd, live.costPartial)}</span
+								>`
+					}
 				</div>
 			</div>
 			<div data-region="exploration-banner">

@@ -298,6 +298,8 @@ export function itemsOf(review: Review, view: string) {
 	return []
 }
 
+const blockingLabel = 'Questions that block testing'
+
 type Group = { label: string; items: Item[] }
 
 function groupsOf(items: Item[]): Group[] {
@@ -311,11 +313,11 @@ function groupsOf(items: Item[]): Group[] {
 			'Permission requests',
 			items.filter((item) => item.kind === 'permission')
 		),
-		of('Is this a defect?', items.filter((item) => item.kind === 'finding').sort(bySeverity)),
 		of(
-			'Questions that block testing',
+			blockingLabel,
 			items.filter((item) => open(item) && item.blocking)
 		),
+		of('Is this a defect?', items.filter((item) => item.kind === 'finding').sort(bySeverity)),
 		of(
 			'Approvals',
 			items.filter((item) => item.kind === 'approval')
@@ -360,22 +362,22 @@ function ruleGroups(review: Review, view: string, items: Item[]): Group[] {
 }
 
 const tags: Record<string, [string, string]> = {
-	finding: ['? Finding', 'amber'],
+	finding: ['Finding', 'you triage'],
 	question: ['Question', ''],
-	answered: ['Answered', 'green'],
+	answered: ['Answered', 'pass'],
 	deferred: ['Deferred', ''],
 	gap: ['Gap', ''],
-	approval: ['Approve', 'blue'],
+	approval: ['Approve', 'you'],
 	rejected: ['Rejected', ''],
-	critical: ['!! Critical', 'crit'],
-	high: ['! High', 'red'],
-	medium: ['Medium', 'amber'],
+	critical: ['Critical', 'crit'],
+	high: ['High', 'fail'],
+	medium: ['Medium', ''],
 	low: ['Low', ''],
 }
 
 export function itemTag(item: Item) {
 	if (item.permission) return askBadge()
-	if (item.blocking) return html`<span class="sp-pill red"><span class="dot" aria-hidden="true"></span>Blocks</span>`
+	if (item.blocking) return html`<span class="sp-pill you"><span class="dot" aria-hidden="true"></span>Blocks</span>`
 	const [label, color] = tags[item.kind === 'defect' ? (item.severity ?? 'low') : item.kind] ?? tags.low
 	return html`<span class="sp-pill ${color}">${label}</span>`
 }
@@ -505,13 +507,21 @@ export function extraOf(context: Context, review: Review, item: Item) {
 	return ''
 }
 
+function openedHref(review: Review, item: Item, view: string) {
+	if (item.permission)
+		return requestHref(
+			item.permission,
+			reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`)
+		)
+	return reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`)
+}
+
 export function itemRow(context: Context, review: Review, item: Item, id: string, view: string) {
 	const asked = item.permission
 	const pickable = ['finding', 'question', 'gap', 'defect', 'permission'].includes(item.kind)
 	const dim = ['answered', 'deferred', 'rejected'].includes(item.kind)
-	const here = reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`)
 	const list = reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`)
-	const opened = asked ? requestHref(asked, list) : here
+	const opened = openedHref(review, item, view)
 	const listed = optionsOf(context, review, item)
 	const options = asked ? rowOptions(context, asked, list) : listed.length ? optionsBox(listed) : ''
 	const extra = extraOf(context, review, item)
@@ -564,6 +574,19 @@ function listOf(context: Context, review: Review, view: string, groups: Group[],
 				html`<div class="sp-gh" role="presentation">${group.label} <span>${group.items.length}</span></div>
 					${group.items.map((item) => itemRow(context, review, item, `row-${slug(view)}-${n++}`, view))}`
 		)}
+	</div>`
+}
+
+function blockingBanner(review: Review, groups: Group[], view: string) {
+	const blocking = groups.find((group) => group.label === blockingLabel)?.items ?? []
+	if (!blocking.length) return ''
+	return html`<div class="sp-banner">
+		<b class="sp-banner-n">${blocking.length}</b>
+		<div class="sp-banner-t">
+			<b>${blocking.length === 1 ? 'question blocks' : 'questions block'} testing</b>
+			<span>Testers wait on these answers. Everything else can wait.</span>
+		</div>
+		<a class="sp-btn pri you big" href="${openedHref(review, blocking[0], view)}">Answer the first</a>
 	</div>`
 }
 
@@ -821,9 +844,9 @@ export function viewTitle(review: Review, view: string) {
 }
 
 const cellWords: Record<CellStatus, [string, string]> = {
-	failed: ['failed', 'red'],
-	question: ['uncertain', 'amber'],
-	passed: ['passed', 'green'],
+	failed: ['failed', 'fail'],
+	question: ['uncertain', 'you'],
+	passed: ['passed', 'pass'],
 	not_checked: ['not tested', ''],
 }
 
@@ -1016,7 +1039,7 @@ export function viewsOf(review: Review) {
 	]
 }
 
-function panel(context: Context, review: Review, view: string, current: string, cost: string) {
+function panel(context: Context, review: Review, view: string, current: string, cost: string | null) {
 	const head = viewHead(review, view)
 	const items = itemsOf(review, view)
 	const groups = view.startsWith('area:') ? ruleGroups(review, view, items) : groupsOf(items)
@@ -1064,12 +1087,20 @@ function panel(context: Context, review: Review, view: string, current: string, 
 			}
 			${head.sub ? html`<p class="sp-sub">${head.sub}</p>` : ''}
 			<div class="sp-pills">${head.pills}</div>
-			<p class="sp-sub" title="Reported cost across this plan’s explorations, chats, and structured runs">
-				Total cost ${cost}
-			</p>
+			${
+				cost === null
+					? ''
+					: html`<p
+							class="sp-sub"
+							title="Reported cost across this plan’s explorations, chats, and structured runs"
+						>
+							Total cost ${cost}
+						</p>`
+			}
 			${canChoose(view) ? html`<p class="sp-sub att" data-build-note></p>` : ''}
 		</div>
 		<div class="sp-tools" data-actions>${tools}</div>
+		${view === 'needs' ? blockingBanner(review, groups, view) : ''}
 		${view === 'rules' ? rulesList(context, review) : listOf(context, review, view, groups, title)}
 	</section>`
 }
@@ -1107,7 +1138,9 @@ export function reviewPage(
 			: recordDrawer(store, context, review, item, current, refusal)
 		: ''
 	const cost = planCost(store, planId)
-	const panels = views.map((view) => panel(context, review, view, current, costText(cost.costUsd, cost.costPartial)))
+	const panels = views.map((view) =>
+		panel(context, review, view, current, cost.costUsd === null ? null : costText(cost.costUsd, cost.costPartial))
+	)
 	return {
 		title: `${item ? `${item.id} · ` : ''}${title} · ${planId}`,
 		section: 'home',

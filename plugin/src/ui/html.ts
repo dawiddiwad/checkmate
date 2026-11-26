@@ -129,11 +129,11 @@ export function words(status: string) {
 }
 
 const toneColor: Record<Tone, string> = {
-	pass: 'green',
-	fail: 'red',
-	warn: 'amber',
-	unsure: 'amber',
-	acc: 'blue',
+	pass: 'pass',
+	fail: 'fail',
+	warn: 'you',
+	unsure: 'you',
+	acc: 'run',
 	block: '',
 	muted: '',
 }

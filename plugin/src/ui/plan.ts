@@ -568,12 +568,16 @@ export function planPage(
 		${pill(detail.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
 		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short(detail.sha256)}</span></span>
-		<span
-			class="pill"
-			data-region="plan-cost"
-			title="Reported cost across this plan’s explorations, chats, and structured runs"
-			>Total cost ${costText(cost.costUsd, cost.costPartial)}</span
-		>
+		${
+			cost.costUsd === null
+				? ''
+				: html`<span
+						class="pill"
+						data-region="plan-cost"
+						title="Reported cost across this plan’s explorations, chats, and structured runs"
+						>Total cost ${costText(cost.costUsd, cost.costPartial)}</span
+					>`
+		}
 		<span class="head-actions">
 			${latest ? html`<a class="btn small" href="/plans/${subject}/edit">Edit plan</a>` : ''}
 			${downloads('Export', `/plans/${subject}/export`, 'The HTML export is print-ready. Open it and print to PDF.')}

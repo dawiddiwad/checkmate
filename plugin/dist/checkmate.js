@@ -20756,10 +20756,10 @@ function piRpcCatalog(program, workspace2, env, timeout) {
 }
 function piModels(stdout) {
   const lines2 = stripVTControlCharacters2(stdout).trim().split("\n");
-  const header2 = lines2.findIndex((line) => /^provider\s+model\s+context\b/.test(line.trim()));
-  if (header2 === -1) return lines2.some((line) => /^No models available\./.test(line.trim())) ? [] : void 0;
-  const columns2 = lines2[header2].trim().split(/\s+/).length;
-  return lines2.slice(header2 + 1).flatMap((line) => {
+  const header = lines2.findIndex((line) => /^provider\s+model\s+context\b/.test(line.trim()));
+  if (header === -1) return lines2.some((line) => /^No models available\./.test(line.trim())) ? [] : void 0;
+  const columns2 = lines2[header].trim().split(/\s+/).length;
+  return lines2.slice(header + 1).flatMap((line) => {
     const fields = line.trim().split(/\s{2,}/);
     if (fields.length !== columns2) return [];
     const [provider, model] = fields;
@@ -27859,11 +27859,11 @@ function words2(status) {
   return status.replace(/_/g, " ");
 }
 var toneColor = {
-  pass: "green",
-  fail: "red",
-  warn: "amber",
-  unsure: "amber",
-  acc: "blue",
+  pass: "pass",
+  fail: "fail",
+  warn: "you",
+  unsure: "you",
+  acc: "run",
   block: "",
   muted: ""
 };
@@ -28100,21 +28100,15 @@ function themeForm(context) {
 		</button>
 	</form>`;
 }
-function header(context) {
+function statusWho(context) {
   const back = encodeURIComponent(context.path);
   const actor = context.actor ? html2`<a class="actor" href="/actor?back=${back}" title="${context.actor}. Change your name"
 				>${context.actor}</a
 			>` : html2`<a class="actor att" href="/actor?back=${back}">Set your name</a>`;
-  return html2`<header class="top">
-		<div class="top-in">
-			<a class="brand" href="/" aria-label="Checkmate, home">${mark()}<span>Checkmate</span></a>
-			<span class="top-fill"></span>
-			<div class="who">
-				<span class="live" data-live hidden>Connecting</span>
-				${actor} ${themeForm(context)}
-			</div>
-		</div>
-	</header>`;
+  return html2`<div class="who">
+		<span class="live" data-live hidden>Connecting</span>
+		${actor} ${themeForm(context)}
+	</div>`;
 }
 function statusLink(page, section, href, label) {
   const current2 = page.section === section ? html2` aria-current="page"` : "";
@@ -28124,6 +28118,7 @@ function statusBar(context, page) {
   const path = page.crumbs?.length ? page.crumbs : [[page.title, null]];
   const waiting = context.queueCount;
   return html2`<footer class="statusbar" aria-label="Status bar">
+		<a class="brand" href="/" aria-label="Checkmate, home">${mark()}<span>Checkmate</span></a>
 		<nav class="sb-where" aria-label="Where you are">
 			<ol>
 				${path.map(
@@ -28131,45 +28126,8 @@ function statusBar(context, page) {
   )}
 			</ol>
 		</nav>
-		<span class="sb-links">
-			<a
-				class="sb-btn"
-				href="${context.requests.runningChat ? `/chats/${context.requests.runningChat}` : "/chats"}"
-				title="The chat that is active now"
-				data-region="request-link"
-				${context.requests.running ? "" : html2`hidden`}
-				>${context.requests.running ? html2`<span>Chat<span class="sb-long sb-running"> · working</span></span>` : ""}</a
-			>
-			<a
-				class="sb-btn att"
-				href="/permissions"
-				title="Permission requests of testers that wait for you"
-				data-region="permissions-link"
-				${context.permissions ? "" : html2`hidden`}
-				>${context.permissions} ${context.permissions === 1 ? "permission" : "permissions"}</a
-			>
-			<a
-				class="sb-btn att"
-				href="${context.requests.unread === 1 && context.requests.firstUnreadChat ? `/chats/${context.requests.firstUnreadChat}` : "/chats"}"
-				title="Unread updates in your chats"
-				aria-label="${context.requests.unread} unread chat updates"
-				data-region="replies-link"
-				${context.requests.unread ? "" : html2`hidden`}
-				>${context.requests.unread ? html2`<span>${context.requests.unread}<span class="sb-long"> unread</span></span>` : ""}</a
-			>
-			<a
-				class="sb-btn att"
-				href="/"
-				title="Items that wait for you in all plans"
-				data-region="nav-count"
-				${waiting ? "" : html2`hidden`}
-				><span
-					>${waiting}<span class="sb-long"> ${waiting === 1 ? "needs" : "need"} you</span
-					><span class="sb-all"> · all plans</span></span
-				></a
-			>
-			<button class="sb-btn" type="button" data-find-open hidden>Find</button>
-			<button class="sb-btn" type="button" data-keys-open hidden>Keys</button>
+		<nav class="sb-nav" aria-label="Main">
+			<a class="sb-btn" href="/" ${page.section === "home" ? html2`aria-current="page"` : ""}>Plans</a>
 			<span class="sb-btn-set" data-wide
 				><a
 					class="sb-btn"
@@ -28191,9 +28149,49 @@ function statusBar(context, page) {
 					><a href="/settings">Settings</a>
 				</div>
 			</details>
-		</span>
+		</nav>
+		<span class="sb-fill"></span>
 		<span class="sb-say" aria-live="polite" data-say></span>
 		<span class="sb-keys" data-hints></span>
+		<button class="sb-btn" type="button" data-find-open hidden>Find</button>
+		<span class="sb-div" aria-hidden="true"></span>
+		<a
+			class="sb-btn"
+			href="${context.requests.runningChat ? `/chats/${context.requests.runningChat}` : "/chats"}"
+			title="The chat that is active now"
+			data-region="request-link"
+			${context.requests.running ? "" : html2`hidden`}
+			>${context.requests.running ? html2`<span>Chat<span class="sb-long sb-running"> · working</span></span>` : ""}</a
+		>
+		<a
+			class="sb-btn att"
+			href="/permissions"
+			title="Permission requests of testers that wait for you"
+			data-region="permissions-link"
+			${context.permissions ? "" : html2`hidden`}
+			>${context.permissions} ${context.permissions === 1 ? "permission" : "permissions"}</a
+		>
+		<a
+			class="sb-btn att"
+			href="${context.requests.unread === 1 && context.requests.firstUnreadChat ? `/chats/${context.requests.firstUnreadChat}` : "/chats"}"
+			title="Unread updates in your chats"
+			aria-label="${context.requests.unread} unread chat updates"
+			data-region="replies-link"
+			${context.requests.unread ? "" : html2`hidden`}
+			>${context.requests.unread ? html2`<span>${context.requests.unread}<span class="sb-long"> unread</span></span>` : ""}</a
+		>
+		<a
+			class="sb-btn att"
+			href="/"
+			title="Items that wait for you in all plans"
+			data-region="nav-count"
+			${waiting ? "" : html2`hidden`}
+			><span
+				>${waiting}<span class="sb-long"> ${waiting === 1 ? "needs" : "need"} you</span
+				><span class="sb-all"> · all plans</span></span
+			></a
+		>
+		${statusWho(context)}
 	</footer>`;
 }
 var dialogs = (harness) => html2`<dialog class="sp-keys" data-keys aria-labelledby="keys-title">
@@ -28278,7 +28276,6 @@ function layout(context, page) {
 				${page.address ? html2`data-address="${page.address}"` : ""}
 			>
 				<a class="skip" href="#main">Skip to content</a>
-				${header(context)}
 				<div class="app${page.drawer ? " with-drawer" : ""}">
 					${page.nav ? html2`<div class="with-nav">${page.nav}${main2}</div>` : main2}
 				</div>
@@ -28961,10 +28958,10 @@ function rowOptions(context, item, returnTo) {
 	</div>`;
 }
 function askBadge() {
-  return html2`<span class="sp-pill amber">ASKS</span>`;
+  return html2`<span class="sp-pill you">Asks</span>`;
 }
 function askingPill() {
-  return html2`<span class="sp-pill amber"><span class="dot" aria-hidden="true"></span>Asks</span>`;
+  return html2`<span class="sp-pill you"><span class="dot" aria-hidden="true"></span>Asks</span>`;
 }
 function optionOf(context, item, from, choice2, n) {
   const key = html2`<kbd aria-hidden="true">${n}</kbd><span>${choice2.label}</span>`;
@@ -29212,13 +29209,13 @@ function permissionHistory(store, explorationId, params, from) {
 function decisionPill(item) {
   const kind = item.decision.kind;
   const look = {
-    allow: ["Allowed", "green"],
-    "allow-kind": ["Allowed", "green"],
-    "allow-tool": ["Allowed", "green"],
-    always: ["Allowed", "green"],
-    rule: ["By rule", "green"],
-    deny: ["Denied", "red"],
-    stop: ["Stopped", "red"],
+    allow: ["Allowed", "pass"],
+    "allow-kind": ["Allowed", "pass"],
+    "allow-tool": ["Allowed", "pass"],
+    always: ["Allowed", "pass"],
+    rule: ["By rule", "pass"],
+    deny: ["Denied", "fail"],
+    stop: ["Stopped", "fail"],
     closed: ["Closed", ""]
   };
   const [label, tone2] = look[kind];
@@ -30538,7 +30535,7 @@ function recordDrawer(store, context, review, item, view, refusal) {
 				<div class="sp-pills">
 					${itemTag(item)}
 					${item.detail && item.kind !== "rejected" ? html2`<span class="sp-pill">${buildStateWords[latestClaimBuild(item.detail)?.state ?? ""] ?? ""}</span>` : ""}
-					${item.claim?.handoff ? html2`<span class="sp-pill green">Handed over</span>` : ""}
+					${item.claim?.handoff ? html2`<span class="sp-pill pass">Handed over</span>` : ""}
 					<span class="sp-c-id">${item.id}</span>
 					${when ? html2`<span class="sp-c-id">${time(when)}</span>` : ""}
 				</div>
@@ -30790,6 +30787,7 @@ function itemsOf(review, view) {
   if (view.startsWith("build:")) return items.filter((item) => item.builds.includes(view.slice(6)));
   return [];
 }
+var blockingLabel = "Questions that block testing";
 function groupsOf(items) {
   const of = (label, chosen) => ({ label, items: chosen });
   const open = (item) => item.kind === "question" || item.kind === "gap";
@@ -30800,11 +30798,11 @@ function groupsOf(items) {
       "Permission requests",
       items.filter((item) => item.kind === "permission")
     ),
-    of("Is this a defect?", items.filter((item) => item.kind === "finding").sort(bySeverity)),
     of(
-      "Questions that block testing",
+      blockingLabel,
       items.filter((item) => open(item) && item.blocking)
     ),
+    of("Is this a defect?", items.filter((item) => item.kind === "finding").sort(bySeverity)),
     of(
       "Approvals",
       items.filter((item) => item.kind === "approval")
@@ -30845,21 +30843,21 @@ function ruleGroups(review, view, items) {
   });
 }
 var tags = {
-  finding: ["? Finding", "amber"],
+  finding: ["Finding", "you triage"],
   question: ["Question", ""],
-  answered: ["Answered", "green"],
+  answered: ["Answered", "pass"],
   deferred: ["Deferred", ""],
   gap: ["Gap", ""],
-  approval: ["Approve", "blue"],
+  approval: ["Approve", "you"],
   rejected: ["Rejected", ""],
-  critical: ["!! Critical", "crit"],
-  high: ["! High", "red"],
-  medium: ["Medium", "amber"],
+  critical: ["Critical", "crit"],
+  high: ["High", "fail"],
+  medium: ["Medium", ""],
   low: ["Low", ""]
 };
 function itemTag(item) {
   if (item.permission) return askBadge();
-  if (item.blocking) return html2`<span class="sp-pill red"><span class="dot" aria-hidden="true"></span>Blocks</span>`;
+  if (item.blocking) return html2`<span class="sp-pill you"><span class="dot" aria-hidden="true"></span>Blocks</span>`;
   const [label, color] = tags[item.kind === "defect" ? item.severity ?? "low" : item.kind] ?? tags.low;
   return html2`<span class="sp-pill ${color}">${label}</span>`;
 }
@@ -30968,13 +30966,20 @@ function extraOf(context, review, item) {
     ]);
   return "";
 }
+function openedHref(review, item, view) {
+  if (item.permission)
+    return requestHref(
+      item.permission,
+      reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`)
+    );
+  return reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`);
+}
 function itemRow(context, review, item, id2, view) {
   const asked2 = item.permission;
   const pickable = ["finding", "question", "gap", "defect", "permission"].includes(item.kind);
   const dim = ["answered", "deferred", "rejected"].includes(item.kind);
-  const here = reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`);
   const list3 = reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`);
-  const opened = asked2 ? requestHref(asked2, list3) : here;
+  const opened = openedHref(review, item, view);
   const listed = optionsOf(context, review, item);
   const options3 = asked2 ? rowOptions(context, asked2, list3) : listed.length ? optionsBox(listed) : "";
   const extra = extraOf(context, review, item);
@@ -31016,6 +31021,18 @@ function listOf(context, review, view, groups, label) {
     (group) => html2`<div class="sp-gh" role="presentation">${group.label} <span>${group.items.length}</span></div>
 					${group.items.map((item) => itemRow(context, review, item, `row-${slug(view)}-${n++}`, view))}`
   )}
+	</div>`;
+}
+function blockingBanner(review, groups, view) {
+  const blocking = groups.find((group) => group.label === blockingLabel)?.items ?? [];
+  if (!blocking.length) return "";
+  return html2`<div class="sp-banner">
+		<b class="sp-banner-n">${blocking.length}</b>
+		<div class="sp-banner-t">
+			<b>${blocking.length === 1 ? "question blocks" : "questions block"} testing</b>
+			<span>Testers wait on these answers. Everything else can wait.</span>
+		</div>
+		<a class="sp-btn pri you big" href="${openedHref(review, blocking[0], view)}">Answer the first</a>
 	</div>`;
 }
 function slug(view) {
@@ -31238,9 +31255,9 @@ function viewTitle(review, view) {
   return view;
 }
 var cellWords = {
-  failed: ["failed", "red"],
-  question: ["uncertain", "amber"],
-  passed: ["passed", "green"],
+  failed: ["failed", "fail"],
+  question: ["uncertain", "you"],
+  passed: ["passed", "pass"],
   not_checked: ["not tested", ""]
 };
 function buildHeadline(review, defects, critical) {
@@ -31440,12 +31457,16 @@ function panel(context, review, view, current2, cost) {
 			${view === current2 ? html2`<h1 id="title-${slug(view)}" data-view-title>${title2}</h1>` : html2`<h2 id="title-${slug(view)}" data-view-title>${title2}</h2>`}
 			${head.sub ? html2`<p class="sp-sub">${head.sub}</p>` : ""}
 			<div class="sp-pills">${head.pills}</div>
-			<p class="sp-sub" title="Reported cost across this plan’s explorations, chats, and structured runs">
-				Total cost ${cost}
-			</p>
+			${cost === null ? "" : html2`<p
+							class="sp-sub"
+							title="Reported cost across this plan’s explorations, chats, and structured runs"
+						>
+							Total cost ${cost}
+						</p>`}
 			${canChoose(view) ? html2`<p class="sp-sub att" data-build-note></p>` : ""}
 		</div>
 		<div class="sp-tools" data-actions>${tools}</div>
+		${view === "needs" ? blockingBanner(review, groups, view) : ""}
 		${view === "rules" ? rulesList(context, review) : listOf(context, review, view, groups, title2)}
 	</section>`;
 }
@@ -31465,7 +31486,9 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
   const file = params.get("file");
   const record = item ? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim ? evidenceViewer(store, review, item, current2, Number(file)) : recordDrawer(store, context, review, item, current2, refusal) : "";
   const cost = planCost(store, planId);
-  const panels = views2.map((view) => panel(context, review, view, current2, costText(cost.costUsd, cost.costPartial)));
+  const panels = views2.map(
+    (view) => panel(context, review, view, current2, cost.costUsd === null ? null : costText(cost.costUsd, cost.costPartial))
+  );
   return {
     title: `${item ? `${item.id} \xB7 ` : ""}${title2} \xB7 ${planId}`,
     section: "home",
@@ -31809,18 +31832,18 @@ function rawCount(live, explorer) {
 }
 function testerState(live, item) {
   if (live.running && live.paused && (item.state === "running" || item.state === "given"))
-    return html2`<span class="sp-pill amber">Paused</span>`;
+    return html2`<span class="sp-pill you">Paused</span>`;
   if (!item.state) return html2`<span class="sp-pill">Not started</span>`;
   const look = {
-    given: "blue",
-    running: "blue",
-    ended: "green",
-    completed: "green",
-    failed: "red",
-    operational_error: "red",
-    interrupted: "amber",
-    stopping: "amber",
-    stopped: "amber"
+    given: "run",
+    running: "run",
+    ended: "pass",
+    completed: "pass",
+    failed: "fail",
+    operational_error: "fail",
+    interrupted: "",
+    stopping: "",
+    stopped: ""
   };
   const label = {
     given: "Given to the session",
@@ -32131,7 +32154,7 @@ function timeLine(live, run2) {
 function phaseStrip(run2) {
   return html2`<span class="sp-strip" role="list" aria-label="Phase of the test">
 		${phases.map(
-    (phase) => phase === run2.phase ? html2`<span class="sp-pill blue" role="listitem" aria-current="step" data-phase="${phase}"
+    (phase) => phase === run2.phase ? html2`<span class="sp-pill run" role="listitem" aria-current="step" data-phase="${phase}"
 						><span class="dot" aria-hidden="true"></span>${phase}</span
 					>` : html2`<span class="sp-pill" role="listitem" data-phase="${phase}">${phase}</span>`
   )}
@@ -32236,9 +32259,11 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
 											>${row2.phase}</span
 										>`
     )}
-					<span class="sp-pill" title="Reported cost across this exploration and its follow-ups"
-						>Total cost ${costText(live.costUsd, live.costPartial)}</span
-					>
+					${live.costUsd === null ? "" : html2`<span
+									class="sp-pill"
+									title="Reported cost across this exploration and its follow-ups"
+									>Total cost ${costText(live.costUsd, live.costPartial)}</span
+								>`}
 				</div>
 			</div>
 			<div data-region="exploration-banner">
@@ -33275,12 +33300,13 @@ function miniMap(review) {
 function nextStep(review) {
   const verdict = verdictLine(review);
   const href = (view) => reviewHref(review.planId, view, "&focus=list");
-  if (verdict.blocking) return [`Answer ${plural(verdict.blocking, "blocking question")}`, href("needs")];
-  if (verdict.findings) return [`Look at ${plural(verdict.findings, "finding")}`, href("needs")];
-  if (verdict.open) return [`Answer ${plural(verdict.open, "question")}`, href("needs")];
-  if (review.items.some((item) => item.needs)) return ["Decide what waits", href("needs")];
-  if (review.running) return ["Watch the testers", `/explorations/${review.running.explorationId}`];
-  return ["Open the plan", href("all")];
+  if (verdict.blocking)
+    return [`Answer ${plural(verdict.blocking, "blocking question")}`, href("needs"), true];
+  if (verdict.findings) return [`Look at ${plural(verdict.findings, "finding")}`, href("needs"), false];
+  if (verdict.open) return [`Answer ${plural(verdict.open, "question")}`, href("needs"), false];
+  if (review.items.some((item) => item.needs)) return ["Decide what waits", href("needs"), false];
+  if (review.running) return ["Watch the testers", `/explorations/${review.running.explorationId}`, false];
+  return ["Open the plan", href("all"), false];
 }
 var roleWords = {
   planner: "the planner",
@@ -33292,16 +33318,14 @@ var roleWords = {
 function tile(review, plan, runDefects, index2) {
   const { loop: loop2, costUsd, costPartial } = plan;
   const verdict = verdictLine(review);
-  const handed = review.items.filter((item) => item.kind === "defect" && item.claim?.handoff).length;
   const latest = review.map.builds.at(-1);
-  const [label, href] = nextStep(review);
+  const [label, href, blocks] = nextStep(review);
   const last = review.explorations.at(-1);
   const ended = !review.running && last && ["stopped", "interrupted"].includes(last.state) ? last : null;
   const nums = [
-    [verdict.defects + runDefects, "defects", false],
-    [verdict.findings, "to look at", verdict.findings > 0],
-    [verdict.open, "questions", verdict.blocking > 0],
-    [handed, "handed over", false]
+    [verdict.blocking, "block testing", verdict.blocking > 0],
+    [verdict.findings, "to look at", false],
+    [verdict.defects + runDefects, "defects", false]
   ];
   return html2`<div
 		class="sp-ct"
@@ -33316,7 +33340,7 @@ function tile(review, plan, runDefects, index2) {
 		<div class="sp-ct-main">
 			<div class="sp-ct-head">
 				<span class="sp-c-id">${review.planId}</span>
-				${review.running ? html2`<span class="sp-pill blue"><span class="dot" aria-hidden="true"></span>Testing</span>` : ended ? pill(ended.state) : loop2 ? pill(loop2.state) : ""}
+				${review.running ? html2`<span class="sp-pill run"><span class="dot" aria-hidden="true"></span>Testing</span>` : ended ? pill(ended.state) : loop2 ? pill(loop2.state) : ""}
 				<span
 					class="sp-ct-when ell"
 					title="${latest ? `${latest.build}, first tested ${latest.firstTestedAt}` : review.target}"
@@ -33329,18 +33353,21 @@ function tile(review, plan, runDefects, index2) {
 			</div>
 			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
 			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
-			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations, chats, and structured runs">
-				Total cost ${costText(costUsd, costPartial)}
-			</p>
+			${costUsd === null ? "" : html2`<p
+							class="sp-ct-cost"
+							title="Reported cost across this plan’s explorations, chats, and structured runs"
+						>
+							Total cost ${costText(costUsd, costPartial)}
+						</p>`}
 		</div>
 		${miniMap(review)}
 		<div class="sp-nums">
 			${nums.map(
-    ([value2, name2, hot]) => html2`<div><b class="${hot ? "att" : ""}">${value2}</b><span>${name2}</span></div>`
+    ([value2, name2, hot]) => html2`<div><b class="${hot ? "att" : value2 ? "" : "zero"}">${value2}</b><span>${name2}</span></div>`
   )}
 		</div>
 		<div class="sp-ct-opts">
-			<a class="sp-btn" href="${href}" data-option><kbd>1</kbd><span>${label}</span></a>
+			<a class="sp-btn${blocks ? " you" : ""}" href="${href}" data-option><kbd>1</kbd><span>${label}</span></a>
 		</div>
 	</div>`;
 }
@@ -33364,6 +33391,13 @@ function newChangeRow(index2) {
 		</div>
 	</div>`;
 }
+var legend = html2`<ul class="sp-legend" aria-label="Board key">
+	<li><span class="sp-mk k-pass" aria-hidden="true"></span>passed</li>
+	<li><span class="sp-mk k-fail" aria-hidden="true">${glyph("\u2717")}</span>failed</li>
+	<li><span class="sp-mk k-run" aria-hidden="true"></span>running</li>
+	<li><span class="sp-mk k-q" aria-hidden="true">?</span>needs you</li>
+	<li><span class="sp-mk k-none" aria-hidden="true"></span>not run</li>
+</ul>`;
 function homePage(store) {
   const runDefects = /* @__PURE__ */ new Map();
   for (const { planId } of findingList(store, { open: true }))
@@ -33379,6 +33413,12 @@ function homePage(store) {
   const plans = listed.map((each) => each.plan);
   const reviews = listed.map((each) => each.review);
   const blocking = reviews.reduce((sum, review) => sum + verdictLine(review).blocking, 0);
+  const testing = reviews.filter((review) => review.running).length;
+  const subtitle = html2`${plural(plans.length, "plan")} · ${testing} testing
+	now${blocking > 0 ? html2` ·
+					<span class="att"
+						>${plural(blocking, "question")} ${blocking === 1 ? "blocks" : "block"} testing</span
+					>` : ""}`;
   const body = html2`<div class="sp-home" role="list" aria-label="Plans" data-list>
 		${listed.map(({ plan, review }, index2) => tile(review, plan, runDefects.get(plan.planId) ?? 0, index2))}${newChangeRow(
     reviews.length
@@ -33394,13 +33434,7 @@ function homePage(store) {
     ],
     crumbs: [["Plans", null]],
     back: null,
-    body: html2`<div data-region="home">
-			${heading(
-      "Plans",
-      plans.length ? `${plural(plans.length, "plan")}. ${plural(blocking, "question")} ${blocking === 1 ? "blocks" : "block"} testing. Each tile shows the rules of the plan against its last builds.` : null
-    )}
-			${body}
-		</div>`
+    body: html2`<div data-region="home">${heading("Plans", plans.length ? subtitle : null, legend)} ${body}</div>`
   };
 }
 
@@ -34101,12 +34135,12 @@ function planPage(store, context, planId, revision2, state = null, allHistory = 
 		${pill(detail.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
 		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short2(detail.sha256)}</span></span>
-		<span
-			class="pill"
-			data-region="plan-cost"
-			title="Reported cost across this plan’s explorations, chats, and structured runs"
-			>Total cost ${costText(cost.costUsd, cost.costPartial)}</span
-		>
+		${cost.costUsd === null ? "" : html2`<span
+						class="pill"
+						data-region="plan-cost"
+						title="Reported cost across this plan’s explorations, chats, and structured runs"
+						>Total cost ${costText(cost.costUsd, cost.costPartial)}</span
+					>`}
 		<span class="head-actions">
 			${latest ? html2`<a class="btn small" href="/plans/${subject}/edit">Edit plan</a>` : ""}
 			${downloads("Export", `/plans/${subject}/export`, "The HTML export is print-ready. Open it and print to PDF.")}
@@ -35806,10 +35840,13 @@ function invalidHref(item) {
   return `/settings/invalid-recipes?file=${encodeURIComponent(fileName2(item.path))}`;
 }
 function invalidPill() {
-  return html2`<span class="sp-pill red" data-source="invalid">invalid</span>`;
+  return html2`<span class="sp-pill fail" data-source="invalid">Invalid</span>`;
 }
+var sourceLabel = { "built-in": "Built-in", custom: "Custom" };
 function sourcePill(source) {
-  return html2`<span class="sp-pill${source === "custom" ? " blue" : ""}" data-source="${source}">${source}</span>`;
+  return html2`<span class="sp-pill${source === "custom" ? " run" : ""}" data-source="${source}"
+		>${sourceLabel[source]}</span
+	>`;
 }
 function codes(items) {
   return items.length ? join16(
@@ -42343,9 +42380,9 @@ function redirect(res, location, cookies = []) {
   res.writeHead(303, { ...securityHeaders(), Location: location, "Set-Cookie": cookies });
   res.end();
 }
-function parseCookies(header2) {
+function parseCookies(header) {
   const cookies = {};
-  for (const part of (header2 ?? "").split(";")) {
+  for (const part of (header ?? "").split(";")) {
     const index2 = part.indexOf("=");
     if (index2 < 0) continue;
     try {
@@ -42606,8 +42643,8 @@ data: ${matched.join(",") || "*"}
     const subjects = new Set(
       (request2.url.searchParams.get("subjects") ?? "").split(",").map((subject) => subject.trim()).filter(Boolean)
     );
-    const header2 = request2.req.headers["last-event-id"];
-    const after = Number(header2 ?? request2.url.searchParams.get("after") ?? Number.NaN);
+    const header = request2.req.headers["last-event-id"];
+    const after = Number(header ?? request2.url.searchParams.get("after") ?? Number.NaN);
     request2.res.writeHead(200, {
       ...securityHeaders(),
       "Content-Type": "text/event-stream; charset=utf-8",

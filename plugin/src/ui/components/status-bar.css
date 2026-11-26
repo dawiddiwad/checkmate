@@ -66,7 +66,7 @@
 	font-weight: 600;
 	box-shadow: inset 0 var(--rule) 0 var(--ink);
 }
-.sc-bar-more {
+.sc-bar-nav .sc-bar-more {
 	display: none;
 	position: relative;
 }

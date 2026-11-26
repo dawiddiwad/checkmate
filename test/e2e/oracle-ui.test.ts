@@ -1062,6 +1062,16 @@ test(
 			assert.equal(await page.locator('html').getAttribute('data-theme'), theme)
 			if (screenshots) {
 				await page.evaluate(() => document.fonts.ready)
+				assert.ok(
+					await page.evaluate(() =>
+						['IBM Plex Sans', 'IBM Plex Mono'].every((family) =>
+							[...document.fonts].some(
+								(face) => face.family.replace(/"/g, '') === family && face.status === 'loaded'
+							)
+						)
+					),
+					'IBM Plex did not load from Google Fonts'
+				)
 				const height = await page.evaluate(() => document.documentElement.scrollHeight)
 				await page.setViewportSize({ width: 1280, height: height + 200 })
 				await page.mouse.move(0, 0)

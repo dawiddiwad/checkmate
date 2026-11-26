@@ -159,7 +159,7 @@ export function firstRunPage(
 			data-assumed
 			${invalidAddress?.target || invalidAddress?.environment ? '' : html`hidden`}
 		>
-			<h2 class="sc-label">What Checkmate will assume</h2>
+			<h2 class="sc-card-h">What Checkmate will assume</h2>
 			<p class="sc-help">
 				Checkmate sets up the target from these values. Change the name or the environment here.
 			</p>
@@ -190,7 +190,7 @@ export function firstRunPage(
 					['New target', null],
 				],
 		back: onHome ? null : back,
-		body: html`<div>
+		body: html`<div class="sc-page">
 			${heading({ title: onHome ? 'Set up the application' : 'New target', sub: onHome ? 'Checkmate has no target yet. Give the address of the application to test.' : 'Give the address of the application to test.' })}
 			${shell(context, '/setup', body, 'Set up the target')}
 		</div>`,
@@ -283,7 +283,7 @@ export function newChangePage(context: Context, defaults: NewChangeDefaults, onH
 					['New change', null],
 				],
 		back: onHome ? null : '/',
-		body: html`<div>
+		body: html`<div class="sc-page">
 			${heading({ title: 'New change', sub: 'Give the ticket of a change. Checkmate makes a plan from it and starts the first test.' })}
 			${shell(context, '/new', body, 'Start the test')}
 		</div>`,

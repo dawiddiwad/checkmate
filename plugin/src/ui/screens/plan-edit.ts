@@ -133,7 +133,7 @@ export function ownChanges(form: URLSearchParams, fresh: Candidate) {
 
 function unsavedPanel(unsaved: string) {
 	return html`<section class="sc-card unsaved" aria-labelledby="unsaved-title">
-		<h2 class="sc-label" id="unsaved-title">Your changes (not saved)</h2>
+		<h2 class="sc-card-h" id="unsaved-title">Your changes (not saved)</h2>
 		<p class="sc-help">
 			The editor below shows the latest version. These are the values that you changed. Apply the changes again,
 			then save.

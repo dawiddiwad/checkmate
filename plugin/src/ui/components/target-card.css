@@ -1,0 +1,18 @@
+.sc-target-name {
+	font: 600 15px/22px var(--font-mono);
+	color: var(--ink);
+}
+.sc-card-aside {
+	margin-left: auto;
+	font: 400 13px/20px var(--font-sans);
+	color: var(--muted);
+}
+.sc-targets {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+	gap: var(--space-4);
+	align-items: start;
+}
+.sc-targets > .sc-card + .sc-card {
+	margin-top: 0;
+}

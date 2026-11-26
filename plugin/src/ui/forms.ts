@@ -118,7 +118,7 @@ export function verdictPanel(context: Context, verdict: Verdict, state: FormStat
 		data-region="decision"
 		data-stale-message="${verdict.staleMessage}"
 	>
-		<h2 class="sc-label" id="decide-title">Decision</h2>
+		<h2 class="sc-card-h" id="decide-title">Decision</h2>
 		<p class="subj">${verdict.question}</p>
 		<p class="sc-help">
 			${verdict.digestLabel} sha256 <code title="${verdict.sha256}">${short(verdict.sha256)}</code>. Your decision
@@ -167,7 +167,7 @@ export function gapPanel(context: Context, form: GapForm, state: FormState) {
 		data-region="decision"
 		data-stale-message="${form.staleMessage}"
 	>
-		<h2 class="sc-label" id="answer-title">Answer gap</h2>
+		<h2 class="sc-card-h" id="answer-title">Answer gap</h2>
 		${form.title ? html`<p class="subj">${form.title}</p>` : ''}
 		${form.question ? html`<p class="sc-help">${form.question}</p>` : ''}
 		<div data-stale-slot>${messages(state)}</div>
@@ -221,7 +221,7 @@ export function recordPanel(title: string, content: Html, decided = '') {
 		data-region="decision"
 		${decided ? html`data-decided-message="${decided}"` : ''}
 	>
-		<h2 class="sc-label" id="decide-title">${title}</h2>
+		<h2 class="sc-card-h" id="decide-title">${title}</h2>
 		${content}
 	</section>`
 }

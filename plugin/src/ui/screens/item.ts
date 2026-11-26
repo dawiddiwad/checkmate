@@ -115,25 +115,25 @@ function claimBody(
 		}
 		<div class="sc-compare">
 			<div>
-				<span class="sc-label">Expected</span>
+				<span class="sc-kicker">Expected</span>
 				<p>${claim.expected}</p>
 			</div>
 			<div>
-				<span class="sc-label">Actual</span>
+				<span class="sc-kicker">Actual</span>
 				<p>${claim.actual}</p>
 			</div>
 		</div>
 		${
 			claim.steps?.length
 				? html`<div>
-						<span class="sc-label">Steps</span>
+						<span class="sc-kicker">Steps</span>
 						<ol class="sc-steps">
 							${(Array.isArray(claim.steps) ? claim.steps : [claim.steps]).map((step) => html`<li>${step}</li>`)}
 						</ol>
 					</div>`
 				: ''
 		}
-		<div><span class="sc-label">Evidence</span>${evidenceFiles({ files, base, current: null })}</div>
+		<div><span class="sc-kicker">Evidence</span>${evidenceFiles({ files, base, current: null })}</div>
 		${recordFacts({
 			rows: [
 				['Across builds', acrossBuilds(review, item)],
@@ -214,7 +214,7 @@ function questionBody(context: Context, review: Review, item: Item, back: string
 			<input id="answer-rationale" name="rationale" value="${state?.values.rationale ?? ''}" />
 		</div>
 	</details>`
-	return html`${question?.actual ? html`<p class="sc-today"><span class="sc-label">What the build does</span>${question.actual}</p>` : ''}
+	return html`${question?.actual ? html`<p class="sc-today"><span class="sc-kicker">What the build does</span>${question.actual}</p>` : ''}
 	${
 		open
 			? textForm(context, item, back, {

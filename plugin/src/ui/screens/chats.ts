@@ -234,7 +234,13 @@ export function planChat(
 			aria-label="Plan chats"
 			data-plan-chat="${path.slice('/plans/'.length).split('@')[0]}"
 		>
-			${heading({ title: 'Plan chats', sub: html`<a href="${address()}">${glyph('←')} Plan</a> · ${decodeURIComponent(path.slice('/plans/'.length))}` })}
+			${heading({
+				title: 'Plan chats',
+				crumbs: [
+					['Plan', address()],
+					[decodeURIComponent(path.slice('/plans/'.length)), null],
+				],
+			})}
 			${workspace(
 				chat ? 'thread' : fresh ? 'new' : 'list',
 				newChat,

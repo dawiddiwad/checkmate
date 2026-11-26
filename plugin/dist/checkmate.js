@@ -29054,7 +29054,7 @@ function verdictPanel(context2, verdict, state) {
 		data-region="decision"
 		data-stale-message="${verdict.staleMessage}"
 	>
-		<h2 class="sc-label" id="decide-title">Decision</h2>
+		<h2 class="sc-card-h" id="decide-title">Decision</h2>
 		<p class="subj">${verdict.question}</p>
 		<p class="sc-help">
 			${verdict.digestLabel} sha256 <code title="${verdict.sha256}">${short2(verdict.sha256)}</code>. Your decision
@@ -29091,7 +29091,7 @@ function gapPanel(context2, form, state) {
 		data-region="decision"
 		data-stale-message="${form.staleMessage}"
 	>
-		<h2 class="sc-label" id="answer-title">Answer gap</h2>
+		<h2 class="sc-card-h" id="answer-title">Answer gap</h2>
 		${form.title ? html2`<p class="subj">${form.title}</p>` : ""}
 		${form.question ? html2`<p class="sc-help">${form.question}</p>` : ""}
 		<div data-stale-slot>${messages(state)}</div>
@@ -29143,7 +29143,7 @@ function recordPanel(title2, content, decided = "") {
 		data-region="decision"
 		${decided ? html2`data-decided-message="${decided}"` : ""}
 	>
-		<h2 class="sc-label" id="decide-title">${title2}</h2>
+		<h2 class="sc-card-h" id="decide-title">${title2}</h2>
 		${content}
 	</section>`;
 }
@@ -37719,7 +37719,7 @@ function chatMessagePage(store, context2, request3) {
       onOwnPage: true
     })}
 			<section aria-labelledby="asked-title" data-key="asked">
-				<h2 class="sc-label" id="asked-title">You asked</h2>
+				<h2 class="sc-card-h" id="asked-title">You asked</h2>
 				<p class="sc-reply sc-asked">${request3.text}</p>
 				${contextLine(request3.context)}
 			</section>
@@ -37731,7 +37731,7 @@ function chatMessagePage(store, context2, request3) {
 							<a href="${requestHref(open[0], context2.path)}">Answer it</a>
 						</p>` : ""}
 			${request3.state === "running" || request3.activity.length ? html2`<section aria-labelledby="activity-title">
-							<h2 class="sc-label" id="activity-title">
+							<h2 class="sc-card-h" id="activity-title">
 								Activity <span class="sc-count-n">${request3.activity.length}</span>
 							</h2>
 							${request3.activity.length ? html2`<ol class="sc-activity" aria-live="polite">
@@ -37742,13 +37742,13 @@ function chatMessagePage(store, context2, request3) {
 							${request3.state === "running" ? html2`Running for ${elapsed(request3, now)}.` : ""}
 						</p>` : ""}
 			${request3.state === "answered" ? html2`<section aria-labelledby="reply-title" data-key="reply">
-							<h2 class="sc-label" id="reply-title">Reply</h2>
+							<h2 class="sc-card-h" id="reply-title">Reply</h2>
 							<div class="sc-reply sc-markdown">
 								${request3.reply?.trim() ? chatMarkdown(request3.reply) : html2`<p class="sc-muted">The reply has no text.</p>`}
 							</div>
 						</section>` : ""}
 			${failure ? html2`<section aria-labelledby="failed-title" data-key="failure">
-							<h2 class="sc-label" id="failed-title">What went wrong</h2>
+							<h2 class="sc-card-h" id="failed-title">What went wrong</h2>
 							<p class="sc-notice is-error" role="alert">${failure.cause}</p>
 							${failure.detail ? html2`<p class="sc-help">${failure.detail}</p>` : ""}
 							${failure.lines.length ? html2`<pre class="sc-code" tabindex="0">${failure.lines.join("\n")}</pre>` : ""}
@@ -37763,7 +37763,7 @@ function chatMessagePage(store, context2, request3) {
 							${request3.denials.join(", ")}.
 						</p>` : ""}
 			${ended ? html2`<section aria-labelledby="changes-title" data-key="changes">
-							<h2 class="sc-label" id="changes-title">
+							<h2 class="sc-card-h" id="changes-title">
 								Changed <span class="sc-count-n">${request3.changes.length}</span>
 							</h2>
 							${request3.changes.length ? html2`<ul class="sc-changes">
@@ -37773,7 +37773,7 @@ function chatMessagePage(store, context2, request3) {
 											</p>` : html2`<p class="sc-help">This turn changed no records.</p>`}
 						</section>` : request3.state === "running" ? html2`<p class="sc-help" data-key="changes">Changes appear when this turn ends.</p>` : ""}
 			<section class="sc-opt-section" aria-labelledby="options-title" data-key="options:${requestId2}">
-				<h2 class="sc-label" id="options-title">Options</h2>
+				<h2 class="sc-card-h" id="options-title">Options</h2>
 				<ol class="sc-ask-list asks">
 					${options4.map((option) => html2`<li>${option}</li>`)}
 				</ol>
@@ -38082,7 +38082,13 @@ function planChat(store, context2, env, options4) {
 			aria-label="Plan chats"
 			data-plan-chat="${path.slice("/plans/".length).split("@")[0]}"
 		>
-			${heading({ title: "Plan chats", sub: html2`<a href="${address()}">${glyph("\u2190")} Plan</a> · ${decodeURIComponent(path.slice("/plans/".length))}` })}
+			${heading({
+      title: "Plan chats",
+      crumbs: [
+        ["Plan", address()],
+        [decodeURIComponent(path.slice("/plans/".length)), null]
+      ]
+    })}
 			${workspace(
       chat ? "thread" : fresh ? "new" : "list",
       newChat,
@@ -38603,7 +38609,7 @@ function foundRow(store, live, entry2) {
 function rawSection(store, live, entries2) {
   if (!entries2.length) return "";
   return html2`<section class="raw-box" aria-labelledby="unmerged-title" data-key="unmerged">
-		<h3 class="sc-label" id="unmerged-title">Not merged yet <span class="sc-count-n">${entries2.length}</span></h3>
+		<h3 class="sc-card-h" id="unmerged-title">Not merged yet <span class="sc-count-n">${entries2.length}</span></h3>
 		<p class="sc-help">
 			These are the raw questions and defects of single explorers. They can change before the exploration is
 			completed. Needs you and the plan page do not show them.
@@ -38655,17 +38661,17 @@ function summaryDetail(store, live, crumbs, options4) {
 		<h2 class="sc-sec-h">Overview</h2>
 		${options4} ${rawSection(store, live, live.unmerged)}
 		<section aria-labelledby="claims-title">
-			<h3 class="sc-label" id="claims-title">Claims <span class="sc-count-n">${live.claims.length}</span></h3>
+			<h3 class="sc-card-h" id="claims-title">Claims <span class="sc-count-n">${live.claims.length}</span></h3>
 			${merged ? claimLinks(live.planId, live.claims) : html2`<p class="sc-empty is-line">The claims show when the exploration is completed.</p>`}
 		</section>
 		<section aria-labelledby="questions-title">
-			<h3 class="sc-label" id="questions-title">
+			<h3 class="sc-card-h" id="questions-title">
 				Questions <span class="sc-count-n">${live.questions.length}</span>
 			</h3>
 			${merged ? questionsList(live.planId, live.questions) : html2`<p class="sc-empty is-line">The merged questions show when the exploration is completed.</p>`}
 		</section>
 		${files3.length ? html2`<section aria-labelledby="files-title">
-						<h3 class="sc-label" id="files-title">Saved files</h3>
+						<h3 class="sc-card-h" id="files-title">Saved files</h3>
 						<ul class="sc-plain">
 							${files3}
 						</ul>
@@ -38709,7 +38715,7 @@ function explorerDetail(store, live, item, crumbs) {
 			</div>
 		</dl>
 		${stoppableTester(live, item) ? html2`<section aria-labelledby="options-title" data-key="options:${item.explorer}">
-						<h3 class="sc-label" id="options-title">Options</h3>
+						<h3 class="sc-card-h" id="options-title">Options</h3>
 						<ul class="sc-ask-list">
 							<li>
 								${testerStopOption(live.explorationId, item.explorer, 1)}<span class="sc-help"
@@ -38724,7 +38730,7 @@ function explorerDetail(store, live, item, crumbs) {
     found.filter((entry2) => !entry2.merged)
   )}
 		<section aria-labelledby="found-title">
-			<h3 class="sc-label" id="found-title">
+			<h3 class="sc-card-h" id="found-title">
 				Merged <span class="sc-count-n">${found.filter((entry2) => entry2.merged).length}</span>
 			</h3>
 			${found.some((entry2) => entry2.merged) ? html2`<ul class="found-list">
@@ -38732,7 +38738,7 @@ function explorerDetail(store, live, item, crumbs) {
 						</ul>` : html2`<p class="sc-empty is-line">No entry of ${item.explorer} is merged yet.</p>`}
 		</section>
 		<section aria-labelledby="saved-title">
-			<h3 class="sc-label" id="saved-title">Saved files</h3>
+			<h3 class="sc-card-h" id="saved-title">Saved files</h3>
 			${savedFiles(store, live, item)}
 		</section>`;
 }
@@ -38781,7 +38787,7 @@ function runOptions(live, run2, others) {
   ];
   if (!items.length) return "";
   return html2`<section aria-labelledby="run-options-title" data-key="options:run">
-		<h3 class="sc-label" id="run-options-title">Options</h3>
+		<h3 class="sc-card-h" id="run-options-title">Options</h3>
 		<ul class="sc-ask-list">
 			${items.map((item) => html2`<li>${item.option}<span class="sc-help">${item.help}</span></li>`)}
 		</ul>
@@ -38965,7 +38971,7 @@ function claimPage(store, context2, explorationId, claimId, state = null) {
 					<p class="sc-help">By ${claim.decision.actor}. Rationale: ${claim.decision.rationale}</p>
 					${keptText(shown2)}`
   ) : html2`<section class="sc-card decision" id="decide" aria-labelledby="decide-title" data-region="decision">
-				<h2 class="sc-label" id="decide-title">Decision</h2>
+				<h2 class="sc-card-h" id="decide-title">Decision</h2>
 				<p class="subj">Is ${claim.id} a defect?</p>
 				<div>${messages(shown2)}</div>
 				<form method="post" action="/explorations/${explorationId}/claims/${claim.id}" class="sc-form">
@@ -38991,7 +38997,7 @@ function claimPage(store, context2, explorationId, claimId, state = null) {
     body: html2`${heading({ title: html2`${report.planId} · ${claim.id}`, sub: claim.title, meta: html2`${statusMark({ state: claim.state })} ${statusMark({ state: claim.severity })}` })}
 			<div class="sc-split">
 				<section class="sc-card" aria-labelledby="claim-title">
-					<h2 class="sc-label" id="claim-title">Claim</h2>
+					<h2 class="sc-card-h" id="claim-title">Claim</h2>
 					<p>
 						<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
 						<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · build ${claim.build}
@@ -39186,7 +39192,7 @@ function firstRunPage(workspace2, context2, onHome, back = "/", invalidAddress) 
 			data-assumed
 			${invalidAddress?.target || invalidAddress?.environment ? "" : html2`hidden`}
 		>
-			<h2 class="sc-label">What Checkmate will assume</h2>
+			<h2 class="sc-card-h">What Checkmate will assume</h2>
 			<p class="sc-help">
 				Checkmate sets up the target from these values. Change the name or the environment here.
 			</p>
@@ -39215,7 +39221,7 @@ function firstRunPage(workspace2, context2, onHome, back = "/", invalidAddress) 
       ["New target", null]
     ],
     back: onHome ? null : back,
-    body: html2`<div>
+    body: html2`<div class="sc-page">
 			${heading({ title: onHome ? "Set up the application" : "New target", sub: onHome ? "Checkmate has no target yet. Give the address of the application to test." : "Give the address of the application to test." })}
 			${shell2(context2, "/setup", body, "Set up the target")}
 		</div>`
@@ -39299,7 +39305,7 @@ function newChangePage(context2, defaults, onHome) {
       ["New change", null]
     ],
     back: onHome ? null : "/",
-    body: html2`<div>
+    body: html2`<div class="sc-page">
 			${heading({ title: "New change", sub: "Give the ticket of a change. Checkmate makes a plan from it and starts the first test." })}
 			${shell2(context2, "/new", body, "Start the test")}
 		</div>`
@@ -39362,11 +39368,11 @@ function permissionPage(store, context2, askerId, requestId2, view, refusal) {
 							${moves ? html2`This view moves on in 2 seconds. Press any key to move on now.` : html2`This request has no options now.`}
 						</p>` : ""}
 			<section aria-labelledby="asked-title">
-				<h2 class="sc-label" id="asked-title">What it asks</h2>
+				<h2 class="sc-card-h" id="asked-title">What it asks</h2>
 				${asked(item)}
 			</section>
 			${choices2.length ? html2`<section class="sc-opt-section" aria-labelledby="options-title" data-key="options:${name2}">
-							<h2 class="sc-label" id="options-title">Options</h2>
+							<h2 class="sc-card-h" id="options-title">Options</h2>
 							<ol class="sc-ask-list asks">
 								${choices2.map((choice2, index2) => html2`<li>${optionOf(context2, item, from, choice2, index2 + 1)}<span class="sc-help">${choice2.text}</span></li>`)}
 							</ol>
@@ -39399,7 +39405,7 @@ ${refusal?.reason ?? ""}</textarea>
 							</div>
 						</section>` : ""}
 			<section aria-labelledby="details-title">
-				<h2 class="sc-label" id="details-title">Details</h2>
+				<h2 class="sc-card-h" id="details-title">Details</h2>
 				<dl class="sc-facts">
 					<dt>Tool</dt>
 					<dd class="sc-mono">${item.tool}</dd>
@@ -39418,7 +39424,7 @@ ${refusal?.reason ?? ""}</textarea>
 				</dl>
 			</section>
 			${rules.length ? html2`<section aria-labelledby="rules-title">
-							<h2 class="sc-label" id="rules-title">
+							<h2 class="sc-card-h" id="rules-title">
 								Rules of this ${item.fromRequest ? "chat" : "test"}
 							</h2>
 							${rulesLines(rules, item.fromRequest ? "chat" : "test")}
@@ -39521,7 +39527,7 @@ function ownChanges(form, fresh) {
 }
 function unsavedPanel(unsaved) {
   return html2`<section class="sc-card unsaved" aria-labelledby="unsaved-title">
-		<h2 class="sc-label" id="unsaved-title">Your changes (not saved)</h2>
+		<h2 class="sc-card-h" id="unsaved-title">Your changes (not saved)</h2>
 		<p class="sc-help">
 			The editor below shows the latest version. These are the values that you changed. Apply the changes again,
 			then save.
@@ -39873,21 +39879,21 @@ function claimBody(context2, store, review, item, base2, back, state) {
 					</p>` : ""}
 		<div class="sc-compare">
 			<div>
-				<span class="sc-label">Expected</span>
+				<span class="sc-kicker">Expected</span>
 				<p>${claim.expected}</p>
 			</div>
 			<div>
-				<span class="sc-label">Actual</span>
+				<span class="sc-kicker">Actual</span>
 				<p>${claim.actual}</p>
 			</div>
 		</div>
 		${claim.steps?.length ? html2`<div>
-						<span class="sc-label">Steps</span>
+						<span class="sc-kicker">Steps</span>
 						<ol class="sc-steps">
 							${(Array.isArray(claim.steps) ? claim.steps : [claim.steps]).map((step) => html2`<li>${step}</li>`)}
 						</ol>
 					</div>` : ""}
-		<div><span class="sc-label">Evidence</span>${evidenceFiles2({ files: files3, base: base2, current: null })}</div>
+		<div><span class="sc-kicker">Evidence</span>${evidenceFiles2({ files: files3, base: base2, current: null })}</div>
 		${recordFacts({
     rows: [
       ["Across builds", acrossBuilds(review, item)],
@@ -39956,7 +39962,7 @@ function questionBody(context2, review, item, back, state) {
 			<input id="answer-rationale" name="rationale" value="${state?.values.rationale ?? ""}" />
 		</div>
 	</details>`;
-  return html2`${question?.actual ? html2`<p class="sc-today"><span class="sc-label">What the build does</span>${question.actual}</p>` : ""}
+  return html2`${question?.actual ? html2`<p class="sc-today"><span class="sc-kicker">What the build does</span>${question.actual}</p>` : ""}
 	${open ? textForm(context2, item, back, {
     id: "answer",
     action: questionAction(review, item),
@@ -41997,6 +42003,44 @@ var examples29 = [
   ["jumpLinks", jumpLinks({ links: tabs })]
 ];
 
+// plugin/src/ui/components/target-card.ts
+function chips2(items) {
+  return items.length ? html2`<span class="sc-chips">${items.map((item) => html2`<span class="sc-chip">${item}</span>`)}</span>` : "\u2014";
+}
+function targetCard(target) {
+  return html2`<article class="sc-card" data-key="target:${target.targetId}" data-nav-row>
+		<div class="sc-card-h">
+			<a class="sc-target-name" href="/settings/targets/${target.targetId}" data-nav-item>${target.targetId}</a>
+			<span class="sc-muted sc-mono">${target.revision === null ? "no profile yet" : `@${target.revision}`}</span>
+			<span class="sc-card-aside">${plural(target.activeInstances, "active instance")}</span>
+		</div>
+		<dl class="sc-facts">
+			<dt>Capabilities</dt>
+			<dd>${chips2(target.capabilities)}</dd>
+			<dt>Entry points</dt>
+			<dd>${chips2(target.entryPoints)}</dd>
+		</dl>
+	</article>`;
+}
+
+// plugin/src/ui/components/target-card.catalogue.ts
+var examples30 = [
+  [
+    "targetCard",
+    targetCard({
+      targetId: "shop-local",
+      revision: 1,
+      capabilities: ["browser", "http"],
+      entryPoints: ["web"],
+      activeInstances: 2
+    })
+  ],
+  [
+    "targetCard without profile",
+    targetCard({ targetId: "mobile", revision: null, capabilities: [], entryPoints: [], activeInstances: 0 })
+  ]
+];
+
 // plugin/src/ui/screens/catalogue.ts
 var entries = [
   ["banner", examples],
@@ -42027,9 +42071,10 @@ var entries = [
   ["radio-group", examples26],
   ["status-bar", examples27],
   ["status-mark", examples28],
-  ["tabs", examples29]
+  ["tabs", examples29],
+  ["target-card", examples30]
 ];
-function entry([name2, examples30]) {
+function entry([name2, examples31]) {
   return html2`<section
 		class="catalogue-entry"
 		id="${name2}"
@@ -42037,7 +42082,7 @@ function entry([name2, examples30]) {
 		aria-labelledby="catalogue-${name2}"
 	>
 		<h2 id="catalogue-${name2}">${name2}</h2>
-		${examples30.map(
+		${examples31.map(
     ([state, rendered2]) => html2`<figure class="catalogue-example" data-catalogue-example="${name2}: ${state}">
 					<figcaption>${state}</figcaption>
 					<div class="catalogue-render">${rendered2}</div>
@@ -42105,30 +42150,13 @@ function words4(items) {
 }
 function targetsPage(store) {
   const targets = targetList(store);
-  const rows3 = targets.map(
-    (target) => tableRow({
-      cells: [
-        html2`<a class="sc-mono" href="/settings/targets/${target.targetId}" data-nav-item
-					>${target.targetId}</a
-				>`,
-        {
-          content: html2`${target.revision === null ? none3("no profile yet") : `@${target.revision}`}`,
-          attrs: { class: "is-mono" }
-        },
-        words4(target.capabilities),
-        words4(target.entryPoints),
-        target.activeInstances
-      ],
-      attrs: { "data-key": `target:${target.targetId}`, "data-nav-row": true }
-    })
-  );
-  const body = html2`${heading({ title: "Targets", sub: "Each target with its latest revision and its active instances." })}
-		<div data-region="targets" data-list>
-			${targets.length ? dataTable({
-    columns: ["Target", "Revision", "Capabilities", "Entry points", "Active instances"],
-    rows: rows3,
-    scroll: true
-  }) : emptyNotice({
+  const body = html2`${heading({
+    title: "Targets",
+    sub: "Each target with its latest revision and its active instances.",
+    actions: button({ label: "New target", href: "/setup" })
+  })}
+		<div class="sc-targets" data-region="targets" data-list>
+			${targets.length ? targets.map(targetCard) : emptyNotice({
     what: "No target yet.",
     next: html2`Record one with <code>checkmate target open</code>.`
   })}
@@ -42297,7 +42325,7 @@ function addForm(context2, targetId, entryPoints2, form) {
 		data-region="instance-form"
 		data-stale-message="${targetId} changed. Review it before you add the instance."
 	>
-		<h2 class="sc-label" id="add-instance">Add instance</h2>
+		<h2 class="sc-card-h" id="add-instance">Add instance</h2>
 		<p class="sc-help">
 			An instance is one place where the target runs. Adding one needs no new revision and no approval.
 		</p>
@@ -42442,7 +42470,7 @@ function harnessPage(store, context2, env, form = null, model = null, testerMode
 			<p id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
 		</div>
 		<section class="sc-card" aria-labelledby="claude-rules">
-			<h2 class="sc-label" id="claude-rules">Tool rules of testers</h2>
+			<h2 class="sc-card-h" id="claude-rules">Tool rules of testers</h2>
 			<p class="sc-help" data-key="permission-bash">
 				${pi ? "With Bash, testers can run commands. Without it, they cannot use Bash." : "With Bash, testers run commands without asking. Without it, each command asks you here. A tester waits up to 10 minutes for an answer."}
 			</p>
@@ -42477,7 +42505,7 @@ function harnessPage(store, context2, env, form = null, model = null, testerMode
 			data-model-catalog="${harness}"
 			data-tester-default="${testerDefault}"
 		>
-			<h2 class="sc-label" id="model-settings">Models</h2>
+			<h2 class="sc-card-h" id="model-settings">Models</h2>
 			<p class="sc-help">Choose a model for each kind of work. Choose a default or a model from the list.</p>
 			<p class="sc-help">
 				If the coding harness cannot use a saved model, a delegated worker uses the harness default. The reply
@@ -42552,7 +42580,7 @@ function harnessPage(store, context2, env, form = null, model = null, testerMode
 			</form>
 		</section>
 		<section class="sc-card" aria-labelledby="chat-settings">
-			<h2 class="sc-label" id="chat-settings">Chats</h2>
+			<h2 class="sc-card-h" id="chat-settings">Chats</h2>
 
 			<p class="sc-help">
 				New chats use ${pi ? "Pi" : "Claude Code"} and your chat model by default. Change the harness, model, or
@@ -42885,12 +42913,16 @@ function outcomeCounts2(detail) {
 }
 function strip(detail) {
   const result = detail.result;
-  return html2`<div class="strip" data-region="summary">
-		<div><small>Completion</small><strong>${result ? words2(result.completion) : "running"}</strong></div>
-		<div><small>Coverage</small><strong>${result ? words2(result.coverage.status) : "\u2013"}</strong></div>
-		<div><small>Tests</small><strong>${statusCounts({ counts: outcomeCounts2(detail) })}</strong></div>
-		<div><small>Cleanup</small><strong>${result ? words2(result.cleanup.status) : "\u2013"}</strong></div>
-	</div>`;
+  return html2`<dl class="sc-facts is-cols" data-region="summary">
+		<dt>Completion</dt>
+		<dd>${result ? words2(result.completion) : "running"}</dd>
+		<dt>Coverage</dt>
+		<dd>${result ? words2(result.coverage.status) : "\u2014"}</dd>
+		<dt>Tests</dt>
+		<dd>${statusCounts({ counts: outcomeCounts2(detail) })}</dd>
+		<dt>Cleanup</dt>
+		<dd>${result ? words2(result.cleanup.status) : "\u2014"}</dd>
+	</dl>`;
 }
 function runItemHref(runId, key2, hash = "") {
   return `/runs/${runId}${key2 === "summary" ? "" : `?item=${encodeURIComponent(key2)}`}${hash}`;
@@ -43211,17 +43243,23 @@ function runList2(detail, selected) {
       plural(detail.attempts.length, "attempt")
     )
   ];
-  return html2`<div class="sc-head">
-			<p class="sc-crumb">
-				<a href="/plans/${detail.planId}@${detail.revision}">${detail.planId}@${detail.revision}</a> · build
-				<code>${detail.build}</code> · instance <code>${detail.instance.instanceId}</code>
-			</p>
-			<h1>${detail.runId}</h1>
-			<p class="sc-note" data-region="state">
-				${runStatus2({ state: detail.state, acceptance: detail.result?.acceptance ?? null })} started
-				${time(detail.startedAt)}${result ? html2` · finished ${time(result.finishedAt)}` : ""}
-			</p>
-		</div>
+  return html2`<header class="sc-h">
+			<div class="sc-h-text">
+				<p class="sc-crumb">
+					<a href="/runs">Runs</a> ›
+					<a href="/plans/${detail.planId}@${detail.revision}">${detail.planId}@${detail.revision}</a> · build
+					${detail.build} · instance ${detail.instance.instanceId}
+				</p>
+				<h1>${detail.runId}</h1>
+				<p class="sc-h-meta" data-region="state">
+					${runStatus2({ state: detail.state, acceptance: detail.result?.acceptance ?? null })}
+					<span
+						>started
+						${time(detail.startedAt)}${result ? html2` · finished ${time(result.finishedAt)}` : ""}</span
+					>
+				</p>
+			</div>
+		</header>
 		<div class="sc-list" role="listbox" aria-label="Run ${detail.runId}" data-list>
 			${runGroup("Run", [runRow(detail.runId, "summary", selected, "Overview", "", html2`${statusCounts({ counts: outcomeCounts2(detail) })}`)])}
 			${runGroup("Tests", tests)} ${runGroup("Findings", found)} ${runGroup("New gaps", gaps)}
@@ -43234,7 +43272,7 @@ function openChecks(detail) {
   );
   if (!rows3.length) return "";
   return html2`<section aria-labelledby="open-checks">
-		<h3 class="sc-label" id="open-checks">Not passed <span class="sc-count-n">${rows3.length}</span></h3>
+		<h3 class="sc-card-h" id="open-checks">Not passed <span class="sc-count-n">${rows3.length}</span></h3>
 		<ul class="plist">
 			${rows3.map(
     ({ test, assertion }) => html2`<li>

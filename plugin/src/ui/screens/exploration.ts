@@ -573,7 +573,7 @@ function foundRow(store: Store, live: Live, entry: Found) {
 function rawSection(store: Store, live: Live, entries: Found[]) {
 	if (!entries.length) return ''
 	return html`<section class="raw-box" aria-labelledby="unmerged-title" data-key="unmerged">
-		<h3 class="sc-label" id="unmerged-title">Not merged yet <span class="sc-count-n">${entries.length}</span></h3>
+		<h3 class="sc-card-h" id="unmerged-title">Not merged yet <span class="sc-count-n">${entries.length}</span></h3>
 		<p class="sc-help">
 			These are the raw questions and defects of single explorers. They can change before the exploration is
 			completed. Needs you and the plan page do not show them.
@@ -628,11 +628,11 @@ function summaryDetail(store: Store, live: Live, crumbs: Html, options: Html | '
 		<h2 class="sc-sec-h">Overview</h2>
 		${options} ${rawSection(store, live, live.unmerged)}
 		<section aria-labelledby="claims-title">
-			<h3 class="sc-label" id="claims-title">Claims <span class="sc-count-n">${live.claims.length}</span></h3>
+			<h3 class="sc-card-h" id="claims-title">Claims <span class="sc-count-n">${live.claims.length}</span></h3>
 			${merged ? claimLinks(live.planId, live.claims) : html`<p class="sc-empty is-line">The claims show when the exploration is completed.</p>`}
 		</section>
 		<section aria-labelledby="questions-title">
-			<h3 class="sc-label" id="questions-title">
+			<h3 class="sc-card-h" id="questions-title">
 				Questions <span class="sc-count-n">${live.questions.length}</span>
 			</h3>
 			${
@@ -644,7 +644,7 @@ function summaryDetail(store: Store, live: Live, crumbs: Html, options: Html | '
 		${
 			files.length
 				? html`<section aria-labelledby="files-title">
-						<h3 class="sc-label" id="files-title">Saved files</h3>
+						<h3 class="sc-card-h" id="files-title">Saved files</h3>
 						<ul class="sc-plain">
 							${files}
 						</ul>
@@ -697,7 +697,7 @@ function explorerDetail(store: Store, live: Live, item: LiveExplorer, crumbs: Ht
 		${
 			stoppableTester(live, item)
 				? html`<section aria-labelledby="options-title" data-key="options:${item.explorer}">
-						<h3 class="sc-label" id="options-title">Options</h3>
+						<h3 class="sc-card-h" id="options-title">Options</h3>
 						<ul class="sc-ask-list">
 							<li>
 								${testerStopOption(live.explorationId, item.explorer, 1)}<span class="sc-help"
@@ -714,7 +714,7 @@ function explorerDetail(store: Store, live: Live, item: LiveExplorer, crumbs: Ht
 			found.filter((entry) => !entry.merged)
 		)}
 		<section aria-labelledby="found-title">
-			<h3 class="sc-label" id="found-title">
+			<h3 class="sc-card-h" id="found-title">
 				Merged <span class="sc-count-n">${found.filter((entry) => entry.merged).length}</span>
 			</h3>
 			${
@@ -726,7 +726,7 @@ function explorerDetail(store: Store, live: Live, item: LiveExplorer, crumbs: Ht
 			}
 		</section>
 		<section aria-labelledby="saved-title">
-			<h3 class="sc-label" id="saved-title">Saved files</h3>
+			<h3 class="sc-card-h" id="saved-title">Saved files</h3>
 			${savedFiles(store, live, item)}
 		</section>`
 }
@@ -784,7 +784,7 @@ function runOptions(live: Live, run: Run, others: Listed[]) {
 	]
 	if (!items.length) return ''
 	return html`<section aria-labelledby="run-options-title" data-key="options:run">
-		<h3 class="sc-label" id="run-options-title">Options</h3>
+		<h3 class="sc-card-h" id="run-options-title">Options</h3>
 		<ul class="sc-ask-list">
 			${items.map((item) => html`<li>${item.option}<span class="sc-help">${item.help}</span></li>`)}
 		</ul>
@@ -1023,7 +1023,7 @@ export function claimPage(
 					${keptText(shown)}`
 			)
 		: html`<section class="sc-card decision" id="decide" aria-labelledby="decide-title" data-region="decision">
-				<h2 class="sc-label" id="decide-title">Decision</h2>
+				<h2 class="sc-card-h" id="decide-title">Decision</h2>
 				<p class="subj">Is ${claim.id} a defect?</p>
 				<div>${messages(shown)}</div>
 				<form method="post" action="/explorations/${explorationId}/claims/${claim.id}" class="sc-form">
@@ -1049,7 +1049,7 @@ export function claimPage(
 		body: html`${heading({ title: html`${report.planId} · ${claim.id}`, sub: claim.title, meta: html`${statusMark({ state: claim.state })} ${statusMark({ state: claim.severity })}` })}
 			<div class="sc-split">
 				<section class="sc-card" aria-labelledby="claim-title">
-					<h2 class="sc-label" id="claim-title">Claim</h2>
+					<h2 class="sc-card-h" id="claim-title">Claim</h2>
 					<p>
 						<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
 						<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · build ${claim.build}

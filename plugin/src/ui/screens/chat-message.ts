@@ -96,7 +96,7 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 				onOwnPage: true,
 			})}
 			<section aria-labelledby="asked-title" data-key="asked">
-				<h2 class="sc-label" id="asked-title">You asked</h2>
+				<h2 class="sc-card-h" id="asked-title">You asked</h2>
 				<p class="sc-reply sc-asked">${request.text}</p>
 				${contextLine(request.context)}
 			</section>
@@ -118,7 +118,7 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 			${
 				request.state === 'running' || request.activity.length
 					? html`<section aria-labelledby="activity-title">
-							<h2 class="sc-label" id="activity-title">
+							<h2 class="sc-card-h" id="activity-title">
 								Activity <span class="sc-count-n">${request.activity.length}</span>
 							</h2>
 							${
@@ -141,7 +141,7 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 			${
 				request.state === 'answered'
 					? html`<section aria-labelledby="reply-title" data-key="reply">
-							<h2 class="sc-label" id="reply-title">Reply</h2>
+							<h2 class="sc-card-h" id="reply-title">Reply</h2>
 							<div class="sc-reply sc-markdown">
 								${request.reply?.trim() ? chatMarkdown(request.reply) : html`<p class="sc-muted">The reply has no text.</p>`}
 							</div>
@@ -151,7 +151,7 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 			${
 				failure
 					? html`<section aria-labelledby="failed-title" data-key="failure">
-							<h2 class="sc-label" id="failed-title">What went wrong</h2>
+							<h2 class="sc-card-h" id="failed-title">What went wrong</h2>
 							<p class="sc-notice is-error" role="alert">${failure.cause}</p>
 							${failure.detail ? html`<p class="sc-help">${failure.detail}</p>` : ''}
 							${failure.lines.length ? html`<pre class="sc-code" tabindex="0">${failure.lines.join('\n')}</pre>` : ''}
@@ -182,7 +182,7 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 			${
 				ended
 					? html`<section aria-labelledby="changes-title" data-key="changes">
-							<h2 class="sc-label" id="changes-title">
+							<h2 class="sc-card-h" id="changes-title">
 								Changed <span class="sc-count-n">${request.changes.length}</span>
 							</h2>
 							${
@@ -202,7 +202,7 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 						: ''
 			}
 			<section class="sc-opt-section" aria-labelledby="options-title" data-key="options:${requestId}">
-				<h2 class="sc-label" id="options-title">Options</h2>
+				<h2 class="sc-card-h" id="options-title">Options</h2>
 				<ol class="sc-ask-list asks">
 					${options.map((option) => html`<li>${option}</li>`)}
 				</ol>

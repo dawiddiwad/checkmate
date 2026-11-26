@@ -97,13 +97,13 @@ export function permissionPage(
 					: ''
 			}
 			<section aria-labelledby="asked-title">
-				<h2 class="sc-label" id="asked-title">What it asks</h2>
+				<h2 class="sc-card-h" id="asked-title">What it asks</h2>
 				${asked(item)}
 			</section>
 			${
 				choices.length
 					? html`<section class="sc-opt-section" aria-labelledby="options-title" data-key="options:${name}">
-							<h2 class="sc-label" id="options-title">Options</h2>
+							<h2 class="sc-card-h" id="options-title">Options</h2>
 							<ol class="sc-ask-list asks">
 								${choices.map((choice, index) => html`<li>${optionOf(context, item, from, choice, index + 1)}<span class="sc-help">${choice.text}</span></li>`)}
 							</ol>
@@ -138,7 +138,7 @@ ${refusal?.reason ?? ''}</textarea>
 					: ''
 			}
 			<section aria-labelledby="details-title">
-				<h2 class="sc-label" id="details-title">Details</h2>
+				<h2 class="sc-card-h" id="details-title">Details</h2>
 				<dl class="sc-facts">
 					<dt>Tool</dt>
 					<dd class="sc-mono">${item.tool}</dd>
@@ -163,7 +163,7 @@ ${refusal?.reason ?? ''}</textarea>
 			${
 				rules.length
 					? html`<section aria-labelledby="rules-title">
-							<h2 class="sc-label" id="rules-title">
+							<h2 class="sc-card-h" id="rules-title">
 								Rules of this ${item.fromRequest ? 'chat' : 'test'}
 							</h2>
 							${rulesLines(rules, item.fromRequest ? 'chat' : 'test')}

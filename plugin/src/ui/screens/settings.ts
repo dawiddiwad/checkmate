@@ -16,14 +16,15 @@ import type { Env } from '../../sessions.ts'
 import { instanceList, targetHistory, targetList, targetRequest, targetRevision } from '../../targets.ts'
 import type { Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
-import { notice } from '../components/notice.ts'
-import { formButton } from '../components/button.ts'
+import { button, formButton } from '../components/button.ts'
 import { dataTable, tableRow } from '../components/data-table.ts'
 import { emptyNotice } from '../components/empty-state.ts'
 import { field, textArea, textInput } from '../components/field.ts'
+import { notice } from '../components/notice.ts'
 import { heading } from '../components/page-heading.ts'
 import { statusMark } from '../components/status-mark.ts'
 import { jumpLinks, pageTabs } from '../components/tabs.ts'
+import { targetCard } from '../components/target-card.ts'
 import { html, join, plural, short, time } from '../html.ts'
 
 export type InstanceForm = { values: Record<string, string>; error: string | null; field?: string | null }
@@ -78,32 +79,15 @@ function words(items: string[]) {
 
 export function targetsPage(store: Store): Page {
 	const targets = targetList(store)
-	const rows = targets.map((target) =>
-		tableRow({
-			cells: [
-				html`<a class="sc-mono" href="/settings/targets/${target.targetId}" data-nav-item
-					>${target.targetId}</a
-				>`,
-				{
-					content: html`${target.revision === null ? none('no profile yet') : `@${target.revision}`}`,
-					attrs: { class: 'is-mono' },
-				},
-				words(target.capabilities),
-				words(target.entryPoints),
-				target.activeInstances,
-			],
-			attrs: { 'data-key': `target:${target.targetId}`, 'data-nav-row': true },
-		})
-	)
-	const body = html`${heading({ title: 'Targets', sub: 'Each target with its latest revision and its active instances.' })}
-		<div data-region="targets" data-list>
+	const body = html`${heading({
+			title: 'Targets',
+			sub: 'Each target with its latest revision and its active instances.',
+			actions: button({ label: 'New target', href: '/setup' }),
+		})}
+		<div class="sc-targets" data-region="targets" data-list>
 			${
 				targets.length
-					? dataTable({
-							columns: ['Target', 'Revision', 'Capabilities', 'Entry points', 'Active instances'],
-							rows: rows,
-							scroll: true,
-						})
+					? targets.map(targetCard)
 					: emptyNotice({
 							what: 'No target yet.',
 							next: html`Record one with <code>checkmate target open</code>.`,
@@ -295,7 +279,7 @@ function addForm(context: Context, targetId: string, entryPoints: EntryPoint[], 
 		data-region="instance-form"
 		data-stale-message="${targetId} changed. Review it before you add the instance."
 	>
-		<h2 class="sc-label" id="add-instance">Add instance</h2>
+		<h2 class="sc-card-h" id="add-instance">Add instance</h2>
 		<p class="sc-help">
 			An instance is one place where the target runs. Adding one needs no new revision and no approval.
 		</p>
@@ -476,7 +460,7 @@ export function harnessPage(
 			<p id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
 		</div>
 		<section class="sc-card" aria-labelledby="claude-rules">
-			<h2 class="sc-label" id="claude-rules">Tool rules of testers</h2>
+			<h2 class="sc-card-h" id="claude-rules">Tool rules of testers</h2>
 			<p class="sc-help" data-key="permission-bash">
 				${pi ? 'With Bash, testers can run commands. Without it, they cannot use Bash.' : 'With Bash, testers run commands without asking. Without it, each command asks you here. A tester waits up to 10 minutes for an answer.'}
 			</p>
@@ -515,7 +499,7 @@ export function harnessPage(
 			data-model-catalog="${harness}"
 			data-tester-default="${testerDefault}"
 		>
-			<h2 class="sc-label" id="model-settings">Models</h2>
+			<h2 class="sc-card-h" id="model-settings">Models</h2>
 			<p class="sc-help">Choose a model for each kind of work. Choose a default or a model from the list.</p>
 			<p class="sc-help">
 				If the coding harness cannot use a saved model, a delegated worker uses the harness default. The reply
@@ -590,7 +574,7 @@ export function harnessPage(
 			</form>
 		</section>
 		<section class="sc-card" aria-labelledby="chat-settings">
-			<h2 class="sc-label" id="chat-settings">Chats</h2>
+			<h2 class="sc-card-h" id="chat-settings">Chats</h2>
 
 			<p class="sc-help">
 				New chats use ${pi ? 'Pi' : 'Claude Code'} and your chat model by default. Change the harness, model, or

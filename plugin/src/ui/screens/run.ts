@@ -144,12 +144,16 @@ function outcomeCounts(detail: Detail) {
 
 function strip(detail: Detail) {
 	const result = detail.result
-	return html`<div class="strip" data-region="summary">
-		<div><small>Completion</small><strong>${result ? words(result.completion) : 'running'}</strong></div>
-		<div><small>Coverage</small><strong>${result ? words(result.coverage.status) : '–'}</strong></div>
-		<div><small>Tests</small><strong>${statusCounts({ counts: outcomeCounts(detail) })}</strong></div>
-		<div><small>Cleanup</small><strong>${result ? words(result.cleanup.status) : '–'}</strong></div>
-	</div>`
+	return html`<dl class="sc-facts is-cols" data-region="summary">
+		<dt>Completion</dt>
+		<dd>${result ? words(result.completion) : 'running'}</dd>
+		<dt>Coverage</dt>
+		<dd>${result ? words(result.coverage.status) : '—'}</dd>
+		<dt>Tests</dt>
+		<dd>${statusCounts({ counts: outcomeCounts(detail) })}</dd>
+		<dt>Cleanup</dt>
+		<dd>${result ? words(result.cleanup.status) : '—'}</dd>
+	</dl>`
 }
 
 function runItemHref(runId: string, key: string, hash = '') {
@@ -537,17 +541,23 @@ function runList(detail: Detail, selected: string) {
 			plural(detail.attempts.length, 'attempt')
 		),
 	]
-	return html`<div class="sc-head">
-			<p class="sc-crumb">
-				<a href="/plans/${detail.planId}@${detail.revision}">${detail.planId}@${detail.revision}</a> · build
-				<code>${detail.build}</code> · instance <code>${detail.instance.instanceId}</code>
-			</p>
-			<h1>${detail.runId}</h1>
-			<p class="sc-note" data-region="state">
-				${runStatus({ state: detail.state, acceptance: detail.result?.acceptance ?? null })} started
-				${time(detail.startedAt)}${result ? html` · finished ${time(result.finishedAt)}` : ''}
-			</p>
-		</div>
+	return html`<header class="sc-h">
+			<div class="sc-h-text">
+				<p class="sc-crumb">
+					<a href="/runs">Runs</a> ›
+					<a href="/plans/${detail.planId}@${detail.revision}">${detail.planId}@${detail.revision}</a> · build
+					${detail.build} · instance ${detail.instance.instanceId}
+				</p>
+				<h1>${detail.runId}</h1>
+				<p class="sc-h-meta" data-region="state">
+					${runStatus({ state: detail.state, acceptance: detail.result?.acceptance ?? null })}
+					<span
+						>started
+						${time(detail.startedAt)}${result ? html` · finished ${time(result.finishedAt)}` : ''}</span
+					>
+				</p>
+			</div>
+		</header>
 		<div class="sc-list" role="listbox" aria-label="Run ${detail.runId}" data-list>
 			${runGroup('Run', [runRow(detail.runId, 'summary', selected, 'Overview', '', html`${statusCounts({ counts: outcomeCounts(detail) })}`)])}
 			${runGroup('Tests', tests)} ${runGroup('Findings', found)} ${runGroup('New gaps', gaps)}
@@ -563,7 +573,7 @@ function openChecks(detail: Detail) {
 	)
 	if (!rows.length) return ''
 	return html`<section aria-labelledby="open-checks">
-		<h3 class="sc-label" id="open-checks">Not passed <span class="sc-count-n">${rows.length}</span></h3>
+		<h3 class="sc-card-h" id="open-checks">Not passed <span class="sc-count-n">${rows.length}</span></h3>
 		<ul class="plist">
 			${rows.map(
 				({ test, assertion }) =>

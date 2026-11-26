@@ -55,6 +55,12 @@
 .sc-facts dd code {
 	font: 500 13px/20px var(--font-mono);
 }
+.sc-facts.is-cols {
+	grid-template-columns: 120px minmax(0, 1fr) 120px minmax(0, 1fr);
+}
+.sc-facts.is-wide {
+	grid-template-columns: 180px minmax(0, 1fr);
+}
 @media (max-width: 760px) {
 	.sc-facts,
 	.sc-facts {

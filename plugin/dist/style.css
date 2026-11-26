@@ -10,11 +10,11 @@
 	--on-ink: #f6f5f1;
 	--muted: #5a5f68;
 	--hair: #e2e0d9;
-	--edge: #8c8f94;
+	--edge: #85888d;
 	--edge-soft: #c9c6bc;
 	--row-hover: #f3f2ee;
 	--focus: #2f5bd3;
-	--signal: #c2410c;
+	--signal: #be400c;
 	--signal-soft: #fbeadf;
 	--on-signal: #ffffff;
 	--fail: #b42318;
@@ -222,7 +222,6 @@ small {
 	top: 8px;
 }
 
-.sc-label,
 .sc-group-h,
 th {
 	font-family: var(--font-sans);
@@ -878,36 +877,48 @@ button.sc-key-hint:hover {
 .edit-card,
 .confirm-box,
 .record-h {
-	padding: 12px 16px;
-	border: 1px solid var(--hair);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-width: 0;
+	padding: var(--space-4) var(--space-5);
 	background: var(--surface);
+	border: var(--hairline) solid var(--hair);
+}
+.sc-card.is-sel {
+	background: var(--surface-2);
+	box-shadow: inset var(--bar) 0 0 var(--ink);
+}
+.sc-card.is-block {
+	box-shadow: inset var(--bar) 0 0 var(--signal);
 }
 .sc-card + .sc-card,
-.decision + .decision {
-	margin-top: 16px;
-}
-.sc-card h2,
-.decision h2,
-.box h2 {
-	margin-bottom: 8px;
-	font: 600 13px/16px var(--font-sans);
-	letter-spacing: 0;
-	color: var(--muted);
-}
+.decision + .decision,
 .edit-card + .edit-card {
-	margin-top: 16px;
+	margin-top: var(--space-4);
+}
+.sc-card > h2,
+.decision > h2,
+.box > h2,
+.sc-card-h {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	font: 600 15px/22px var(--font-sans);
+	letter-spacing: 0;
+	color: var(--ink);
 }
 fieldset.edit-card > legend {
 	float: left;
 	width: 100%;
-	margin-bottom: 8px;
+	margin-bottom: var(--space-2);
 	font: 500 12px/16px var(--font-mono);
 }
 fieldset.edit-card > legend + * {
 	clear: both;
 }
 .record-h {
-	border: 1px solid var(--edge);
+	border-color: var(--edge);
 }
 
 /* components/facts.css */
@@ -967,6 +978,12 @@ fieldset.edit-card > legend + * {
 }
 .sc-facts dd code {
 	font: 500 13px/20px var(--font-mono);
+}
+.sc-facts.is-cols {
+	grid-template-columns: 120px minmax(0, 1fr) 120px minmax(0, 1fr);
+}
+.sc-facts.is-wide {
+	grid-template-columns: 180px minmax(0, 1fr);
 }
 @media (max-width: 760px) {
 	.sc-facts,
@@ -1976,14 +1993,11 @@ details.menu > summary::-webkit-details-marker {
 	background: var(--signal-soft);
 	border-left-color: var(--signal);
 }
-.sc-label {
+.sc-kicker {
 	display: block;
-	margin-bottom: 4px;
+	margin-bottom: var(--space-1);
 	font: 500 12px/16px var(--font-mono);
 	color: var(--muted);
-}
-.sc-row.is-sel .sc-label {
-	color: inherit;
 }
 .sc-compare {
 	display: grid;
@@ -2779,34 +2793,11 @@ details.menu > summary::-webkit-details-marker {
 	margin-top: 0;
 }
 
-.sc-split {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) 320px;
-	gap: 16px;
-	align-items: start;
-}
-.sc-stack,
 .side {
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 16px;
-}
-@media (max-width: 1100px) {
-	.sc-split,
-	.queue {
-		grid-template-columns: minmax(0, 1fr);
-	}
-}
-@container main (max-width: 1099px) {
-	.sc-split {
-		grid-template-columns: minmax(0, 1fr);
-	}
-	.sc-split > .side {
-		order: -1;
-	}
-}
-@media (max-width: 1100px) {
+	gap: var(--space-4);
 }
 @media (max-width: 760px) {
 	.sc-crumb a {
@@ -2862,6 +2853,37 @@ section > h2 {
 }
 .sc-detail:focus {
 	outline: none;
+}
+.sc-marks {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-4);
+}
+.sc-page {
+	display: flex;
+	flex-direction: column;
+	gap: inherit;
+}
+.sc-stack {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-width: 0;
+}
+.sc-split {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 400px;
+	gap: var(--space-5);
+	align-items: start;
+}
+@container main (max-width: 1000px) {
+	.sc-split {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.sc-split > .side {
+		order: -1;
+	}
 }
 
 /* components/plan-tile.css */
@@ -3867,6 +3889,26 @@ main a:active {
 .sc-composer-bar .sc-grow {
 	flex: 1 1 0;
 	min-width: 0;
+}
+
+/* components/target-card.css */
+.sc-target-name {
+	font: 600 15px/22px var(--font-mono);
+	color: var(--ink);
+}
+.sc-card-aside {
+	margin-left: auto;
+	font: 400 13px/20px var(--font-sans);
+	color: var(--muted);
+}
+.sc-targets {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+	gap: var(--space-4);
+	align-items: start;
+}
+.sc-targets > .sc-card + .sc-card {
+	margin-top: 0;
 }
 
 /* screens/catalogue.css */

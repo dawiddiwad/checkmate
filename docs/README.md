@@ -5,3 +5,4 @@
 - [Use Checkmate from a factory](factory.md): review a ticket, promote tests, and run a permanent snapshot.
 - [CLI and record reference](reference.md): command forms, contracts, states, evidence, and limits.
 - [Develop Checkmate](development.md): prerequisites, required checks, and agent-only repository instructions.
+- [Review UI design system](design-system.md): tokens, grid, components, and the design tests.

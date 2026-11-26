@@ -7,6 +7,7 @@ Checkmate runs its CLI from a packed npm artifact. The required local gate check
 - Node.js 24.12.0 or later.
 - A real Pi CLI on `PATH` (`pi --version` must work). CI pins Pi 1.5.2. The tests use controlled hosts and a local Pi provider; they do not require provider credentials.
 - An executable Chromium browser. Set `CHECKMATE_BROWSER_EXECUTABLE` to its full path.
+- The pinned Chromium headless shell for the design tests: run `npx playwright-core install chromium-headless-shell`.
 - Dependencies installed with `npm ci`.
 
 On macOS, for example:
@@ -95,16 +96,7 @@ Use the host commands to test the conversation. The agent runs the bundled CLI a
 
 ## Review UI design system
 
-The design reference of the review UI is the page `/design` of `checkmate ui`. It reads the tokens from `plugin/src/ui/assets/style.css` and shows the real components in each state. Use the theme button to see light and dark. Use the "Grid overlay" button to see the columns and the 4px rows.
-
-Obey these rules when you change the UI:
-
-1. Put each color, type style, space, size, line, and motion value in the `:root` token block of `style.css`.
-2. Use only tokens in the other rules. Media queries and component track widths are the only literal values. Make each track width a multiple of 4px.
-3. Put page blocks on the 12-column grid. The plan nav takes columns 1 to 3. The drawer takes columns 8 to 12.
-4. Draw 1px lines inside boxes, so that the boxes stay on the 4px rows.
-
-`test/e2e/design.test.ts` checks the token rule, the grid, and the reference page.
+Read [the review UI design system](design-system.md) before you change the UI. Open `/design` in `checkmate ui` to see the tokens and the components. Run `npx playwright-core install chromium-headless-shell` once: the design tests use that pinned browser.
 
 ## Documentation media
 

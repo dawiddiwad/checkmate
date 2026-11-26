@@ -11866,7 +11866,7 @@ function piResult(output, error, status, signal) {
   else if (final.stopReason === "length") failure = ["operational_error", "pi reached the output token limit."];
   else if (final.stopReason !== "stop") failure = ["operational_error", "pi did not finish the assistant turn."];
   const tail = failure ? stderr : [];
-  const result = Array.isArray(final?.content) ? final.content.flatMap((part) => part?.type === "text" && typeof part.text === "string" ? [part.text] : []).join("") : void 0;
+  const result = Array.isArray(final?.content) ? final.content.flatMap((part2) => part2?.type === "text" && typeof part2.text === "string" ? [part2.text] : []).join("") : void 0;
   return {
     failure,
     ...warnings.size ? { warnings: [...warnings] } : {},
@@ -14608,7 +14608,7 @@ function pageOnlyStateChange(workspace2, test) {
 var maxRequirementsPerTest = 3;
 function requiredFieldCount(text2) {
   const list3 = text2.match(/\(([^)]*)\)/)?.[1];
-  if (list3) return list3.split(/,|\band\b/i).filter((part) => part.trim()).length;
+  if (list3) return list3.split(/,|\band\b/i).filter((part2) => part2.trim()).length;
   return text2.split(/\band\b/i).length;
 }
 function missingOmitChecks(test, requirements) {
@@ -15327,7 +15327,7 @@ function topLevelParts(text2) {
     }
   }
   found.push(text2.slice(start));
-  return found.map((part) => part.trim()).filter(Boolean);
+  return found.map((part2) => part2.trim()).filter(Boolean);
 }
 function readEntries(text2) {
   requireWellFormed(
@@ -15342,11 +15342,11 @@ function readEntries(text2) {
     const parts = topLevelParts(body.startsWith("[") && body.endsWith("]") ? body.slice(1, -1) : body);
     if (parts.length < 2)
       throw new Refusal("malformed", `Standard input is not valid JSON: ${error.message}`, jsonHint);
-    return parts.flatMap((part) => {
+    return parts.flatMap((part2) => {
       try {
-        return [JSON.parse(part)].flat();
+        return [JSON.parse(part2)].flat();
       } catch (error2) {
-        return [new Unreadable(error2.message, part)];
+        return [new Unreadable(error2.message, part2)];
       }
     });
   }
@@ -18534,7 +18534,7 @@ function checkRequest(action2, named) {
 }
 function pathPattern(path) {
   const parts = path.split(/(<[^>]+>|\{[^}]+\})/);
-  const source = parts.map((part) => /^(<[^>]+>|\{[^}]+\})$/.test(part) ? "[^/]+" : part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("");
+  const source = parts.map((part2) => /^(<[^>]+>|\{[^}]+\})$/.test(part2) ? "[^/]+" : part2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("");
   return new RegExp(`^${source}$`);
 }
 function requestMatches(planned, sent) {
@@ -19883,11 +19883,11 @@ function stopRequestRecord(store, actor, requestId2, reason) {
   });
 }
 function recordOf(ask, events) {
-  const states = events.filter((event2) => event2.step === "state");
-  const last = states.at(-1);
+  const states2 = events.filter((event2) => event2.step === "state");
+  const last = states2.at(-1);
   const session = events.findLast((event2) => event2.step === "session");
   const recorded2 = session ? JSON.parse(session.detail) : null;
-  const selection = JSON.parse(states[0].detail);
+  const selection = JSON.parse(states2[0].detail);
   const harness = selection.harness ?? recorded2?.harness;
   const finished2 = endStates.includes(last.status) ? last : null;
   const detail = finished2 ? JSON.parse(finished2.detail) : {};
@@ -19912,7 +19912,7 @@ function recordOf(ask, events) {
     costUsd: typeof detail.costUsd === "number" && Number.isFinite(detail.costUsd) && detail.costUsd >= 0 ? detail.costUsd : null,
     costPartial: detail.costPartial === true,
     ...detail.costScope !== "turn" && harness !== "pi" ? { costCumulative: true } : {},
-    startedAt: states.find((event2) => event2.status === "running")?.at ?? null,
+    startedAt: states2.find((event2) => event2.status === "running")?.at ?? null,
     endedAt: finished2?.at ?? null,
     reason: typeof detail.reason === "string" ? detail.reason : null,
     hint: typeof detail.hint === "string" ? detail.hint : null,
@@ -26416,14 +26416,14 @@ function ruleMap(store, planId) {
     ...stored.rules,
     { id: outsideRule, text: "Behaviour outside the rules of the plan.", source: null }
   ];
-  const states = new Map(
+  const states2 = new Map(
     claims.map((claim) => [claim.id, new Map(claimBuildStates(claim, builds).map((on) => [on.build, on.state]))])
   );
   const criteria = state.team.filter((entry) => entry.kind === "criterion" && entry.rule !== void 0);
   const cellOf = (rule, build) => {
-    const own = claims.filter((claim) => ruleOf(claim.rule) === rule && states.get(claim.id).has(build));
-    const present = own.filter((claim) => presentStates.includes(states.get(claim.id).get(build)));
-    const disputed = own.filter((claim) => states.get(claim.id).get(build) === "disputed");
+    const own = claims.filter((claim) => ruleOf(claim.rule) === rule && states2.get(claim.id).has(build));
+    const present = own.filter((claim) => presentStates.includes(states2.get(claim.id).get(build)));
+    const disputed = own.filter((claim) => states2.get(claim.id).get(build) === "disputed");
     const asked2 = questions.filter(
       (question) => ruleOf(question.rule) === rule && question.answer === null && question.builds.includes(build)
     );
@@ -26433,7 +26433,7 @@ function ruleMap(store, planId) {
     const changes = Object.fromEntries(
       buildStates.map((name2) => [
         name2,
-        own.filter((claim) => states.get(claim.id).get(build) === name2).map((claim) => claim.id)
+        own.filter((claim) => states2.get(claim.id).get(build) === name2).map((claim) => claim.id)
       ])
     );
     return {
@@ -26447,7 +26447,7 @@ function ruleMap(store, planId) {
         title: claim.title,
         severity: claim.severity,
         state: claim.state,
-        change: states.get(claim.id).get(build)
+        change: states2.get(claim.id).get(build)
       })),
       questions: asked2.map((question) => ({
         id: question.id,
@@ -26895,7 +26895,7 @@ tbody tr:nth-child(even) td{background:none}details{display:none}
 function cell(value2) {
   const tone2 = tones[value2];
   if (tone2) return `<span class="pill ${tone2}">${escapeHtml(value2)}</span>`;
-  return value2.split(/(\s+)/).map((part) => part.length > 24 ? `<span class="token">${escapeHtml(part)}</span>` : escapeHtml(part)).join("");
+  return value2.split(/(\s+)/).map((part2) => part2.length > 24 ? `<span class="token">${escapeHtml(part2)}</span>` : escapeHtml(part2)).join("");
 }
 function figure(item) {
   const body = item.image ? `<img src="${item.image}" alt="${escapeHtml(item.name)}">` : item.text !== void 0 ? `<pre>${escapeHtml(item.text)}</pre>` : "";
@@ -28116,8 +28116,8 @@ function header(context) {
 		</div>
 	</header>`;
 }
-function statusLink(page, section, href, label) {
-  const current2 = page.section === section ? html2` aria-current="page"` : "";
+function statusLink(page, section2, href, label) {
+  const current2 = page.section === section2 ? html2` aria-current="page"` : "";
   return html2`<a class="sb-btn" href="${href}" ${current2}>${label}</a>`;
 }
 function statusBar(context, page) {
@@ -28270,6 +28270,7 @@ function layout(context, page) {
 				/>
 				<link rel="stylesheet" href="/assets/style.css" />
 				<script src="/assets/client.js" defer></script>
+				${page.script ? html2`<script src="${page.script}" defer></script>` : ""}
 			</head>
 			<body
 				data-subjects="${page.subjects.join(",")}"
@@ -28408,7 +28409,7 @@ function confirmStep(context, verdict, state) {
 	</form>`;
 }
 function chooseStep(context, verdict, state) {
-  const button = (choice2, primary) => html2`<button
+  const button2 = (choice2, primary) => html2`<button
 			class="btn${primary ? " primary" : ""}"
 			name="verdict"
 			value="${choice2.value}"
@@ -28425,7 +28426,7 @@ function chooseStep(context, verdict, state) {
 			<p class="lab">Confirm</p>
 			<p data-confirm-summary></p>
 		</div>
-		<div class="btns" data-choose>${button(verdict.approve, true)} ${button(verdict.reject, false)}</div>
+		<div class="btns" data-choose>${button2(verdict.approve, true)} ${button2(verdict.reject, false)}</div>
 		<div class="btns" data-confirm-buttons hidden>
 			<button class="btn primary" name="confirmed" value="1" data-confirm-submit>Confirm</button>
 			<button class="btn" type="button" data-confirm-back>Back</button>
@@ -28850,7 +28851,7 @@ function askHeading(item) {
   return `${askerName(item)} asks to ${things[item.tool] ?? `use ${item.tool}`}`;
 }
 function breakAtSlashes(path) {
-  return path.split("/").map((part, index2) => index2 ? html2`/<wbr />${part}` : part);
+  return path.split("/").map((part2, index2) => index2 ? html2`/<wbr />${part2}` : part2);
 }
 function requestName(item) {
   return `${item.askerId}/${item.id}`;
@@ -33404,6 +33405,444 @@ function homePage(store) {
   };
 }
 
+// plugin/src/ui/design.ts
+function tokensOf(css) {
+  const start = css.indexOf(":root {");
+  const block2 = css.slice(start, css.indexOf("\n}", start));
+  return [...block2.matchAll(/^\t(--[a-z0-9-]+): (.+);$/gm)].map(([, name2, value2]) => ({ name: name2, value: value2 }));
+}
+function modes(value2) {
+  const both = /^light-dark\((.+), (.+)\)$/.exec(value2);
+  return both ? [both[1], both[2]] : [value2, value2];
+}
+function section(id2, title2, intro, body) {
+  return html2`<section class="ds-sec" id="${id2}" aria-labelledby="${id2}-h">
+		<h2 class="sp-sec" id="${id2}-h">${title2}</h2>
+		<p class="sp-sub">${intro}</p>
+		${body}
+	</section>`;
+}
+function tokenTable(tokens, sample, columns2 = ["Token", "Sample", "Value"]) {
+  return html2`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					${columns2.map((column) => html2`<th scope="col">${column}</th>`)}
+				</tr>
+			</thead>
+			<tbody>
+				${tokens.map(
+    (token) => html2`<tr>
+							<td><code>${token.name}</code></td>
+							<td>${sample(token)}</td>
+							<td><code>${token.value}</code></td>
+						</tr>`
+  )}
+			</tbody>
+		</table>
+	</div>`;
+}
+function colors(tokens) {
+  const list3 = tokens.filter((token) => token.value.startsWith("light-dark("));
+  return html2`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">Token</th>
+					<th scope="col">Sample</th>
+					<th scope="col">Light</th>
+					<th scope="col">Dark</th>
+				</tr>
+			</thead>
+			<tbody>
+				${list3.map((token) => {
+    const [light, dark] = modes(token.value);
+    return html2`<tr>
+						<td><code>${token.name}</code></td>
+						<td><span class="ds-swatch" data-style="background: var(${token.name})"></span></td>
+						<td><code>${light}</code></td>
+						<td><code>${dark}</code></td>
+					</tr>`;
+  })}
+			</tbody>
+		</table>
+	</div>`;
+}
+function pick(tokens, prefix) {
+  return tokens.filter((token) => token.name.startsWith(prefix));
+}
+function foundations(tokens) {
+  const type = pick(tokens, "--type-");
+  const space = pick(tokens, "--sp-");
+  const size2 = pick(tokens, "--size-");
+  const shape = tokens.filter(
+    (token) => [
+      "--radius",
+      "--radius-round",
+      "--line-w",
+      "--mark-w",
+      "--line",
+      "--focus-ring",
+      "--sep",
+      "--mark-inset"
+    ].includes(token.name)
+  );
+  const motion = pick(tokens, "--motion-");
+  return html2`
+		${section(
+    "color",
+    "Color",
+    "One value per mode. The browser picks light or dark from the color scheme. The theme button in the top bar switches it.",
+    colors(tokens)
+  )}
+		${section(
+    "type",
+    "Type",
+    "Each style is a full font shorthand. Line heights are multiples of 4px. Labels are uppercase with the track token.",
+    tokenTable(
+      type,
+      (token) => html2`<span class="ds-type" data-style="font: var(${token.name})">Verify checkout 0123</span>`
+    )
+  )}
+		${section(
+    "space",
+    "Spacing",
+    "The unit is 4px. Padding, margin and gap use only these steps.",
+    tokenTable(space, (token) => html2`<span class="ds-bar" data-style="width: var(${token.name})"></span>`)
+  )}
+		${section(
+    "size",
+    "Sizes",
+    "Fixed heights of controls and rows. Each is a multiple of 4px and includes its own border.",
+    tokenTable(
+      size2,
+      (token) => html2`<span
+						class="ds-box"
+						data-style="height: var(${token.name}); width: var(${token.name})"
+					></span>`
+    )
+  )}
+		${section(
+    "shape",
+    "Radius, lines and focus",
+    "Corners are nearly square. A line never adds to the size of a box: frames and separators draw inside it.",
+    tokenTable(shape, (token) => html2`<span class="ds-shape" data-token="${token.name}"></span>`)
+  )}
+		${section(
+    "motion",
+    "Motion",
+    "Motion is short and stops when the system asks for reduced motion.",
+    tokenTable(motion, () => html2`<span class="muted">—</span>`)
+  )}
+	`;
+}
+function grid() {
+  const cells = Array.from({ length: 12 }, (_, index2) => html2`<span>${index2 + 1}</span>`);
+  return section(
+    "grid",
+    "Grid",
+    "Turn on the overlay to see the columns and the 4px rows on every page of this UI.",
+    html2`<dl class="sp-facts">
+				<dt>Unit</dt>
+				<dd>
+					4px. Every space, size and line height is a multiple of it. Only 1px lines and 2px marks are
+					smaller.
+				</dd>
+				<dt>Columns</dt>
+				<dd>12 above 1100px, 8 from 761px to 1100px, 4 at 760px and below.</dd>
+				<dt>Gutter</dt>
+				<dd>16px between columns.</dd>
+				<dt>Margin</dt>
+				<dd>16px at both sides of the page, or the safe area if it is larger.</dd>
+				<dt>Plan nav</dt>
+				<dd>Columns 1 to 3. The page content takes columns 4 to 12.</dd>
+				<dt>Drawer</dt>
+				<dd>
+					Columns 8 to 12 and the right margin. The page content stops at column 7. At 1100px and below the
+					drawer covers the page.
+				</dd>
+				<dt>Rows</dt>
+				<dd>
+					Boxes stack on the 4px rows. Lines draw inside boxes, so a 1px frame does not move the next box.
+				</dd>
+				<dt>Inset</dt>
+				<dd>
+					Text in a framed box starts 16px from the frame. Rows have 12px vertical padding, or a fixed height.
+				</dd>
+				<dt>Breakpoints</dt>
+				<dd>
+					400px small phone, 760px phone, 1100px tablet, 1240px narrow desktop. Content width: 560px, 976px,
+					1100px.
+				</dd>
+			</dl>
+			<div class="ds-cols" aria-hidden="true">${cells}</div>`
+  );
+}
+function states(items) {
+  return html2`<div class="ds-states">
+		${items.map(([label, sample]) => html2`<div><span class="lab">${label}</span>${sample}</div>`)}
+	</div>`;
+}
+function part(title2, body) {
+  return html2`<div class="panel ds-part">
+		<h2>${title2}</h2>
+		${body}
+	</div>`;
+}
+function button(look, label, extra = "") {
+  return html2`<button type="button" class="sp-btn ${look}" ${extra}>${label}</button>`;
+}
+function listRows() {
+  const row2 = (look, tag, id2, title2, meta2) => html2`<div class="sp-row ${look}" role="listitem">
+			<label class="sp-c-cb"><input type="checkbox" tabindex="-1" aria-label="Select ${id2}" /></label>
+			<span class="sp-c-tag">${tag}</span>
+			<span class="sp-c-id">${id2}</span>
+			<a class="sp-c-title ell" tabindex="-1" href="#components">${title2}</a>
+			<span class="sp-c-meta ell">${meta2}</span>
+		</div>`;
+  return html2`<div class="sp-list" role="list" aria-label="Example items">
+		<div class="sp-gh" role="presentation">Tests <span>3</span></div>
+		${row2("", pill("passed"), "T1", "Standard order total", "default")}
+		${row2("is-hover", pill("failed"), "T2", "Promotion replaces loyalty", "hover")}
+		${row2("sel", pill("inconclusive"), "T4", "Promotion banner", "selected")}
+		${row2("hl", pill("high"), "F1", "The promotion stacks with the loyalty credit", "highlighted (keyboard)")}
+		${row2("cur", pill("open"), "G4", "Must the banner text wrap?", "current")}
+		${row2("dim", pill("answered"), "Q2", "Answered question", "dim")}
+	</div>`;
+}
+function tile2(look) {
+  return html2`<div class="sp-ct ${look}" role="listitem">
+		<div class="sp-ct-main">
+			<div class="sp-ct-head">
+				<span class="sp-c-id">checkout</span>${pill("needs_answers")}
+				<span class="sp-ct-when ell">shop-local@1 · waits on oracle</span>
+			</div>
+			<h2 class="sp-ct-title ell">Verify checkout totals and refund eligibility.</h2>
+			<p class="sp-ct-verdict"><b>Build fixture-build-2: 1 failed.</b> 2 questions open.</p>
+			<p class="sp-ct-cost">Total cost Unknown</p>
+		</div>
+		<div class="sp-nums">
+			<div><b>1</b><span>defects</span></div>
+			<div><b>0</b><span>to look at</span></div>
+			<div><b class="att">2</b><span>questions</span></div>
+			<div><b>0</b><span>handed over</span></div>
+		</div>
+		<div class="sp-ct-opts">
+			<a class="sp-btn" href="#components"><kbd>1</kbd><span>Answer 1 blocking question</span></a>
+		</div>
+	</div>`;
+}
+function nav() {
+  const row2 = (look, id2, text2, end) => html2`<a class="sp-nrow ${look}" role="treeitem" href="#components"
+			><span class="sp-nid">${id2}</span><span class="sp-ntx ell">${text2}</span>${end}</a
+		>`;
+  return html2`<nav class="sp-nav ds-nav" aria-label="Example plan nav">
+		<div class="sp-nlist" role="tree">
+			${row2("", "", "Needs you", html2`<span class="sp-ncount att">3</span>`)}
+			${row2("on", "", "All items", html2`<span class="sp-ncount">3</span>`)}
+			${row2("is-hover", "", "Plan chats", "")}
+			<div class="sp-sep" aria-hidden="true"></div>
+			${row2("hl", "Out", "Outside the rules", html2`<span class="sp-nmarks">${icon("passed")}${icon("failed")}</span>`)}
+			${row2("", "R1", "Rule one", html2`<span class="sp-nmarks">${icon("inconclusive")}${icon(null)}</span>`)}
+		</div>
+	</nav>`;
+}
+function components() {
+  const statuses = ["passed", "failed", "inconclusive", "needs_approval", "running", "blocked", "critical"];
+  return section(
+    "components",
+    "Components",
+    "Each sample is the real markup and the real style sheet. Forced states copy the real :hover, :focus-visible and :active rules.",
+    html2`<div class="ds-parts">
+				${part(
+      "Button",
+      html2`${states([
+        ["Default", button("", "Open the plan")],
+        ["Hover", button("is-hover", "Open the plan")],
+        ["Focus", button("is-focus", "Open the plan")],
+        ["Active", button("is-active", "Open the plan")],
+        ["Disabled", button("", "Open the plan", "disabled")]
+      ])}
+					${states([
+        ["Primary", button("pri", "Accept run-7")],
+        ["Hover", button("pri is-hover", "Accept run-7")],
+        ["Focus", button("pri is-focus", "Accept run-7")],
+        ["Active", button("pri is-active", "Accept run-7")],
+        [
+          "With key",
+          html2`<a class="sp-btn" href="#components"><kbd>1</kbd><span>New change</span></a>`
+        ]
+      ])}`
+    )}
+				${part(
+      "Status pill",
+      states(statuses.map((status) => [status.replace("_", " "), pill(status)]))
+    )}
+				${part(
+      "Result mark",
+      states([
+        ["Pass", icon("passed")],
+        ["Fail", icon("failed")],
+        ["Question", icon("inconclusive")],
+        ["Running", icon("running")],
+        ["None", icon(null)]
+      ])
+    )}
+				${part(
+      "Key and tag",
+      states([
+        ["Key", html2`<kbd>?</kbd>`],
+        ["Tag", html2`<span class="tag">shop-local@1</span>`],
+        [
+          "Glyphs",
+          html2`<span>${glyph("\u2713")} ${glyph("\u2717")} ${glyph("\u25CF")} ${glyph("\u25CB")} ${glyph("\u25D0")}</span>`
+        ]
+      ])
+    )}
+				${part(
+      "Field",
+      html2`<div class="field-group">
+							<label for="ds-text">Name <span class="req">*</span></label>
+							<input id="ds-text" type="text" placeholder="qa-lead" />
+							<p class="help">Checkmate records it with each decision.</p>
+						</div>
+						<div class="field-group">
+							<label for="ds-focus">Focus</label>
+							<input id="ds-focus" class="is-focus" type="text" value="Focused field" />
+						</div>
+						<div class="field-group">
+							<label for="ds-read">Read only</label>
+							<input id="ds-read" type="text" value="sha256 c388…a71b" readonly />
+						</div>
+						<div class="field-group">
+							<label for="ds-area">Rationale</label>
+							<textarea id="ds-area" placeholder="Why do you decide this?"></textarea>
+							<p class="form-error" role="alert">Enter a rationale.</p>
+						</div>
+						<div class="field-group">
+							<label for="ds-select">Model</label>
+							<select id="ds-select">
+								<option>Default</option>
+								<option>Other</option>
+							</select>
+						</div>
+						<fieldset>
+							<legend>Choice</legend>
+							<div class="seg">
+								<label><input type="radio" name="ds-seg" checked /> Clarify</label>
+								<label><input type="radio" name="ds-seg" /> Accept</label>
+								<label><input type="radio" name="ds-seg" disabled /> Defer</label>
+							</div>
+						</fieldset>
+						<label class="check"><input type="checkbox" checked /> Block release</label>`
+    )}
+				${part(
+      "Banner",
+      html2`${banner("info", "Checkmate made a new plan revision.")}
+					${banner("warn", "One question blocks testing.")}
+					${banner("fail", "The run stopped with an error.")}`
+    )}
+				${part(
+      "Empty, loading and error",
+      html2`${emptyNotice("No chats yet.", "Start a new chat to ask Checkmate.")}
+					${states([
+        ["Loading", html2`<span class="who"><span class="live">Connecting</span></span>`],
+        ["Live", html2`<span class="who"><span class="live">● Live</span></span>`],
+        ["Lost", html2`<span class="who"><span class="live down">Reconnecting</span></span>`]
+      ])}`
+    )}
+				${part(
+      "Facts",
+      html2`<dl class="sp-facts">
+						<dt>Completion</dt>
+						<dd>completed</dd>
+						<dt>Coverage</dt>
+						<dd>partial</dd>
+					</dl>`
+    )}
+				${part(
+      "Fold and menu",
+      html2`<details class="fold" open>
+							<summary><h2>Rules of the plan</h2></summary>
+							<div class="fold-b">Four rules. Each rule has checks.</div>
+						</details>
+						${downloads("Download report", "#", "Pick a format.")}`
+    )}
+				${part(
+      "Path",
+      crumbBar([
+        ["Runs", "#"],
+        ["checkout@2", "#"],
+        ["run-7", null]
+      ])
+    )}
+			</div>
+			<h3 class="ds-h">List</h3>
+			${listRows()}
+			<h3 class="ds-h">Plan tile</h3>
+			<div class="sp-home" role="list" aria-label="Example plans">
+				${tile2("")} ${tile2("is-hover")} ${tile2("hl")}
+			</div>
+			<h3 class="ds-h">Plan nav</h3>
+			${nav()}
+			<h3 class="ds-h">Table</h3>
+			<div class="scroll">
+				<table>
+					<thead>
+						<tr>
+							<th scope="col">Run</th>
+							<th scope="col">State</th>
+							<th scope="col">Cost</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<td>run-7</td>
+							<td>${pill("pending", "awaiting acceptance")}</td>
+							<td>Unknown</td>
+						</tr>
+						<tr>
+							<td>run-6</td>
+							<td>${pill("approved", "accepted")}</td>
+							<td>$0.42</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>`
+  );
+}
+function designPage(css) {
+  const tokens = tokensOf(css);
+  return {
+    title: "Design system",
+    section: null,
+    subjects: [],
+    script: "/assets/design.js",
+    body: html2`<div class="ds" data-design>
+			${heading(
+      "Design system",
+      "The reference for this UI. It reads the tokens from the style sheet and shows the real components.",
+      html2`<div class="btns">
+					<button type="button" class="sp-btn" data-grid-toggle aria-pressed="false">Grid overlay</button>
+				</div>`
+    )}
+			<nav class="jump" aria-label="Sections">
+				${[
+      ["grid", "Grid"],
+      ["color", "Color"],
+      ["type", "Type"],
+      ["space", "Spacing"],
+      ["size", "Sizes"],
+      ["shape", "Lines"],
+      ["motion", "Motion"],
+      ["components", "Components"]
+    ].map(([id2, label]) => html2`<a href="#${id2}">${label}</a>`)}
+			</nav>
+			${grid()} ${foundations(tokens)} ${components()}
+		</div>`
+  };
+}
+
 // plugin/src/ui/start.ts
 var levelNotes2 = {
   smoke: "1 tester, no verifier",
@@ -36143,7 +36582,7 @@ function readStreamLine(line, harness = "claude") {
     if (event2.type === "agent_end" && !event2.willRetry) {
       const message2 = event2.messages?.at(-1);
       const error = message2?.role !== "assistant" || message2.stopReason !== "stop";
-      const reply = message2?.content?.flatMap((part) => part.type === "text" && part.text ? [part.text] : []).join("") ?? "";
+      const reply = message2?.content?.flatMap((part2) => part2.type === "text" && part2.text ? [part2.text] : []).join("") ?? "";
       return [
         {
           kind: "result",
@@ -36876,23 +37315,23 @@ Url.prototype.parse = function(url, slashesDenoteHost) {
     if (!ipv6Hostname) {
       const hostparts = this.hostname.split(/\./);
       for (let i = 0, l = hostparts.length; i < l; i++) {
-        const part = hostparts[i];
-        if (!part) {
+        const part2 = hostparts[i];
+        if (!part2) {
           continue;
         }
-        if (!part.match(hostnamePartPattern)) {
+        if (!part2.match(hostnamePartPattern)) {
           let newpart = "";
-          for (let j = 0, k = part.length; j < k; j++) {
-            if (part.charCodeAt(j) > 127) {
+          for (let j = 0, k = part2.length; j < k; j++) {
+            if (part2.charCodeAt(j) > 127) {
               newpart += "x";
             } else {
-              newpart += part[j];
+              newpart += part2[j];
             }
           }
           if (!newpart.match(hostnamePartPattern)) {
             const validParts = hostparts.slice(0, i);
             const notHost = hostparts.slice(i + 1);
-            const bit = part.match(hostnamePartStart);
+            const bit = part2.match(hostnamePartStart);
             if (bit) {
               validParts.push(bit[1]);
               notHost.unshift(bit[2]);
@@ -41509,8 +41948,8 @@ var MarkdownIt = class {
     } else p = presets;
     if (!p) throw new Error("Wrong `markdown-it` preset, can't be empty");
     if (p.options) this.options = { ...p.options };
-    const components = p.components;
-    if (components) {
+    const components2 = p.components;
+    if (components2) {
       var _components$inline;
       [
         "core",
@@ -41518,10 +41957,10 @@ var MarkdownIt = class {
         "inline"
       ].forEach((name2) => {
         var _components$name;
-        const rules = (_components$name = components[name2]) === null || _components$name === void 0 ? void 0 : _components$name.rules;
+        const rules = (_components$name = components2[name2]) === null || _components$name === void 0 ? void 0 : _components$name.rules;
         if (rules) this[name2].ruler.enableOnly(rules);
       });
-      const rules2 = (_components$inline = components.inline) === null || _components$inline === void 0 ? void 0 : _components$inline.rules2;
+      const rules2 = (_components$inline = components2.inline) === null || _components$inline === void 0 ? void 0 : _components$inline.rules2;
       if (rules2) this.inline.ruler2.enableOnly(rules2);
     }
     return this;
@@ -41718,8 +42157,8 @@ function screenContext(store, address, chat = false) {
       return { planId: null, record: null, page: url.pathname === "/runs" ? "runs" : "activity" };
     const run2 = /^\/(runs|explorations)\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})$/.exec(url.pathname);
     if (run2) {
-      const [, section, id2] = run2;
-      const record2 = section === "runs" ? one(
+      const [, section2, id2] = run2;
+      const record2 = section2 === "runs" ? one(
         store,
         "SELECT plan_id, plan_revision FROM runs WHERE run_id = ?",
         id2
@@ -41730,7 +42169,7 @@ function screenContext(store, address, chat = false) {
       );
       return {
         planId: record2?.plan_id ?? null,
-        record: record2 ? { kind: section === "runs" ? "run" : "exploration", id: id2 } : null,
+        record: record2 ? { kind: section2 === "runs" ? "run" : "exploration", id: id2 } : null,
         ...record2?.plan_revision ? { planRevision: record2.plan_revision } : {}
       };
     }
@@ -42323,6 +42762,7 @@ function assets() {
   return {
     "/assets/style.css": { type: "text/css; charset=utf-8", body: read("style.css") },
     "/assets/client.js": { type: "text/javascript; charset=utf-8", body: read("client.js") },
+    "/assets/design.js": { type: "text/javascript; charset=utf-8", body: read("design.js") },
     "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
     font: (name2) => readFileSync13(`${fonts}${name2}.woff2`)
   };
@@ -42345,11 +42785,11 @@ function redirect(res, location, cookies = []) {
 }
 function parseCookies(header2) {
   const cookies = {};
-  for (const part of (header2 ?? "").split(";")) {
-    const index2 = part.indexOf("=");
+  for (const part2 of (header2 ?? "").split(";")) {
+    const index2 = part2.indexOf("=");
     if (index2 < 0) continue;
     try {
-      cookies[part.slice(0, index2).trim()] = decodeURIComponent(part.slice(index2 + 1).trim());
+      cookies[part2.slice(0, index2).trim()] = decodeURIComponent(part2.slice(index2 + 1).trim());
     } catch {
     }
   }
@@ -42403,7 +42843,7 @@ function plainMessage(error) {
   return schema[1].split(", ").map((problem) => {
     const [path, rule] = problem.split(/ must (.*)/);
     const place = path.split("/").slice(1).map(
-      (part) => /^\d+$/.test(part) ? String(Number(part) + 1) : part.replace(/([a-z])([A-Z])/g, "$1 $2")
+      (part2) => /^\d+$/.test(part2) ? String(Number(part2) + 1) : part2.replace(/([a-z])([A-Z])/g, "$1 $2")
     ).join(" ");
     const what = place ? place[0].toUpperCase() + place.slice(1) : "The form";
     if (/fewer than 1 characters|fewer than 1 items/.test(rule)) return `${what} cannot be empty.`;
@@ -42659,6 +43099,7 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/claims") return redirect(request2.res, oldItem(searchParams, "all"));
     if (pathname === "/runs") return render(request2, runsPage(store, searchParams));
     if (pathname === "/log") return render(request2, logPage(store, searchParams));
+    if (pathname === "/design") return render(request2, designPage(files2["/assets/style.css"].body.toString()));
     if (pathname === "/activity")
       return render(request2, activityPage(store, shown2, searchParams, { build: defaultBuild(store.workspace) }));
     if (pathname === "/permissions") return firstRequest(request2);
@@ -43472,7 +43913,7 @@ data: ${matched.join(",") || "*"}
     const refuse5 = (message2) => actionRefusal(request2, back, message2);
     const decision = form.get("decision");
     const reason = form.get("reason")?.trim() ?? "";
-    const named = form.getAll("pick").map((pick) => /^permission:[^:]+:(.+)\/(P[1-9][0-9]{0,8})$/.exec(pick));
+    const named = form.getAll("pick").map((pick2) => /^permission:[^:]+:(.+)\/(P[1-9][0-9]{0,8})$/.exec(pick2));
     if (!actor) return refuse5("Enter your name. Checkmate records it with the answers.");
     if (decision !== "allow" && decision !== "deny") return refuse5("Choose Allow once or Deny.");
     if (decision === "deny" && !reason) return refuse5("A denial needs a reason. Write it, then deny again.");

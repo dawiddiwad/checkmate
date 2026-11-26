@@ -111,6 +111,7 @@ import { htmlType, imageTypes } from './evidence.ts'
 import { emptyState } from './forms.ts'
 import { logPage, runsPage } from './lists.ts'
 import { homePage } from './home.ts'
+import { designPage } from './design.ts'
 import { assumedRows, firstRunPage, newChangePage } from './start.ts'
 import { activityPage, claudeMissing, runningCount } from './activity.ts'
 import { reviewHref, reviewOf, reviewPage } from './review.ts'
@@ -217,6 +218,7 @@ function assets() {
 	return {
 		'/assets/style.css': { type: 'text/css; charset=utf-8', body: read('style.css') },
 		'/assets/client.js': { type: 'text/javascript; charset=utf-8', body: read('client.js') },
+		'/assets/design.js': { type: 'text/javascript; charset=utf-8', body: read('design.js') },
 		'/assets/favicon.svg': { type: 'image/svg+xml', body: read('favicon.svg') },
 		font: (name: string) => readFileSync(`${fonts}${name}.woff2`),
 	}
@@ -610,6 +612,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/claims') return redirect(request.res, oldItem(searchParams, 'all'))
 		if (pathname === '/runs') return render(request, runsPage(store, searchParams))
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
+		if (pathname === '/design') return render(request, designPage(files['/assets/style.css'].body.toString()))
 		if (pathname === '/activity')
 			return render(request, activityPage(store, shown, searchParams, { build: defaultBuild(store.workspace) }))
 		if (pathname === '/permissions') return firstRequest(request)

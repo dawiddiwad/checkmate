@@ -93,6 +93,19 @@ Use the host commands to test the conversation. The agent runs the bundled CLI a
 
 > **Agent only:** Read [AGENTS.md](../AGENTS.md) and [development procedures](../.agents/wiki/development-procedures.md) before changing code or tests. They link to the coding standards, architecture, and task-specific skills. Runtime instructions for delegated tests live in the [test skill template](../scripts/templates/plugin/skills/test/SKILL.md) and [stage rules](../plugin/references/workflow.md). These files govern agent prompts; do not replace them with this guide.
 
+## Review UI design system
+
+The design reference of the review UI is the page `/design` of `checkmate ui`. It reads the tokens from `plugin/src/ui/assets/style.css` and shows the real components in each state. Use the theme button to see light and dark. Use the "Grid overlay" button to see the columns and the 4px rows.
+
+Obey these rules when you change the UI:
+
+1. Put each color, type style, space, size, line, and motion value in the `:root` token block of `style.css`.
+2. Use only tokens in the other rules. Media queries and component track widths are the only literal values. Make each track width a multiple of 4px.
+3. Put page blocks on the 12-column grid. The plan nav takes columns 1 to 3. The drawer takes columns 8 to 12.
+4. Draw 1px lines inside boxes, so that the boxes stay on the 4px rows.
+
+`test/e2e/design.test.ts` checks the token rule, the grid, and the reference page.
+
 ## Documentation media
 
 Run `npm run build`. Set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/capture-docs-ui.ts` to capture the current review UI with disposable sample records. Set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/render-onboarding.ts` to rebuild the onboarding GIF. It needs a full FFmpeg on `PATH`, or the path to one in `FFMPEG`, for example the `ffmpeg-static` binary installed outside the repository. It renders `docs/media/onboarding.html`: the factory storyboard. The GIF ends after the factory part and has no record counters. Update the storyboard when the factory flow changes. Set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/render-review-ui.ts` to rebuild the review UI GIF, `docs/media/ui/review.gif`. It records the real review UI in Chromium on the `seedShowcase` records of `scripts/ui-demo.ts`. It needs FFmpeg on `PATH` or in `FFMPEG`. Its chat scene asks a live Claude Code model, so Claude Code must be on `PATH`; the turn costs a few cents. The recorder fails when a decision, the evidence viewer, or the saved chat change does not show.

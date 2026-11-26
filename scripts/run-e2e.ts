@@ -13,7 +13,12 @@ if (pi.error || pi.status !== 0) throw Error('Install the Pi CLI and ensure pi -
 
 const build = spawnSync(process.execPath, ['../scripts/build-cli.ts'], { cwd: 'cli', stdio: 'inherit' })
 if (build.status !== 0) process.exit(build.status ?? 1)
-const files = ['test/e2e/factory.test.ts', 'test/e2e/local.test.ts', 'test/e2e/oracle-ui.test.ts']
+const files = [
+	'test/e2e/factory.test.ts',
+	'test/e2e/local.test.ts',
+	'test/e2e/oracle-ui.test.ts',
+	'test/e2e/design.test.ts',
+]
 const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...files], {
 	encoding: 'utf8',
 	maxBuffer: 32 * 1024 * 1024,
@@ -25,8 +30,8 @@ if (result.status !== 0) process.exit(result.status ?? 1)
 const output = result.stdout ?? ''
 const count = Number(/^# tests (\d+)$/m.exec(output)?.[1])
 const skipped = Number(/^# skipped (\d+)$/m.exec(output)?.[1])
-if (count !== 158 || skipped !== 0)
-	throw Error(`Expected 158 executed cases with no skips; got ${count} cases and ${skipped} skips.`)
+if (count !== 161 || skipped !== 0)
+	throw Error(`Expected 161 executed cases with no skips; got ${count} cases and ${skipped} skips.`)
 const catalog = JSON.parse(readFileSync('test/e2e/scenarios.json', 'utf8')) as Array<{ test?: string }>
 if (catalog.length !== 43) throw Error(`Expected 43 proposal scenarios; got ${catalog.length}.`)
 for (const name of new Set(catalog.flatMap((scenario) => (scenario.test ? [scenario.test] : [])))) {

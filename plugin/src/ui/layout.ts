@@ -40,6 +40,7 @@ export type Page = {
 	address?: string
 	viewer?: boolean
 	drawer?: boolean
+	script?: string
 }
 
 const themeIcon = html`<svg viewBox="0 0 16 16" aria-hidden="true">
@@ -252,6 +253,7 @@ export function layout(context: Context, page: Page) {
 				/>
 				<link rel="stylesheet" href="/assets/style.css" />
 				<script src="/assets/client.js" defer></script>
+				${page.script ? html`<script src="${page.script}" defer></script>` : ''}
 			</head>
 			<body
 				data-subjects="${page.subjects.join(',')}"

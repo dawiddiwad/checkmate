@@ -56,12 +56,12 @@ function miniMap(review: Review) {
 function nextStep(review: Review) {
 	const verdict = verdictLine(review)
 	const href = (view: string) => reviewHref(review.planId, view, '&focus=list')
-	if (verdict.blocking) return [`Answer ${plural(verdict.blocking, 'blocking question')}`, href('needs')]
-	if (verdict.findings) return [`Look at ${plural(verdict.findings, 'finding')}`, href('needs')]
-	if (verdict.open) return [`Answer ${plural(verdict.open, 'question')}`, href('needs')]
-	if (review.items.some((item) => item.needs)) return ['Decide what waits', href('needs')]
-	if (review.running) return ['Watch the testers', `/explorations/${review.running.explorationId}`]
-	return ['Open the plan', href('all')]
+	if (verdict.blocking) return [`Answer ${plural(verdict.blocking, 'blocking question')}`, href('needs'), true] as const
+	if (verdict.findings) return [`Look at ${plural(verdict.findings, 'finding')}`, href('needs'), false] as const
+	if (verdict.open) return [`Answer ${plural(verdict.open, 'question')}`, href('needs'), false] as const
+	if (review.items.some((item) => item.needs)) return ['Decide what waits', href('needs'), false] as const
+	if (review.running) return ['Watch the testers', `/explorations/${review.running.explorationId}`, false] as const
+	return ['Open the plan', href('all'), false] as const
 }
 
 const roleWords: Record<string, string> = {
@@ -77,7 +77,7 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 	const verdict = verdictLine(review)
 	const handed = review.items.filter((item) => item.kind === 'defect' && item.claim?.handoff).length
 	const latest = review.map.builds.at(-1)
-	const [label, href] = nextStep(review)
+	const [label, href, blocks] = nextStep(review)
 	const last = review.explorations.at(-1)
 	const ended = !review.running && last && ['stopped', 'interrupted'].includes(last.state) ? last : null
 	const nums: Array<[number, string, boolean]> = [
@@ -133,11 +133,11 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 		${miniMap(review)}
 		<div class="sp-nums">
 			${nums.map(
-				([value, name, hot]) => html`<div><b class="${hot ? 'att' : ''}">${value}</b><span>${name}</span></div>`
+				([value, name, hot]) => html`<div><b class="${hot ? 'att' : value ? '' : 'zero'}">${value}</b><span>${name}</span></div>`
 			)}
 		</div>
 		<div class="sp-ct-opts">
-			<a class="sp-btn" href="${href}" data-option><kbd>1</kbd><span>${label}</span></a>
+			<a class="sp-btn${blocks ? ' you' : ''}" href="${href}" data-option><kbd>1</kbd><span>${label}</span></a>
 		</div>
 	</div>`
 }

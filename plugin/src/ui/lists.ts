@@ -169,8 +169,8 @@ function filterBar(spec: ListSpec, state: ListState) {
 				String(state.size)
 			)}
 		</select>
-		<button class="btn" data-list-submit>Filter</button>
-		<a class="btn ghost" href="${spec.path}" data-list-clear>Clear</a>
+		<button class="sp-btn" data-list-submit>Filter</button>
+		<a class="sp-btn ghost" href="${spec.path}" data-list-clear>Clear</a>
 	</form>`
 }
 
@@ -188,8 +188,8 @@ export function pager(spec: ListSpec, state: ListState, total: number) {
 	if (last === 1) return ''
 	const link = (page: number, label: string, rel: string) =>
 		page === state.page || page < 1 || page > last
-			? html`<span class="btn small" aria-disabled="true">${label}</span>`
-			: html`<a class="btn small" href="${listHref(spec, state, { page })}" rel="${rel}" data-list-link
+			? html`<span class="sp-btn small" aria-disabled="true">${label}</span>`
+			: html`<a class="sp-btn small" href="${listHref(spec, state, { page })}" rel="${rel}" data-list-link
 					>${label}</a
 				>`
 	return html`<nav class="pager" aria-label="Pages">

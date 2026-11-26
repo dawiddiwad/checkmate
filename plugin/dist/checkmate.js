@@ -592,12 +592,12 @@ var decisionColumns = [
   "actor",
   "operation_id"
 ];
-function updateTrigger(table2) {
-  if (table2 === "decisions")
+function updateTrigger(table3) {
+  if (table3 === "decisions")
     return `CREATE TRIGGER decisions_update BEFORE UPDATE ON decisions
 	WHEN OLD.applied_revision IS NOT NULL OR NEW.applied_revision IS NULL OR ${decisionColumns.map((column) => `NEW.${column} IS NOT OLD.${column}`).join(" OR ")}
 	BEGIN SELECT RAISE(ABORT, 'Decisions are immutable. Only applied_revision can change, once, from NULL'); END;`;
-  if (table2 === "plan_revisions")
+  if (table3 === "plan_revisions")
     return `CREATE TRIGGER plan_revisions_update BEFORE UPDATE ON plan_revisions
 	WHEN NEW.plan_id IS NOT OLD.plan_id OR NEW.revision IS NOT OLD.revision
 		OR NEW.previous_revision IS NOT OLD.previous_revision
@@ -606,13 +606,13 @@ function updateTrigger(table2) {
 		OR EXISTS (SELECT 1 FROM runs WHERE plan_id = OLD.plan_id AND plan_revision = OLD.revision)
 		OR EXISTS (SELECT 1 FROM plan_revisions WHERE plan_id = OLD.plan_id AND revision > OLD.revision)
 	BEGIN SELECT RAISE(ABORT, 'Rows of plan_revisions are immutable once approved, run, or revised'); END;`;
-  return `CREATE TRIGGER ${table2}_update BEFORE UPDATE ON ${table2}
-	BEGIN SELECT RAISE(ABORT, 'Rows of ${table2} are immutable'); END;`;
+  return `CREATE TRIGGER ${table3}_update BEFORE UPDATE ON ${table3}
+	BEGIN SELECT RAISE(ABORT, 'Rows of ${table3} are immutable'); END;`;
 }
 var triggersOf = (ddl) => tableNamesOf(ddl).map(
-  (table2) => `${updateTrigger(table2)}
-CREATE TRIGGER ${table2}_delete BEFORE DELETE ON ${table2}
-	BEGIN SELECT RAISE(ABORT, 'Rows of ${table2} are immutable'); END;`
+  (table3) => `${updateTrigger(table3)}
+CREATE TRIGGER ${table3}_delete BEFORE DELETE ON ${table3}
+	BEGIN SELECT RAISE(ABORT, 'Rows of ${table3} are immutable'); END;`
 ).join("\n");
 function completed(subject, data = {}) {
   return { status: "completed", subject, reasons: [], data };
@@ -11866,7 +11866,7 @@ function piResult(output, error, status, signal) {
   else if (final.stopReason === "length") failure = ["operational_error", "pi reached the output token limit."];
   else if (final.stopReason !== "stop") failure = ["operational_error", "pi did not finish the assistant turn."];
   const tail = failure ? stderr : [];
-  const result = Array.isArray(final?.content) ? final.content.flatMap((part2) => part2?.type === "text" && typeof part2.text === "string" ? [part2.text] : []).join("") : void 0;
+  const result = Array.isArray(final?.content) ? final.content.flatMap((part) => part?.type === "text" && typeof part.text === "string" ? [part.text] : []).join("") : void 0;
   return {
     failure,
     ...warnings.size ? { warnings: [...warnings] } : {},
@@ -14608,7 +14608,7 @@ function pageOnlyStateChange(workspace2, test) {
 var maxRequirementsPerTest = 3;
 function requiredFieldCount(text2) {
   const list3 = text2.match(/\(([^)]*)\)/)?.[1];
-  if (list3) return list3.split(/,|\band\b/i).filter((part2) => part2.trim()).length;
+  if (list3) return list3.split(/,|\band\b/i).filter((part) => part.trim()).length;
   return text2.split(/\band\b/i).length;
 }
 function missingOmitChecks(test, requirements) {
@@ -15198,15 +15198,15 @@ function journal(store, planId, viewer2, keep = () => true) {
   );
   return { planId, viewer: viewer2, rows: rows2.filter(seen), entries, team, builds };
 }
-function lookup(state, actor) {
+function lookup(state2, actor) {
   const keys = /* @__PURE__ */ new Map();
-  for (const entry of state.team) keys.set(entry.id, entry);
-  state.entries.forEach((entry, index2) => keys.set(entry.id, state.team[index2]));
-  for (const entry of state.team) if (entry.actor === actor) keys.set(bareOf(entry.id), entry);
+  for (const entry of state2.team) keys.set(entry.id, entry);
+  state2.entries.forEach((entry, index2) => keys.set(entry.id, state2.team[index2]));
+  for (const entry of state2.team) if (entry.actor === actor) keys.set(bareOf(entry.id), entry);
   return keys;
 }
 var storedRef = (target, actor) => target.actor === actor ? bareOf(target.id) : target.id;
-var ofKind = (state, kind) => state.entries.filter((entry) => entry.kind === kind);
+var ofKind = (state2, kind) => state2.entries.filter((entry) => entry.kind === kind);
 function evidenceFile(store, name2) {
   requireWellFormed(name2 && !isAbsolute2(name2), `Evidence path must be relative to the workspace: ${name2}`);
   const real = realpathSync3(resolve2(store.workspace, name2));
@@ -15327,7 +15327,7 @@ function topLevelParts(text2) {
     }
   }
   found.push(text2.slice(start));
-  return found.map((part2) => part2.trim()).filter(Boolean);
+  return found.map((part) => part.trim()).filter(Boolean);
 }
 function readEntries(text2) {
   requireWellFormed(
@@ -15342,11 +15342,11 @@ function readEntries(text2) {
     const parts = topLevelParts(body.startsWith("[") && body.endsWith("]") ? body.slice(1, -1) : body);
     if (parts.length < 2)
       throw new Refusal("malformed", `Standard input is not valid JSON: ${error.message}`, jsonHint);
-    return parts.flatMap((part2) => {
+    return parts.flatMap((part) => {
       try {
-        return [JSON.parse(part2)].flat();
+        return [JSON.parse(part)].flat();
       } catch (error2) {
-        return [new Unreadable(error2.message, part2)];
+        return [new Unreadable(error2.message, part)];
       }
     });
   }
@@ -15358,7 +15358,7 @@ function entryList2(entries) {
     return wrapper.entries;
   return [entries];
 }
-function checkedEntry(store, raw, path, build, state, actor, cwd, rules, missing, recorded2) {
+function checkedEntry(store, raw, path, build, state2, actor, cwd, rules, missing, recorded2) {
   if (raw instanceof Unreadable)
     throw new EntryRefusal(
       path,
@@ -15399,7 +15399,7 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, rules, missing
     rules.unknown.push(entry.rule);
     entry.rule = outsideRule;
   }
-  const known = lookup(state, actor);
+  const known = lookup(state2, actor);
   const used = [...known.keys()];
   if (entry.supersedes !== void 0) {
     const earlier = known.get(entry.supersedes);
@@ -15425,7 +15425,7 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, rules, missing
       );
     }
   } else entry.id = unusedId(prefixes[entry.kind], used);
-  const everyone = () => lookup(journal(store, state.planId), actor);
+  const everyone = () => lookup(journal(store, state2.planId), actor);
   const refer = (id2, kinds3, field4, fix) => {
     const own = known.get(id2);
     const target = own && kinds3.includes(own.kind) ? own : kinds3.includes("defect") ? everyone().get(id2) : own;
@@ -15437,7 +15437,7 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, rules, missing
       { ...given, [field4]: fix }
     );
   };
-  const idsOf = (kinds3) => state.entries.filter((item) => kinds3.includes(item.kind)).map((item) => item.id).slice(-6).join("|") || `<${kinds3.join(" or ")} ID>`;
+  const idsOf = (kinds3) => state2.entries.filter((item) => kinds3.includes(item.kind)).map((item) => item.id).slice(-6).join("|") || `<${kinds3.join(" or ")} ID>`;
   const defectOrIssue = ["defect", "issue"];
   if (recorded2) {
     const unknown = (id2) => !known.has(id2) && !recorded2.replyIds.has(id2);
@@ -15518,7 +15518,7 @@ function logEntries(store, actor, input) {
       unknown: unknownRules ?? []
     };
     for (const [index2, raw] of list3.entries()) {
-      const state = journal(store, exploration2.plan_id, actor2);
+      const state2 = journal(store, exploration2.plan_id, actor2);
       let entry;
       try {
         entry = checkedEntry(
@@ -15526,7 +15526,7 @@ function logEntries(store, actor, input) {
           raw,
           `[${index2}]`,
           exploration2.build,
-          state,
+          state2,
           actor2,
           cwd ?? store.workspace,
           rules,
@@ -15587,12 +15587,12 @@ function freshIds(store, planId, actor, entries) {
   });
 }
 function recordText(store, planId, viewer2, build) {
-  const state = journal(store, planId, viewer2);
+  const state2 = journal(store, planId, viewer2);
   const earlier = planClaims(store, planId).filter((claim) => claim.open && claim.build !== build);
   const lines2 = [
     ...earlier.map((claim) => `open defect ${claim.id} (${claim.build}, ${claim.severity}): ${claim.title}`),
-    ...ofKind(state, "criterion").map((criterion) => `criterion ${criterion.id}: ${criterion.text}`),
-    ...ofKind(state, "defect").map(
+    ...ofKind(state2, "criterion").map((criterion) => `criterion ${criterion.id}: ${criterion.text}`),
+    ...ofKind(state2, "defect").map(
       (defect) => `defect ${defect.id} (${defect.build}, ${defect.severity}): ${defect.title}`
     ),
     ...planQuestions(store, planId).map(
@@ -15642,30 +15642,30 @@ function claimHandoffs(store, planId) {
     else handed.set(row2.claim_id, { to: row2.target, actor: row2.actor, at: row2.at });
   return handed;
 }
-function claimGroups(state) {
-  const defects = new Map(state.team.filter((entry) => entry.kind === "defect").map((entry) => [entry.id, entry]));
-  const recorded2 = state.team.filter((entry) => entry.kind === "issue");
+function claimGroups(state2) {
+  const defects = new Map(state2.team.filter((entry) => entry.kind === "defect").map((entry) => [entry.id, entry]));
+  const recorded2 = state2.team.filter((entry) => entry.kind === "issue");
   const grouped = new Set(recorded2.flatMap((issue) => issue.reports ?? []));
   return [
     ...recorded2.map((issue) => ({ issue, reports: (issue.reports ?? []).filter((id2) => defects.has(id2)) })),
     ...[...defects.values()].filter((defect) => !grouped.has(defect.id)).map((defect) => ({ issue: defect, reports: [defect.id] }))
   ].filter((group) => group.reports.length).map((group) => ({ ...group, found: group.reports.map((id2) => defects.get(id2)) }));
 }
-function claimList(state, decided = /* @__PURE__ */ new Map(), handed = /* @__PURE__ */ new Map()) {
-  const order = (build) => state.builds.indexOf(build ?? "");
-  return claimGroups(state).map(({ issue, reports, found }) => {
+function claimList(state2, decided = /* @__PURE__ */ new Map(), handed = /* @__PURE__ */ new Map()) {
+  const order = (build) => state2.builds.indexOf(build ?? "");
+  return claimGroups(state2).map(({ issue, reports, found }) => {
     const actors = [...new Set(found.map((defect) => defect.actor))];
     const names = [issue.id, ...reports];
-    const checks = state.team.filter(
+    const checks = state2.team.filter(
       (entry) => entry.kind === "observation" && !actors.includes(entry.actor) && names.some((name2) => entry.confirms === name2 || entry.refutes === name2)
     ).sort((a, b) => a.seq - b.seq);
     const checkOn = (build) => checks.filter((entry) => entry.build === build).at(-1);
     const confirms = (check) => names.includes(check.confirms ?? "");
     const best = found.reduce((top, defect) => evidenceScore(defect) > evidenceScore(top) ? defect : top);
     const first = Math.min(...found.map((defect) => order(defect.build)));
-    const firstCheck = checkOn(state.builds[first]);
+    const firstCheck = checkOn(state2.builds[first]);
     const verified = !firstCheck ? "none" : confirms(firstCheck) ? "confirmed" : "refuted";
-    const verdicts = state.team.filter(
+    const verdicts = state2.team.filter(
       (entry) => entry.kind === "verdict" && entry.result !== "not_retested" && names.includes(entry.defect ?? "")
     ).sort((a, b) => a.seq - b.seq);
     const statusOn = (build) => {
@@ -15683,7 +15683,7 @@ function claimList(state, decided = /* @__PURE__ */ new Map(), handed = /* @__PU
         basis: results.size === 1 ? "single" : "majority"
       };
     };
-    const retests2 = state.builds.slice(first + 1).map((build) => [build, statusOn(build)]);
+    const retests2 = state2.builds.slice(first + 1).map((build) => [build, statusOn(build)]);
     const latestRetest2 = retests2.findLast(([, on]) => on.status !== "no verdict")?.[1].status ?? null;
     const decision = decided.get(issue.id) ?? null;
     const confirmed = actors.length > 1 || verified === "confirmed";
@@ -15693,7 +15693,7 @@ function claimList(state, decided = /* @__PURE__ */ new Map(), handed = /* @__PU
       id: issue.id,
       title: issue.title,
       severity: issue.severity,
-      build: state.builds[first],
+      build: state2.builds[first],
       explorationId: issue.explorationId,
       expected: best.expected,
       actual: best.actual,
@@ -15726,10 +15726,10 @@ function planClaims(store, planId, keep) {
 var factoryStates = ["observed", "confirmed", "accepted"];
 var oracleStates = ["suspected", "unresolved"];
 function planQuestions(store, planId, keep) {
-  const state = journal(store, planId, void 0, keep);
-  const answers = state.team.filter((entry) => entry.kind === "answer");
-  const questions = new Map(state.team.filter((entry) => entry.kind === "question").map((entry) => [entry.id, entry]));
-  const topics = state.team.filter((entry) => entry.kind === "topic");
+  const state2 = journal(store, planId, void 0, keep);
+  const answers = state2.team.filter((entry) => entry.kind === "answer");
+  const questions = new Map(state2.team.filter((entry) => entry.kind === "question").map((entry) => [entry.id, entry]));
+  const topics = state2.team.filter((entry) => entry.kind === "topic");
   const grouped = new Set(topics.flatMap((topic) => topic.members ?? []));
   const groups = [
     ...topics.map((topic) => ({ head: topic, members: (topic.members ?? []).filter((id2) => questions.has(id2)) })),
@@ -15788,8 +15788,8 @@ function likeness(a, b) {
   if (overlap(wordsIn(stepText(a)), wordsIn(stepText(b))) >= someWords) return "some of the same words and steps";
   return void 0;
 }
-function unplacedMatches(state, claims, build, after = 0) {
-  const byId = new Map(state.team.map((entry) => [entry.id, entry]));
+function unplacedMatches(state2, claims, build, after = 0) {
+  const byId = new Map(state2.team.map((entry) => [entry.id, entry]));
   const single = claims.filter(
     (claim) => claim.build === build && claim.reports.length === 1 && claim.id === claim.reports[0] && byId.get(claim.id).seq > after
   );
@@ -15803,8 +15803,8 @@ function unplacedMatches(state, claims, build, after = 0) {
     return like.length ? [{ report: own.id, title: own.title, like }] : [];
   });
 }
-function mergeItems(state, build, claims = [], after = 0) {
-  const defects = state.team.filter((entry) => entry.kind === "defect" && entry.build === build && entry.seq > after);
+function mergeItems(state2, build, claims = [], after = 0) {
+  const defects = state2.team.filter((entry) => entry.kind === "defect" && entry.build === build && entry.seq > after);
   const fresh = new Set(defects.map((defect) => defect.id));
   const testers = new Set(defects.map((defect) => defect.actor));
   const groups = [];
@@ -15815,7 +15815,7 @@ function mergeItems(state, build, claims = [], after = 0) {
       const group = [.../* @__PURE__ */ new Set([...joined.flat(), a.id, b.id])];
       groups.splice(0, groups.length, ...groups.filter((item) => !joined.includes(item)), group);
     }
-  const questions = state.team.filter(
+  const questions = state2.team.filter(
     (entry) => entry.kind === "question" && entry.build === build && entry.seq > after
   );
   const earlier = claims.filter(
@@ -15866,8 +15866,8 @@ function verifyItems(claims, build, fresh) {
   );
 }
 function answerQuestion(store, actor, operationId, input) {
-  const state = journal(store, input.planId);
-  const question = state.team.find(
+  const state2 = journal(store, input.planId);
+  const question = state2.team.find(
     (entry2) => (entry2.kind === "question" || entry2.kind === "topic") && entry2.id === input.questionId
   );
   requireCondition(
@@ -15875,7 +15875,7 @@ function answerQuestion(store, actor, operationId, input) {
     `Unknown gap or question ${input.questionId} of plan ${input.planId}.`,
     "Run checkmate inbox to read the open gaps and questions with their IDs."
   );
-  const used = state.rows.filter((row2) => row2.actor === actor).map((row2) => row2.id);
+  const used = state2.rows.filter((row2) => row2.actor === actor).map((row2) => row2.id);
   const entry = {
     kind: "answer",
     id: unusedId("A", used),
@@ -18534,7 +18534,7 @@ function checkRequest(action2, named) {
 }
 function pathPattern(path) {
   const parts = path.split(/(<[^>]+>|\{[^}]+\})/);
-  const source = parts.map((part2) => /^(<[^>]+>|\{[^}]+\})$/.test(part2) ? "[^/]+" : part2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("");
+  const source = parts.map((part) => /^(<[^>]+>|\{[^}]+\})$/.test(part) ? "[^/]+" : part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("");
   return new RegExp(`^${source}$`);
 }
 function requestMatches(planned, sent) {
@@ -19103,10 +19103,10 @@ function checkAssertion(store, actor, input) {
     const result = contradiction ? "inconclusive" : compared;
     const unit = result === "passed" && observed !== null && assertion.expected !== void 0 ? unitNotObserved(observed, assertion.expected) : void 0;
     const recorded2 = contradiction ?? reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null);
-    const table2 = prior ? "assertion_corrections" : "assertion_results";
+    const table3 = prior ? "assertion_corrections" : "assertion_results";
     execute(
       store,
-      `INSERT INTO ${table2} (run_id, test_id, assertion_id, attempt, result, observed, reason, recorded_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ${table3} (run_id, test_id, assertion_id, attempt, result, observed, reason, recorded_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.runId,
       test.id,
       assertion.id,
@@ -19845,11 +19845,11 @@ function recordRequestEvent(store, requestId2, event2, options3) {
     }
   );
 }
-function setRequestState(store, requestId2, state, detail = {}) {
+function setRequestState(store, requestId2, state2, detail = {}) {
   recordRequestEvent(
     store,
     requestId2,
-    { step: "state", status: state, detail },
+    { step: "state", status: state2, detail },
     { subjects: [`request:${requestId2}`, "requests"] }
   );
 }
@@ -19883,11 +19883,11 @@ function stopRequestRecord(store, actor, requestId2, reason) {
   });
 }
 function recordOf(ask, events) {
-  const states2 = events.filter((event2) => event2.step === "state");
-  const last = states2.at(-1);
+  const states = events.filter((event2) => event2.step === "state");
+  const last = states.at(-1);
   const session = events.findLast((event2) => event2.step === "session");
   const recorded2 = session ? JSON.parse(session.detail) : null;
-  const selection = JSON.parse(states2[0].detail);
+  const selection = JSON.parse(states[0].detail);
   const harness = selection.harness ?? recorded2?.harness;
   const finished2 = endStates.includes(last.status) ? last : null;
   const detail = finished2 ? JSON.parse(finished2.detail) : {};
@@ -19912,7 +19912,7 @@ function recordOf(ask, events) {
     costUsd: typeof detail.costUsd === "number" && Number.isFinite(detail.costUsd) && detail.costUsd >= 0 ? detail.costUsd : null,
     costPartial: detail.costPartial === true,
     ...detail.costScope !== "turn" && harness !== "pi" ? { costCumulative: true } : {},
-    startedAt: states2.find((event2) => event2.status === "running")?.at ?? null,
+    startedAt: states.find((event2) => event2.status === "running")?.at ?? null,
     endedAt: finished2?.at ?? null,
     reason: typeof detail.reason === "string" ? detail.reason : null,
     hint: typeof detail.hint === "string" ? detail.hint : null,
@@ -20343,29 +20343,29 @@ var maxKnownLines = 150;
 var isEntryId = (word) => /^([A-Za-z0-9_-]+\/)?[A-Z]+[0-9]+$/.test(word);
 var withBlankEnd = (lines2) => lines2.at(-1) === "" ? lines2 : [...lines2, ""];
 function knownState(store, planId, build) {
-  const state = journal(store, planId);
+  const state2 = journal(store, planId);
   const claims = planClaims(store, planId).filter((claim) => claim.build !== build);
   const lastSeen = (claim) => Object.entries(claim.statuses).filter(([, on]) => on.status === "not_fixed").map(([seen]) => seen).at(-1) ?? claim.build;
   const open = claims.filter((claim) => claim.open);
   const fixed = claims.filter((claim) => !claim.open && claim.state !== "rejected");
   const rejected = claims.filter((claim) => claim.state === "rejected");
   const answers = planQuestions(store, planId).filter((question) => question.answer !== null);
-  const observed = state.team.filter((entry) => ["observation", "defect"].includes(entry.kind));
+  const observed = state2.team.filter((entry) => ["observation", "defect"].includes(entry.kind));
   const mentioned = new Set(
     observed.flatMap((entry) => [...(entry.about ?? "").split(/[\s,;]+/), ...entry.links ?? []])
   );
-  const criteria = state.team.filter((entry) => entry.kind === "criterion");
+  const criteria = state2.team.filter((entry) => entry.kind === "criterion");
   const areas = [
     ...new Set(
-      state.team.flatMap((entry) => [
+      state2.team.flatMap((entry) => [
         ...entry.area ? [entry.area] : [],
         ...entry.kind === "observation" && entry.about && !entry.about.split(/[\s,;]+/).every(isEntryId) ? [entry.about] : []
       ])
     )
   ];
   const fixedOn = (claim) => Object.entries(claim.statuses).filter(([, on]) => on.status === "fixed").map(([seen]) => seen).at(-1) ?? claim.build;
-  const newestFirst = [...fixed].sort((a, b) => state.builds.indexOf(fixedOn(b)) - state.builds.indexOf(fixedOn(a)));
-  const block2 = (claim, seen) => [
+  const newestFirst = [...fixed].sort((a, b) => state2.builds.indexOf(fixedOn(b)) - state2.builds.indexOf(fixedOn(a)));
+  const block3 = (claim, seen) => [
     `### ${claim.id}: ${claim.title} (${claim.severity})`,
     seen,
     `- Steps: ${[claim.steps ?? "not given"].flat().join(" ")}`,
@@ -20382,7 +20382,7 @@ function knownState(store, planId, build) {
       "",
       "## Open problems",
       "",
-      ...open.length ? open.flatMap((claim) => block2(claim, `- Last seen on build: ${lastSeen(claim)}`)) : ["None.", ""],
+      ...open.length ? open.flatMap((claim) => block3(claim, `- Last seen on build: ${lastSeen(claim)}`)) : ["None.", ""],
       "## Decisions of the product owner",
       "",
       ...answers.length || rejected.length ? [
@@ -20400,7 +20400,7 @@ function knownState(store, planId, build) {
       ...newestFirst.length ? withBlankEnd([
         "Check that each one does not come back. The newest fix is first.",
         "",
-        ...newestFirst.slice(0, full2).flatMap((claim) => block2(claim, `- Reported fixed on build: ${fixedOn(claim)}`)),
+        ...newestFirst.slice(0, full2).flatMap((claim) => block3(claim, `- Reported fixed on build: ${fixedOn(claim)}`)),
         ...newestFirst.slice(full2).map(
           (claim) => `- ${claim.id}: ${claim.title} (reported fixed on build ${fixedOn(claim)})`
         ),
@@ -20716,7 +20716,7 @@ function piRpcCatalog(program, workspace2, env, timeout) {
     let models;
     let model;
     let available = false;
-    let state = false;
+    let state2 = false;
     const timer = setTimeout(() => {
       host.kill("SIGKILL");
       finish2(true);
@@ -20744,12 +20744,12 @@ function piRpcCatalog(program, workspace2, env, timeout) {
           models = response.data.models.flatMap(piOption);
       }
       if (response.id === "state" && response.command === "get_state") {
-        state = true;
+        state2 = true;
         const selected = response.data?.model;
         if (response.success && (!provider || typeof selected?.provider === "string" && selected.provider.toLowerCase() === provider))
           model = piOption(selected)[0];
       }
-      if (available && state && !host.stdin.writableEnded) host.stdin.end();
+      if (available && state2 && !host.stdin.writableEnded) host.stdin.end();
     });
     host.stdin.write('{"id":"models","type":"get_available_models"}\n{"id":"state","type":"get_state"}\n');
   });
@@ -22280,10 +22280,10 @@ function checksOf(expected) {
 }
 function drafts(store, explorationId, observations) {
   const row2 = explorationRow(store, explorationId);
-  const state = journal(store, row2.plan_id);
-  const own = state.team.filter((entry) => entry.explorationId === explorationId);
-  const byId = new Map(state.team.map((entry) => [entry.id, entry]));
-  const criteria = new Map(state.team.filter((entry) => entry.kind === "criterion").map((entry) => [entry.id, entry]));
+  const state2 = journal(store, row2.plan_id);
+  const own = state2.team.filter((entry) => entry.explorationId === explorationId);
+  const byId = new Map(state2.team.map((entry) => [entry.id, entry]));
+  const criteria = new Map(state2.team.filter((entry) => entry.kind === "criterion").map((entry) => [entry.id, entry]));
   const fromClaims = planClaims(store, row2.plan_id).filter((claim) => claim.explorationId === explorationId && harvestedStates.includes(claim.state)).map((claim) => {
     const report = byId.get(claim.reports[0]);
     const criterion = linkedCriterion(report, criteria);
@@ -23567,11 +23567,11 @@ function startFollow(store, actor, input, env) {
     const stored = startOf(events);
     session = stored?.path === "session";
     harness = stored?.context?.harness ?? "claude";
-    const state = explorationState(events);
+    const state2 = explorationState(events);
     requireCondition(
       stored && followable(events),
-      `Exploration ${id2} is ${state}. A follow-up needs a completed exploration.`,
-      ["failed", "stopped", "interrupted", "open"].includes(state) ? `Start a new test: ${retryCommand(store, id2, stored)}` : `Run checkmate explore wait ${id2}. Then run the follow-up again.`
+      `Exploration ${id2} is ${state2}. A follow-up needs a completed exploration.`,
+      ["failed", "stopped", "interrupted", "open"].includes(state2) ? `Start a new test: ${retryCommand(store, id2, stored)}` : `Run checkmate explore wait ${id2}. Then run the follow-up again.`
     );
     if (!session) requireChild(env, harness);
     const answered = unusedAnswers(store, id2);
@@ -23826,15 +23826,15 @@ function recordStop(store, actor, input) {
   return write(store, { actor, command: "explore stop", subject: id2, input }, (operationId, at2, who) => {
     const row2 = explorationRow(store, id2);
     const events = explorationEvents(store, id2);
-    const state = explorationState(events);
+    const state2 = explorationState(events);
     requireCondition(
       startOf(events)?.path !== "session",
       `Exploration ${id2} runs in a session. The operator session owns its testers.`,
       "Stop the testers in the session."
     );
     requireCondition(
-      ["starting", "testing", "recording", "verifying", "following", "interrupted"].includes(state),
-      `Exploration ${id2} is ${state}. Only a running exploration can stop.`,
+      ["starting", "testing", "recording", "verifying", "following", "interrupted"].includes(state2),
+      `Exploration ${id2} is ${state2}. Only a running exploration can stop.`,
       `Run checkmate explore show ${id2}.`
     );
     if (explorer !== void 0) {
@@ -23857,7 +23857,7 @@ function recordStop(store, actor, input) {
         step: "stop",
         explorer: explorer ?? null,
         status: "completed",
-        detail: { actor: who, reason, was: state, ...input.background ? { ending: true } : {} }
+        detail: { actor: who, reason, was: state2, ...input.background ? { ending: true } : {} }
       },
       operationId,
       at2
@@ -23867,7 +23867,7 @@ function recordStop(store, actor, input) {
         explorationId: id2,
         planId: row2.plan_id,
         explorer: explorer ?? null,
-        was: state,
+        was: state2,
         reason,
         actor: who
       }),
@@ -24017,7 +24017,7 @@ function explorationStatus(store, explorationId) {
     (item) => ["failed", "operational_error", "interrupted"].includes(item.status) ? { ...item, detail: piExplorationDetails(item.detail) } : item
   ) : raw;
   const charter = JSON.parse(row2.charter);
-  const state = explorationState(events);
+  const state2 = explorationState(events);
   const names = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
   const runModels = observedModels(
     events.filter(
@@ -24068,9 +24068,9 @@ function explorationStatus(store, explorationId) {
     build: row2.build,
     mode: row2.mode,
     instanceId: row2.instance_id,
-    state,
+    state: state2,
     path: launch ? launch.path ?? "process" : null,
-    paused: ["completed", "failed"].includes(state) ? null : pauseOf(events),
+    paused: ["completed", "failed"].includes(state2) ? null : pauseOf(events),
     level: launch?.level ?? null,
     explorerCount: launch?.explorers || explorers.length,
     model: runModels.length === 1 ? runModels[0] : launch?.model ?? null,
@@ -24087,8 +24087,8 @@ function explorationStatus(store, explorationId) {
     explorers,
     phases: events.filter((item) => ["merge", "verify", "follow", "followed"].includes(item.step)).map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
     doneHint: done?.detail.hint ?? null,
-    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync8(join12(store.workspace, workFolder(row2.exploration_id))) ? workFolder(row2.exploration_id) : null,
-    reason: done?.detail.reason ?? (state === "stopped" ? stopReason(events) : state === "interrupted" ? "The supervisor stopped before the end." : null)
+    workFolder: (["failed", "stopped", "interrupted"].includes(state2) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync8(join12(store.workspace, workFolder(row2.exploration_id))) ? workFolder(row2.exploration_id) : null,
+    reason: done?.detail.reason ?? (state2 === "stopped" ? stopReason(events) : state2 === "interrupted" ? "The supervisor stopped before the end." : null)
   };
 }
 function pausedWait(explorationId, status) {
@@ -24132,8 +24132,8 @@ function waitExploration(store, explorationId, timeoutSeconds) {
 }
 function explorationReport(store, explorationId) {
   const opened = exploration(store, explorationId);
-  const state = journal(store, opened.plan_id);
-  const own = state.team.filter((entry) => entry.explorationId === explorationId);
+  const state2 = journal(store, opened.plan_id);
+  const own = state2.team.filter((entry) => entry.explorationId === explorationId);
   return {
     ...explorationStatus(store, explorationId),
     charter: opened.charter,
@@ -24411,11 +24411,11 @@ function findPermission(store, askerId, requestId2) {
   return found;
 }
 function nextRequestId(store, askerId) {
-  const table2 = isRequestId(store, askerId) ? "request_events" : "exploration_events";
-  const column = table2 === "request_events" ? "request_id" : "exploration_id";
+  const table3 = isRequestId(store, askerId) ? "request_events" : "exploration_events";
+  const column = table3 === "request_events" ? "request_id" : "exploration_id";
   const count2 = one(
     store,
-    `SELECT count(*) AS count FROM ${table2} WHERE ${column} = ? AND step = '${requestStep}'`,
+    `SELECT count(*) AS count FROM ${table3} WHERE ${column} = ? AND step = '${requestStep}'`,
     askerId
   ).count;
   return `P${count2 + 1}`;
@@ -24673,10 +24673,10 @@ function owedLines(store) {
 // plugin/src/views.ts
 import { existsSync as existsSync9 } from "node:fs";
 import { join as join13 } from "node:path";
-function approvalLabel(state) {
-  if (state.approved) return "approved";
-  if (state.rejected) return "rejected";
-  return state.policy === "required" ? "pending" : "not_required";
+function approvalLabel(state2) {
+  if (state2.approved) return "approved";
+  if (state2.rejected) return "rejected";
+  return state2.policy === "required" ? "pending" : "not_required";
 }
 function latestRevisions(store) {
   return all(
@@ -24986,14 +24986,14 @@ function sessionExplorerLive(events, item, now) {
   const action2 = own.findLast((event2) => event2.step === "action");
   const outcome = own.findLast((event2) => outcomeSteps.includes(event2.step));
   const outcomeAction = outcome && own.slice(0, own.indexOf(outcome)).findLast((event2) => event2.step === "action");
-  const state = !last ? null : last.step === "action" ? "given" : last.step === "started" ? "running" : last.status === "operational_error" ? "failed" : "ended";
+  const state2 = !last ? null : last.step === "action" ? "given" : last.step === "started" ? "running" : last.status === "operational_error" ? "failed" : "ended";
   const files2 = events.filter((event2) => event2.explorer === item.explorer && event2.step === "files").flatMap(
     (event2) => event2.detail.files.map((file) => ({
       phase: String(event2.detail.phase),
       name: file.name
     }))
   );
-  const busy = state === "given" || state === "running";
+  const busy = state2 === "given" || state2 === "running";
   const pause = events.findLast((event2) => event2.step === "pause" || event2.step === "resume");
   const pausedAt = busy && pause?.step === "pause" ? pause.at : null;
   const span = (from, to) => Math.max(0, to - Date.parse(from));
@@ -25004,7 +25004,7 @@ function sessionExplorerLive(events, item, now) {
     reason: item.reason,
     hint: item.hint,
     turn: action2?.detail.step ?? null,
-    state,
+    state: state2,
     startedAt: last?.at ?? null,
     pausedAt,
     elapsedMs: !last ? null : busy ? span(last.at, pausedAt ? Date.parse(pausedAt) : now) : outcome && outcomeAction ? span(outcomeAction.at, Date.parse(outcome.at)) : null,
@@ -25013,7 +25013,7 @@ function sessionExplorerLive(events, item, now) {
     stray: item.stray,
     recorded: item.recorded,
     saved: item.saved,
-    files: state === "given" || state === "running" ? [] : files2
+    files: state2 === "given" || state2 === "running" ? [] : files2
   };
 }
 function explorerLive(store, explorationId, events, item, running3, now) {
@@ -25030,7 +25030,7 @@ function explorerLive(store, explorationId, events, item, running3, now) {
   const startedAt = inFollow ? events[follow].at : launch?.at ?? null;
   const endedAt = inFollow ? followTurn?.at ?? null : stoppedBy?.at ?? end?.at ?? null;
   const stopped = followed.some((event2) => event2.step === "followed") ? "skipped" : "stopped";
-  const state = inFollow ? followTurn?.status ?? (running3 ? "running" : stopped) : stoppedBy ? stopPending(events, stoppedBy.explorer) ? "stopping" : "stopped" : end?.status ?? (launch ? running3 ? "running" : "stopped" : null);
+  const state2 = inFollow ? followTurn?.status ?? (running3 ? "running" : stopped) : stoppedBy ? stopPending(events, stoppedBy.explorer) ? "stopping" : "stopped" : end?.status ?? (launch ? running3 ? "running" : "stopped" : null);
   const pause = events.findLast((event2) => event2.step === "pause" || event2.step === "resume");
   const pausedAt = running3 && !endedAt && pause?.step === "pause" ? pause.at : null;
   const until = endedAt ? Date.parse(endedAt) : pausedAt ? Date.parse(pausedAt) : running3 ? now : null;
@@ -25049,7 +25049,7 @@ function explorerLive(store, explorationId, events, item, running3, now) {
     reason: item.reason,
     hint: item.hint,
     turn: turn2,
-    state,
+    state: state2,
     startedAt,
     pausedAt,
     elapsedMs: startedAt && until !== null ? Math.max(0, until - Date.parse(startedAt)) : null,
@@ -25062,8 +25062,8 @@ function explorerLive(store, explorationId, events, item, running3, now) {
   };
 }
 function phaseRows(events, status, verifier) {
-  const state = status.state;
-  const running3 = runningExploration.includes(state);
+  const state2 = status.state;
+  const running3 = runningExploration.includes(state2);
   const later = running3 ? "pending" : "not_run";
   const last = (step) => events.findLast((event2) => event2.step === step);
   const reason = (event2) => event2?.detail.reason ?? null;
@@ -25074,7 +25074,7 @@ function phaseRows(events, status, verifier) {
   return [
     {
       phase: "record",
-      state: !records2.length ? later : state === "recording" ? "running" : refused2.length < records2.length ? "completed" : "failed",
+      state: !records2.length ? later : state2 === "recording" ? "running" : refused2.length < records2.length ? "completed" : "failed",
       reason: refused2.length ? refused2.map(
         (event2) => `${event2.explorer}: ${[event2.detail.reasons ?? []].flat().join(" ") || event2.status}`
       ).join(" ") : null
@@ -25082,7 +25082,7 @@ function phaseRows(events, status, verifier) {
     { phase: "merge", state: merge?.status ?? later, reason: reason(merge) },
     {
       phase: "verify",
-      state: verify2?.status ?? (verifier === false ? "not_in_level" : state === "verifying" ? "running" : later),
+      state: verify2?.status ?? (verifier === false ? "not_in_level" : state2 === "verifying" ? "running" : later),
       reason: reason(verify2)
     },
     {
@@ -25522,7 +25522,7 @@ function checkStatus(store, planId, harness) {
       );
     return loop("nothing_to_run", "oracle", why, [`checkmate plan edit ${subject} --patch`]);
   };
-  const state = () => {
+  const state2 = () => {
     if (openRuns.length)
       return loop(
         "run_in_progress",
@@ -25658,7 +25658,7 @@ function checkStatus(store, planId, harness) {
       return loop("accepted", "none", [`${names} ${supplying.length === 1 ? "is" : "are"} accepted`], []);
     return loop("passed", "none", [`${names} passed. Result acceptance is not required`], []);
   };
-  const loopState2 = state();
+  const loopState2 = state2();
   loopState2.why = [
     .../* @__PURE__ */ new Set([
       ...loopState2.why,
@@ -25724,8 +25724,8 @@ function delegateCommand(harness, stage, subject) {
   return `checkmate delegate ${stage} ${subject}${rules}`;
 }
 function loopOf(store, planId) {
-  const { state, waitsOn } = planStatus(store, planId);
-  return { state, waitsOn };
+  const { state: state2, waitsOn } = planStatus(store, planId);
+  return { state: state2, waitsOn };
 }
 function planRecord(store, plan) {
   const results = finalizedResults(store, plan.planId);
@@ -25780,8 +25780,8 @@ var loopStages = {
   needs_revision: "revise",
   run_in_progress: "execute"
 };
-function loop(state, waitsOn, why, next) {
-  return { state, waitsOn, why, next, stage: loopStages[state] ?? "none" };
+function loop(state2, waitsOn, why, next) {
+  return { state: state2, waitsOn, why, next, stage: loopStages[state2] ?? "none" };
 }
 function runList(store, filters = {}) {
   const rows2 = all(
@@ -26356,16 +26356,16 @@ function claimBuildStates(claim, builds) {
   let fixedBefore = false;
   return builds.slice(Math.max(0, builds.indexOf(claim.build))).map((build, index2) => {
     const on = claim.statuses[build];
-    const state = index2 === 0 ? "new" : !on || on.status === "no verdict" ? "not_retested" : on.status === "not_fixed" ? fixedBefore ? "returned" : "still_present" : on.status;
-    if (state === "fixed") fixedBefore = true;
-    if (state === "still_present" || state === "returned") fixedBefore = false;
-    return { build, state };
+    const state2 = index2 === 0 ? "new" : !on || on.status === "no verdict" ? "not_retested" : on.status === "not_fixed" ? fixedBefore ? "returned" : "still_present" : on.status;
+    if (state2 === "fixed") fixedBefore = true;
+    if (state2 === "still_present" || state2 === "returned") fixedBefore = false;
+    return { build, state: state2 };
   });
 }
 function planRecord2(store, planId) {
   const keep = mergedEntries(store, planId);
-  const state = journal(store, planId, void 0, keep);
-  return { state, claims: planClaims(store, planId, keep), questions: planQuestions(store, planId, keep) };
+  const state2 = journal(store, planId, void 0, keep);
+  return { state: state2, claims: planClaims(store, planId, keep), questions: planQuestions(store, planId, keep) };
 }
 var worstFirst = ["failed", "question", "passed", "not_checked"];
 function sumCells(build, cells) {
@@ -26380,7 +26380,7 @@ function sumCells(build, cells) {
     claims: total((cell4) => cell4.claims.length),
     questions: total((cell4) => cell4.questions.length),
     changes: Object.fromEntries(
-      buildStates.map((state) => [state, total((cell4) => cell4.changes[state].length)])
+      buildStates.map((state2) => [state2, total((cell4) => cell4.changes[state2].length)])
     )
   };
 }
@@ -26405,9 +26405,9 @@ function ruleAreas(rules, builds, cellOf) {
 }
 function ruleMap(store, planId) {
   const record = planRecord2(store, planId);
-  const { state, questions } = record;
+  const { state: state2, questions } = record;
   const claims = record.claims.filter((claim) => claim.state !== "rejected");
-  const builds = state.builds;
+  const builds = state2.builds;
   const stored = planRules(store, planId);
   const storedTests = storedTestCounts(store, planId);
   const known = new Set(stored.rules.map((rule) => rule.id));
@@ -26416,14 +26416,14 @@ function ruleMap(store, planId) {
     ...stored.rules,
     { id: outsideRule, text: "Behaviour outside the rules of the plan.", source: null }
   ];
-  const states2 = new Map(
+  const states = new Map(
     claims.map((claim) => [claim.id, new Map(claimBuildStates(claim, builds).map((on) => [on.build, on.state]))])
   );
-  const criteria = state.team.filter((entry) => entry.kind === "criterion" && entry.rule !== void 0);
+  const criteria = state2.team.filter((entry) => entry.kind === "criterion" && entry.rule !== void 0);
   const cellOf = (rule, build) => {
-    const own = claims.filter((claim) => ruleOf(claim.rule) === rule && states2.get(claim.id).has(build));
-    const present = own.filter((claim) => presentStates.includes(states2.get(claim.id).get(build)));
-    const disputed = own.filter((claim) => states2.get(claim.id).get(build) === "disputed");
+    const own = claims.filter((claim) => ruleOf(claim.rule) === rule && states.get(claim.id).has(build));
+    const present = own.filter((claim) => presentStates.includes(states.get(claim.id).get(build)));
+    const disputed = own.filter((claim) => states.get(claim.id).get(build) === "disputed");
     const asked2 = questions.filter(
       (question) => ruleOf(question.rule) === rule && question.answer === null && question.builds.includes(build)
     );
@@ -26433,7 +26433,7 @@ function ruleMap(store, planId) {
     const changes = Object.fromEntries(
       buildStates.map((name2) => [
         name2,
-        own.filter((claim) => states2.get(claim.id).get(build) === name2).map((claim) => claim.id)
+        own.filter((claim) => states.get(claim.id).get(build) === name2).map((claim) => claim.id)
       ])
     );
     return {
@@ -26447,7 +26447,7 @@ function ruleMap(store, planId) {
         title: claim.title,
         severity: claim.severity,
         state: claim.state,
-        change: states2.get(claim.id).get(build)
+        change: states.get(claim.id).get(build)
       })),
       questions: asked2.map((question) => ({
         id: question.id,
@@ -26538,8 +26538,8 @@ function uncertainty(claim, reports, questions) {
   ];
 }
 function claimDetails(store, planId) {
-  const { state, claims, questions } = planRecord2(store, planId);
-  const byId = new Map(state.team.map((entry) => [entry.id, entry]));
+  const { state: state2, claims, questions } = planRecord2(store, planId);
+  const byId = new Map(state2.team.map((entry) => [entry.id, entry]));
   return claims.map((claim) => {
     const reports = claim.reports.flatMap((id2) => byId.has(id2) ? [byId.get(id2)] : []);
     return {
@@ -26556,7 +26556,7 @@ function claimDetails(store, planId) {
         explorationId: report.explorationId,
         rule: report.rule ?? null
       })),
-      builds: claimBuildStates(claim, state.builds),
+      builds: claimBuildStates(claim, state2.builds),
       uncertain: uncertainty(claim, reports, questions),
       evidence: claimEvidenceList(reports)
     };
@@ -26812,28 +26812,28 @@ function indent(text2) {
 }
 function markdown(report) {
   const parts = [`# ${markdownText(report.title)}`, markdownText(report.note)];
-  for (const block2 of report.blocks) {
-    if ("heading" in block2) parts.push(`${"#".repeat(block2.level ?? 2)} ${markdownText(block2.heading)}`);
-    else if ("text" in block2) parts.push(markdownText(block2.text));
-    else if ("table" in block2)
+  for (const block3 of report.blocks) {
+    if ("heading" in block3) parts.push(`${"#".repeat(block3.level ?? 2)} ${markdownText(block3.heading)}`);
+    else if ("text" in block3) parts.push(markdownText(block3.text));
+    else if ("table" in block3)
       parts.push(
         [
-          `| ${block2.table.map(markdownText).join(" | ")} |`,
-          `| ${block2.table.map(() => "---").join(" | ")} |`,
-          ...block2.rows.map((row2) => `| ${row2.map(markdownText).join(" | ")} |`)
+          `| ${block3.table.map(markdownText).join(" | ")} |`,
+          `| ${block3.table.map(() => "---").join(" | ")} |`,
+          ...block3.rows.map((row2) => `| ${row2.map(markdownText).join(" | ")} |`)
         ].join("\n")
       );
-    else if ("list" in block2)
+    else if ("list" in block3)
       parts.push(
-        block2.list.map((item, i) => `${block2.numbered ? `${i + 1}.` : "-"} ${markdownText(item)}`).join("\n")
+        block3.list.map((item, i) => `${block3.numbered ? `${i + 1}.` : "-"} ${markdownText(item)}`).join("\n")
       );
-    else if ("stats" in block2)
+    else if ("stats" in block3)
       parts.push(
-        block2.stats.map((stat) => `- **${markdownText(stat.label)}:** ${markdownText(stat.value)}`).join("\n")
+        block3.stats.map((stat) => `- **${markdownText(stat.label)}:** ${markdownText(stat.value)}`).join("\n")
       );
-    else if ("evidence" in block2)
+    else if ("evidence" in block3)
       parts.push(
-        block2.evidence.map(
+        block3.evidence.map(
           (item) => [
             `- ${markdownText(item.label)}: ${markdownText(item.name)} (${item.mediaType}, ${item.size} bytes)`,
             ...item.text === void 0 ? [] : ["", indent(fence(item.text))]
@@ -26844,7 +26844,7 @@ function markdown(report) {
       parts.push(`<details>
 <summary>Complete JSON record</summary>
 
-${jsonFence(block2.record)}
+${jsonFence(block3.record)}
 
 </details>`);
   }
@@ -26895,7 +26895,7 @@ tbody tr:nth-child(even) td{background:none}details{display:none}
 function cell(value2) {
   const tone2 = tones[value2];
   if (tone2) return `<span class="pill ${tone2}">${escapeHtml(value2)}</span>`;
-  return value2.split(/(\s+)/).map((part2) => part2.length > 24 ? `<span class="token">${escapeHtml(part2)}</span>` : escapeHtml(part2)).join("");
+  return value2.split(/(\s+)/).map((part) => part.length > 24 ? `<span class="token">${escapeHtml(part)}</span>` : escapeHtml(part)).join("");
 }
 function figure(item) {
   const body = item.image ? `<img src="${item.image}" alt="${escapeHtml(item.name)}">` : item.text !== void 0 ? `<pre>${escapeHtml(item.text)}</pre>` : "";
@@ -26905,26 +26905,26 @@ function html(report) {
   const parts = [
     `<header><h1>${escapeHtml(report.title)}</h1><p class="note">${escapeHtml(report.note)}</p></header>`
   ];
-  for (const block2 of report.blocks) {
-    if ("heading" in block2) parts.push(`<h${block2.level ?? 2}>${escapeHtml(block2.heading)}</h${block2.level ?? 2}>`);
-    else if ("text" in block2) parts.push(`<p>${escapeHtml(block2.text)}</p>`);
-    else if ("table" in block2)
+  for (const block3 of report.blocks) {
+    if ("heading" in block3) parts.push(`<h${block3.level ?? 2}>${escapeHtml(block3.heading)}</h${block3.level ?? 2}>`);
+    else if ("text" in block3) parts.push(`<p>${escapeHtml(block3.text)}</p>`);
+    else if ("table" in block3)
       parts.push(
-        `<table><thead><tr>${block2.table.map((head) => `<th>${escapeHtml(head)}</th>`).join("")}</tr></thead><tbody>${block2.rows.map((row2) => `<tr>${row2.map((value2) => `<td>${cell(value2)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+        `<table><thead><tr>${block3.table.map((head) => `<th>${escapeHtml(head)}</th>`).join("")}</tr></thead><tbody>${block3.rows.map((row2) => `<tr>${row2.map((value2) => `<td>${cell(value2)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
       );
-    else if ("list" in block2) {
-      const tag = block2.numbered ? "ol" : "ul";
-      parts.push(`<${tag}>${block2.list.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</${tag}>`);
-    } else if ("stats" in block2)
+    else if ("list" in block3) {
+      const tag = block3.numbered ? "ol" : "ul";
+      parts.push(`<${tag}>${block3.list.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</${tag}>`);
+    } else if ("stats" in block3)
       parts.push(
-        `<div class="stats">${block2.stats.map(
+        `<div class="stats">${block3.stats.map(
           (stat) => `<div class="stat"><b>${escapeHtml(stat.label)}</b><span>${cell(stat.value)}</span></div>`
         ).join("")}</div>`
       );
-    else if ("evidence" in block2) parts.push(`<div class="evidence">${block2.evidence.map(figure).join("")}</div>`);
+    else if ("evidence" in block3) parts.push(`<div class="evidence">${block3.evidence.map(figure).join("")}</div>`);
     else
       parts.push(
-        `<details><summary>Complete JSON record</summary><pre>${escapeHtml(JSON.stringify(block2.record, null, 2))}</pre></details>`
+        `<details><summary>Complete JSON record</summary><pre>${escapeHtml(JSON.stringify(block3.record, null, 2))}</pre></details>`
       );
   }
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:"><title>${escapeHtml(report.title)}</title><style>${styles.trim()}</style></head><body><main>` + parts.join("") + "</main></body></html>\n";
@@ -27355,7 +27355,7 @@ function runReport(store, runId) {
   const run2 = runState(store, runId);
   const finished2 = runResult(store, runId);
   requireCondition(finished2, `Run ${runId} has no result. Finish it before you export it.`);
-  const state = resultAcceptance(store, run2.row, finished2.sha256);
+  const state2 = resultAcceptance(store, run2.row, finished2.sha256);
   const approval = planApproval(store, run2.plan, run2.row.plan_sha256);
   const { planId, revision: revision2, objective, requirements, tests, gaps, decisions, assumptions } = run2.plan;
   const inline2 = {};
@@ -27373,7 +27373,7 @@ function runReport(store, runId) {
     ),
     result: finished2.result,
     sha256: finished2.sha256,
-    acceptance: { state: approvalLabel(state), latest: state.latest },
+    acceptance: { state: approvalLabel(state2), latest: state2.latest },
     planApproval: { state: approvalLabel(approval), latest: approval.latest },
     plan: { planId, revision: revision2, objective, requirements, tests, gaps, decisions, assumptions },
     inline: inline2,
@@ -28052,25 +28052,27 @@ var viewer = html2`<div
 	<div class="viewer-bar">
 		<span class="viewer-name" data-viewer-name></span>
 		<span class="viewer-tools" data-viewer-tools="image">
-			<button class="btn small" type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (-)">
+			<button class="sp-btn small" type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (-)">
 				-
 			</button>
 			<span class="viewer-scale" data-viewer-scale>Fit</span>
-			<button class="btn small" type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (+)">+</button>
-			<button class="btn small" type="button" data-zoom="fit" title="Fit to the window (0)">Fit</button>
+			<button class="sp-btn small" type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (+)">
+				+
+			</button>
+			<button class="sp-btn small" type="button" data-zoom="fit" title="Fit to the window (0)">Fit</button>
 		</span>
 		<label class="viewer-tools viewer-wrap" data-viewer-tools="text"
 			><input type="checkbox" data-viewer-wrap checked /> Wrap lines <kbd>w</kbd></label
 		>
-		<a class="btn small" data-viewer-download href="#" download>Download</a>
-		<button class="btn small" type="button" data-viewer-close>Close <kbd>Esc</kbd></button>
+		<a class="sp-btn small" data-viewer-download href="#" download>Download</a>
+		<button class="sp-btn small" type="button" data-viewer-close>Close <kbd>Esc</kbd></button>
 	</div>
 	<div class="viewer-body" data-viewer-body>
 		<img data-viewer-image alt="" hidden />
 		<pre class="viewer-text" data-viewer-text tabindex="0" hidden></pre>
 		<div class="viewer-note" data-viewer-note hidden>
 			<p data-viewer-message></p>
-			<a class="btn small" data-viewer-note-download href="#" download>Download</a>
+			<a class="sp-btn small" data-viewer-note-download href="#" download>Download</a>
 		</div>
 	</div>
 </div>`;
@@ -28347,7 +28349,7 @@ function hidden(context, sha256, token = "") {
 		<input type="hidden" name="sha" value="${sha256}" />
 		${token ? html2`<input type="hidden" name="decision" value="${token}" />` : ""}`;
 }
-function actorField(context, state) {
+function actorField(context, state2) {
   if (context.actor) return "";
   return html2`<div class="field-group">
 		<label class="lab" for="actor">Your name</label>
@@ -28357,25 +28359,25 @@ function actorField(context, state) {
 			required
 			maxlength="${actorLimit}"
 			autocomplete="name"
-			value="${state.values.actor ?? ""}"
+			value="${state2.values.actor ?? ""}"
 			data-missing="Enter your name. Checkmate records it with your decision."
 		/>
 		<p class="help">Checkmate asks once, keeps it in a cookie, and records it with each decision.</p>
 	</div>`;
 }
-function messages(state) {
-  return html2`${state.stale ? banner("warn", state.stale) : ""}
-	${state.error ? html2`<p class="form-error" role="alert">${state.error}</p>` : ""}`;
+function messages(state2) {
+  return html2`${state2.stale ? banner("warn", state2.stale) : ""}
+	${state2.error ? html2`<p class="form-error" role="alert">${state2.error}</p>` : ""}`;
 }
-function keptText(state) {
-  const typed = state.values.value || state.values.rationale || "";
+function keptText(state2) {
+  const typed = state2.values.value || state2.values.rationale || "";
   if (!typed.trim()) return "";
   return html2`<div class="kept" data-kept>
 		<p class="lab">Your text</p>
 		<blockquote>${typed}</blockquote>
 	</div>`;
 }
-function rationaleField(state, placeholder2, missing = "Write a rationale. Checkmate records it with your decision.") {
+function rationaleField(state2, placeholder2, missing = "Write a rationale. Checkmate records it with your decision.") {
   return html2`<div class="field-group">
 		<label class="lab" for="rationale">Rationale</label>
 		<textarea
@@ -28387,30 +28389,30 @@ function rationaleField(state, placeholder2, missing = "Write a rationale. Check
 			placeholder="${placeholder2}"
 			data-missing="${missing}"
 		>
-${state.values.rationale ?? ""}</textarea>
+${state2.values.rationale ?? ""}</textarea>
 	</div>`;
 }
-function confirmStep(context, verdict, state) {
-  const choice2 = state.values.verdict === verdict.reject.value ? verdict.reject : verdict.approve;
+function confirmStep(context, verdict, state2) {
+  const choice2 = state2.values.verdict === verdict.reject.value ? verdict.reject : verdict.approve;
   return html2`<form method="post" action="${verdict.action}" class="decision-form">
 		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ""}
 		<input type="hidden" name="verdict" value="${choice2.value}" />
-		<input type="hidden" name="rationale" value="${state.values.rationale ?? ""}" />
-		${context.actor ? "" : html2`<input type="hidden" name="actor" value="${state.values.actor ?? ""}" />`}
+		<input type="hidden" name="rationale" value="${state2.values.rationale ?? ""}" />
+		${context.actor ? "" : html2`<input type="hidden" name="actor" value="${state2.values.actor ?? ""}" />`}
 		<div class="confirm-box">
 			<p class="lab">Confirm</p>
 			<p>${choice2.summary}</p>
-			<blockquote>${state.values.rationale ?? ""}</blockquote>
+			<blockquote>${state2.values.rationale ?? ""}</blockquote>
 		</div>
 		<div class="btns">
-			<button class="btn primary" name="confirmed" value="1">${choice2.confirm}</button>
-			<button class="btn" name="back" value="1" formnovalidate>Back</button>
+			<button class="sp-btn pri" name="confirmed" value="1">${choice2.confirm}</button>
+			<button class="sp-btn" name="back" value="1" formnovalidate>Back</button>
 		</div>
 	</form>`;
 }
-function chooseStep(context, verdict, state) {
-  const button2 = (choice2, primary) => html2`<button
-			class="btn${primary ? " primary" : ""}"
+function chooseStep(context, verdict, state2) {
+  const button = (choice2, primary) => html2`<button
+			class="sp-btn${primary ? " pri" : ""}"
 			name="verdict"
 			value="${choice2.value}"
 			data-needs-rationale
@@ -28420,20 +28422,20 @@ function chooseStep(context, verdict, state) {
 			${choice2.label}
 		</button>`;
   return html2`<form method="post" action="${verdict.action}" class="decision-form" data-verdict-form>
-		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ""} ${actorField(context, state)}
-		${rationaleField(state, "Why do you decide this?")}
+		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ""} ${actorField(context, state2)}
+		${rationaleField(state2, "Why do you decide this?")}
 		<div class="confirm-box" data-confirm hidden>
 			<p class="lab">Confirm</p>
 			<p data-confirm-summary></p>
 		</div>
-		<div class="btns" data-choose>${button2(verdict.approve, true)} ${button2(verdict.reject, false)}</div>
+		<div class="btns" data-choose>${button(verdict.approve, true)} ${button(verdict.reject, false)}</div>
 		<div class="btns" data-confirm-buttons hidden>
-			<button class="btn primary" name="confirmed" value="1" data-confirm-submit>Confirm</button>
-			<button class="btn" type="button" data-confirm-back>Back</button>
+			<button class="sp-btn pri" name="confirmed" value="1" data-confirm-submit>Confirm</button>
+			<button class="sp-btn" type="button" data-confirm-back>Back</button>
 		</div>
 	</form>`;
 }
-function verdictPanel(context, verdict, state) {
+function verdictPanel(context, verdict, state2) {
   return html2`<section
 		class="panel decision"
 		id="decide"
@@ -28447,9 +28449,9 @@ function verdictPanel(context, verdict, state) {
 			${verdict.digestLabel} sha256 <code title="${verdict.sha256}">${short2(verdict.sha256)}</code>. Your decision
 			is recorded in the log.
 		</p>
-		<div data-stale-slot>${messages(state)}</div>
+		<div data-stale-slot>${messages(state2)}</div>
 		${verdict.intro ?? ""}
-		${state.confirm ? confirmStep(context, verdict, state) : chooseStep(context, verdict, state)}
+		${state2.confirm ? confirmStep(context, verdict, state2) : chooseStep(context, verdict, state2)}
 	</section>`;
 }
 var kinds = [
@@ -28469,8 +28471,8 @@ var kinds = [
     help: "Defer moves the gap out of this scope. The affected tests become deferred and do not run."
   }
 ];
-function gapPanel(context, form, state) {
-  const selected = state.values.kind ?? "clarify";
+function gapPanel(context, form, state2) {
+  const selected = state2.values.kind ?? "clarify";
   return html2`<section
 		class="panel decision"
 		id="answer"
@@ -28481,7 +28483,7 @@ function gapPanel(context, form, state) {
 		<h2 class="lab" id="answer-title">Answer gap</h2>
 		${form.title ? html2`<p class="subj">${form.title}</p>` : ""}
 		${form.question ? html2`<p class="help">${form.question}</p>` : ""}
-		<div data-stale-slot>${messages(state)}</div>
+		<div data-stale-slot>${messages(state2)}</div>
 		<form method="post" action="${form.action}" class="decision-form gap-form" data-gap-form>
 			${hidden(context, form.sha256)} ${form.extra ?? ""}
 			<fieldset class="seg-field">
@@ -28504,25 +28506,25 @@ function gapPanel(context, form, state) {
 			<div class="field-group">
 				<label class="lab" for="value">Answer</label>
 				<textarea id="value" name="value" rows="3" required data-missing="Write the answer.">
-${state.values.value ?? ""}</textarea>
+${state2.values.value ?? ""}</textarea>
 			</div>
 			<div class="field-group source-field">
 				<label class="lab" for="source">Source <span class="req">required for Clarify</span></label>
 				<input
 					id="source"
 					name="source"
-					value="${state.values.source ?? ""}"
+					value="${state2.values.source ?? ""}"
 					placeholder="oracle://refund-policy#window"
 					data-source
 					data-missing="A clarification needs a source. Name where the answer comes from."
 				/>
 				<p class="help">Where the answer comes from: a document, a ticket, or a person.</p>
 			</div>
-			${rationaleField(state, "Why is this the right answer?", "Write a rationale. Checkmate records it with your answer.")}
-			${actorField(context, state)}
+			${rationaleField(state2, "Why is this the right answer?", "Write a rationale. Checkmate records it with your answer.")}
+			${actorField(context, state2)}
 			<div class="btns">
-				<button class="btn primary" data-needs-rationale>Record answer</button>
-				<a class="btn" href="${form.cancel}">Cancel</a>
+				<button class="sp-btn pri" data-needs-rationale>Record answer</button>
+				<a class="sp-btn" href="${form.cancel}">Cancel</a>
 			</div>
 		</form>
 	</section>`;
@@ -28851,7 +28853,7 @@ function askHeading(item) {
   return `${askerName(item)} asks to ${things[item.tool] ?? `use ${item.tool}`}`;
 }
 function breakAtSlashes(path) {
-  return path.split("/").map((part2, index2) => index2 ? html2`/<wbr />${part2}` : part2);
+  return path.split("/").map((part, index2) => index2 ? html2`/<wbr />${part}` : part);
 }
 function requestName(item) {
   return `${item.askerId}/${item.id}`;
@@ -29004,16 +29006,16 @@ function edits(input) {
 function asked(item) {
   const input = item.input && typeof item.input === "object" ? item.input : {};
   const path = ["file_path", "notebook_path", "path"].map((key) => input[key]).find((value2) => typeof value2 === "string");
-  const block2 = (label, text2) => html2`<p class="sp-lbl">${label}</p>
+  const block3 = (label, text2) => html2`<p class="sp-lbl">${label}</p>
 			<pre class="sp-code" tabindex="0">${text2}</pre>`;
-  if (typeof input.command === "string") return block2("Command", input.command);
+  if (typeof input.command === "string") return block3("Command", input.command);
   if (typeof path === "string") {
-    const body = item.tool === "Write" && typeof input.content === "string" ? block2("Content", cut2(input.content)) : item.tool === "Edit" || item.tool === "MultiEdit" || item.tool === "NotebookEdit" ? block2("Change", cut2(edits(input))) : "";
+    const body = item.tool === "Write" && typeof input.content === "string" ? block3("Content", cut2(input.content)) : item.tool === "Edit" || item.tool === "MultiEdit" || item.tool === "NotebookEdit" ? block3("Change", cut2(edits(input))) : "";
     return html2`<p class="sp-lbl">File</p>
 			<pre class="sp-code" tabindex="0">${path}</pre>
 			${body}`;
   }
-  return block2("Input", JSON.stringify(item.input, null, 2));
+  return block3("Input", JSON.stringify(item.input, null, 2));
 }
 function rulesLines(rules, scope = "test") {
   return rules.map(
@@ -29166,7 +29168,10 @@ function permissionHistory(store, explorationId, params, from) {
     else next.set("requests", String(target));
     next.set("at", `request:${requestName(all2[(target - 1) * historySize])}`);
     const query = next.toString();
-    return html2`<a class="btn small" href="/explorations/${explorationId}${query ? `?${query}` : ""}" rel="${rel}"
+    return html2`<a
+			class="sp-btn small"
+			href="/explorations/${explorationId}${query ? `?${query}` : ""}"
+			rel="${rel}"
 			>${label}</a
 		>`;
   };
@@ -29233,7 +29238,7 @@ function emptyRecord(explorationId, requestId2) {
     status: 404,
     back: "/activity",
     body: html2`${heading("No such request", `Run ${explorationId} has no permission request ${requestId2}.`)}
-			<p class="actions"><a class="btn primary" href="/activity">Activity</a></p>`
+			<p class="actions"><a class="sp-btn pri" href="/activity">Activity</a></p>`
   };
 }
 
@@ -29288,8 +29293,8 @@ function listState(params, spec2) {
     filters
   };
 }
-function listHref(spec2, state, change = {}) {
-  const next = { ...state, ...change };
+function listHref(spec2, state2, change = {}) {
+  const next = { ...state2, ...change };
   const params = new URLSearchParams();
   if (next.q) params.set("q", next.q);
   for (const filter of spec2.filters) if (next.filters[filter.name]) params.set(filter.name, next.filters[filter.name]);
@@ -29300,19 +29305,19 @@ function listHref(spec2, state, change = {}) {
   const query = params.toString();
   return query ? `${spec2.path}?${query}` : spec2.path;
 }
-function listPage(state, load) {
+function listPage(state2, load) {
   const query = (page2) => ({
-    limit: state.size,
-    offset: (page2 - 1) * state.size,
-    sort: state.sort,
-    direction: state.direction,
-    q: state.q,
-    filters: state.filters
+    limit: state2.size,
+    offset: (page2 - 1) * state2.size,
+    sort: state2.sort,
+    direction: state2.direction,
+    q: state2.q,
+    filters: state2.filters
   });
-  const page = load(query(state.page));
-  const last = Math.max(1, Math.ceil(page.total / state.size));
-  if (state.page <= last) return { page, state };
-  return { page: load(query(last)), state: { ...state, page: last } };
+  const page = load(query(state2.page));
+  const last = Math.max(1, Math.ceil(page.total / state2.size));
+  if (state2.page <= last) return { page, state: state2 };
+  return { page: load(query(last)), state: { ...state2, page: last } };
 }
 function options(choices2, selected) {
   return choices2.map(
@@ -29323,14 +29328,14 @@ function filterChoices(filter, selected) {
   if (!selected || filter.choices.some(([value2]) => value2 === selected)) return filter.choices;
   return [...filter.choices, [selected, selected]];
 }
-function filterBar(spec2, state) {
+function filterBar(spec2, state2) {
   return html2`<form class="filters" method="get" action="${spec2.path}" role="search" data-list-form>
 		<label class="sr-only" for="q">Search ${spec2.noun}s</label>
 		<input
 			id="q"
 			type="search"
 			name="q"
-			value="${state.q}"
+			value="${state2.q}"
 			placeholder="${spec2.search}"
 			autocomplete="off"
 			data-search
@@ -29338,14 +29343,14 @@ function filterBar(spec2, state) {
 		${spec2.filters.map(
     (filter) => html2`<label class="sr-only" for="filter-${filter.name}">${filter.label}</label>
 					<select id="filter-${filter.name}" name="${filter.name}" data-default="">
-						${options(filterChoices(filter, state.filters[filter.name] ?? ""), state.filters[filter.name] ?? "")}
+						${options(filterChoices(filter, state2.filters[filter.name] ?? ""), state2.filters[filter.name] ?? "")}
 					</select>`
   )}
 		<label class="sr-only" for="sort">Sort by</label>
 		<select id="sort" name="sort" data-default="${spec2.sort}">
 			${options(
     spec2.columns.filter((column) => column.sort).map((column) => [column.sort, `Sort: ${column.label}`]),
-    state.sort
+    state2.sort
   )}
 		</select>
 		<label class="sr-only" for="dir">Order</label>
@@ -29355,50 +29360,50 @@ function filterBar(spec2, state) {
       ["desc", "Descending"],
       ["asc", "Ascending"]
     ],
-    state.direction
+    state2.direction
   )}
 		</select>
 		<label class="sr-only" for="size">Rows per page</label>
 		<select id="size" name="size" data-default="25">
 			${options(
     pageSizes2.map((size2) => [String(size2), `${size2} rows`]),
-    String(state.size)
+    String(state2.size)
   )}
 		</select>
-		<button class="btn" data-list-submit>Filter</button>
-		<a class="btn ghost" href="${spec2.path}" data-list-clear>Clear</a>
+		<button class="sp-btn" data-list-submit>Filter</button>
+		<a class="sp-btn ghost" href="${spec2.path}" data-list-clear>Clear</a>
 	</form>`;
 }
-function pageTrail(spec2, state, total, title2) {
-  const last = Math.max(1, Math.ceil(total / state.size));
+function pageTrail(spec2, state2, total, title2) {
+  const last = Math.max(1, Math.ceil(total / state2.size));
   if (last === 1) return { back: "/" };
   return {
-    back: state.page > 1 ? listHref(spec2, state, { page: 1 }) : "/",
-    crumbs: [[`${title2} \xB7 page ${state.page} of ${last}`, null]]
+    back: state2.page > 1 ? listHref(spec2, state2, { page: 1 }) : "/",
+    crumbs: [[`${title2} \xB7 page ${state2.page} of ${last}`, null]]
   };
 }
-function pager(spec2, state, total) {
-  const last = Math.max(1, Math.ceil(total / state.size));
+function pager(spec2, state2, total) {
+  const last = Math.max(1, Math.ceil(total / state2.size));
   if (last === 1) return "";
-  const link2 = (page, label, rel) => page === state.page || page < 1 || page > last ? html2`<span class="btn small" aria-disabled="true">${label}</span>` : html2`<a class="btn small" href="${listHref(spec2, state, { page })}" rel="${rel}" data-list-link
+  const link2 = (page, label, rel) => page === state2.page || page < 1 || page > last ? html2`<span class="sp-btn small" aria-disabled="true">${label}</span>` : html2`<a class="sp-btn small" href="${listHref(spec2, state2, { page })}" rel="${rel}" data-list-link
 					>${label}</a
 				>`;
   return html2`<nav class="pager" aria-label="Pages">
-		${link2(1, "\xAB First", "first")} ${link2(state.page - 1, "\u2039 Previous", "prev")}
-		<span class="pager-at">Page ${state.page} of ${last}</span>
-		${link2(state.page + 1, "Next \u203A", "next")} ${link2(last, "Last \xBB", "last")}
+		${link2(1, "\xAB First", "first")} ${link2(state2.page - 1, "\u2039 Previous", "prev")}
+		<span class="pager-at">Page ${state2.page} of ${last}</span>
+		${link2(state2.page + 1, "Next \u203A", "next")} ${link2(last, "Last \xBB", "last")}
 	</nav>`;
 }
-function listRegion(spec2, state, total, rows2) {
-  const first = total ? (state.page - 1) * state.size + 1 : 0;
-  const last = Math.min(total, state.page * state.size);
+function listRegion(spec2, state2, total, rows2) {
+  const first = total ? (state2.page - 1) * state2.size + 1 : 0;
+  const last = Math.min(total, state2.page * state2.size);
   const count2 = total ? `Showing ${first}\u2013${last} of ${plural(total, spec2.noun)}` : "";
   return html2`<div data-region="${spec2.region}" data-list-region>
 		<p class="list-count" data-list-count role="status">${count2}</p>
 		${total ? html2`<ul class="q-items l-rows">
 							${rows2}
 						</ul>
-						${pager(spec2, state, total)}` : state.q || Object.keys(state.filters).length ? emptyNotice(
+						${pager(spec2, state2, total)}` : state2.q || Object.keys(state2.filters).length ? emptyNotice(
     `No ${spec2.noun} matches these filters.`,
     html2`<a href="${spec2.path}" data-list-clear>Clear the filters</a>`
   ) : emptyNotice(spec2.none[0], spec2.none[1])}
@@ -29494,15 +29499,15 @@ function runRow(row2) {
 }
 function runsPage(store, params) {
   const spec2 = runsSpec(store);
-  const { page, state } = listPage(listState(params, spec2), (query) => pagedRuns(store, query));
+  const { page, state: state2 } = listPage(listState(params, spec2), (query) => pagedRuns(store, query));
   return {
     title: "Runs",
     section: "runs",
     subjects: ["*"],
-    address: listHref(spec2, state),
-    ...pageTrail(spec2, state, page.total, "Runs"),
-    body: html2`${heading("Runs", "Every run of every plan.")} ${filterBar(spec2, state)}
-		${listRegion(spec2, state, page.total, page.rows.map(runRow))}`
+    address: listHref(spec2, state2),
+    ...pageTrail(spec2, state2, page.total, "Runs"),
+    body: html2`${heading("Runs", "Every run of every plan.")} ${filterBar(spec2, state2)}
+		${listRegion(spec2, state2, page.total, page.rows.map(runRow))}`
   };
 }
 function subjectLink(subject) {
@@ -29586,15 +29591,15 @@ function logRow(row2) {
 }
 function logPage(store, params) {
   const spec2 = logSpec(store);
-  const { page, state } = listPage(listState(params, spec2), (query) => pagedOperations(store, query));
+  const { page, state: state2 } = listPage(listState(params, spec2), (query) => pagedOperations(store, query));
   return {
     title: "Log",
     section: "log",
     subjects: ["*"],
-    address: listHref(spec2, state),
-    ...pageTrail(spec2, state, page.total, "Log"),
-    body: html2`${heading("Log", "Every write to the workspace.")} ${filterBar(spec2, state)}
-		${listRegion(spec2, state, page.total, page.rows.map(logRow))}`
+    address: listHref(spec2, state2),
+    ...pageTrail(spec2, state2, page.total, "Log"),
+    body: html2`${heading("Log", "Every write to the workspace.")} ${filterBar(spec2, state2)}
+		${listRegion(spec2, state2, page.total, page.rows.map(logRow))}`
   };
 }
 
@@ -29674,7 +29679,7 @@ function testerModels(context) {
 		<p class="help">Choose a model for a tester, or use the workspace tester model.</p>
 		<p class="help" role="status" data-tester-count-status></p>
 		<p class="help" role="status" data-tester-model-status>Open to load models.</p>
-		<button class="btn" type="button" data-stop data-tester-model-refresh>Refresh models</button>
+		<button class="sp-btn" type="button" data-stop data-tester-model-refresh>Refresh models</button>
 		<label for="tester-model-filter">Filter models</label>
 		<input id="tester-model-filter" type="search" autocomplete="off" data-stop data-tester-model-filter />
 		${Array.from(
@@ -29982,12 +29987,12 @@ var claudeMissing = {
   next: "Install Claude Code, or add the folder of claude to PATH. Then test again.",
   detail: null
 };
-function isRunning(state) {
-  return liveStates.includes(state);
+function isRunning(state2) {
+  return liveStates.includes(state2);
 }
-function phaseOf2(events, state) {
-  if (!isRunning(state) || startOf(events)?.path === "session") return null;
-  if (state === "following") return "test";
+function phaseOf2(events, state2) {
+  if (!isRunning(state2) || startOf(events)?.path === "session") return null;
+  if (state2 === "following") return "test";
   const launched = events.filter((item) => item.step === "launch").map((item) => item.explorer);
   const ended = new Set(events.filter((item) => item.step === "end").map((item) => item.explorer));
   const recorded2 = new Set(events.filter((item) => item.step === "record").map((item) => item.explorer));
@@ -30119,9 +30124,9 @@ function runsOf(store, explorationId, counts2) {
     const later = events.slice(from + 1, indexes[number + 1]);
     const ended = later.find((item) => item.step === "followed");
     const last = number === indexes.length - 1;
-    const state = ended ? ended.status === "completed" ? "completed" : "failed" : last ? status.follow === "running" ? "following" : status.follow ?? "interrupted" : "interrupted";
+    const state2 = ended ? ended.status === "completed" ? "completed" : "failed" : last ? status.follow === "running" ? "following" : status.follow ?? "interrupted" : "interrupted";
     const answers = events[from].detail.answers?.length ?? 0;
-    const trouble = state === "failed" ? failureOf(String(ended?.detail.reason ?? ""), ended?.detail.hint ?? null, later) : null;
+    const trouble = state2 === "failed" ? failureOf(String(ended?.detail.reason ?? ""), ended?.detail.hint ?? null, later) : null;
     const words5 = {
       completed: `${plural(answers, "answer")} tested`,
       failed: trouble ? `${trouble.cause} ${trouble.next}` : "",
@@ -30133,16 +30138,16 @@ function runsOf(store, explorationId, counts2) {
       ...base,
       key: `follow:${explorationId}:${number + 1}`,
       follow: true,
-      state,
-      running: state === "following",
-      phase: state === "following" ? "test" : null,
+      state: state2,
+      running: state2 === "following",
+      phase: state2 === "following" ? "test" : null,
       actor: followers[number]?.actor ?? "unknown",
       startedAt: events[from].at,
-      endedAt: ended?.at ?? (state === "stopped" ? later.findLast((item) => item.step === "stop")?.at ?? null : null),
+      endedAt: ended?.at ?? (state2 === "stopped" ? later.findLast((item) => item.step === "stop")?.at ?? null : null),
       costUsd: costOf3(later),
-      outcome: words5[state] ?? "",
+      outcome: words5[state2] ?? "",
       failure: trouble,
-      stoppable: state === "following"
+      stoppable: state2 === "following"
     };
   });
   return [own, ...follows];
@@ -30277,7 +30282,7 @@ function chatRow(turn2, n, now) {
 	</div>`;
 }
 function activityPage(store, context, params, defaults) {
-  const state = listState(params, spec);
+  const state2 = listState(params, spec);
   const runs = allRuns(store);
   const entries = [
     ...runs.map((run2) => ({
@@ -30293,8 +30298,8 @@ function activityPage(store, context, params, defaults) {
       run: null
     }))
   ].sort((a, b) => Number(b.running) - Number(a.running) || b.at.localeCompare(a.at));
-  const lastPage = Math.max(1, Math.ceil(entries.length / state.size));
-  const shown2 = { ...state, page: Math.min(state.page, lastPage) };
+  const lastPage = Math.max(1, Math.ceil(entries.length / state2.size));
+  const shown2 = { ...state2, page: Math.min(state2.page, lastPage) };
   const page = { rows: entries.slice((shown2.page - 1) * shown2.size, shown2.page * shown2.size) };
   const now = Date.now();
   const running3 = page.rows.filter((entry) => entry.running);
@@ -30398,7 +30403,7 @@ function questionAction(review, item) {
   if (item.question) return `/explorations/${item.question.explorationId}/questions/${item.question.id}`;
   return `/plans/${review.planId}@${review.revision}/gaps/${item.id}`;
 }
-function claimBody(context, store, review, item, base, back, state) {
+function claimBody(context, store, review, item, base, back, state2) {
   const claim = item.claim;
   const detail = item.detail;
   const files2 = filesOf(store, review, item);
@@ -30440,7 +30445,7 @@ function claimBody(context, store, review, item, base, back, state) {
     send: "Reject",
     missing: "Write a short reason for the reject.",
     fields: [["verdict", "rejected"]],
-    value: state?.values.rationale
+    value: state2?.values.rationale
   }) : ""}
 		${item.kind === "defect" && !claim.handoff ? textForm(context, item, back, {
     id: "handoff",
@@ -30452,7 +30457,7 @@ function claimBody(context, store, review, item, base, back, state) {
     fields: [["claim", item.id]]
   }) : ""}`;
 }
-function questionBody(context, review, item, back, state) {
+function questionBody(context, review, item, back, state2) {
   const question = item.question;
   const members = question?.members ?? [];
   const open = item.kind === "question" || item.kind === "gap" || item.kind === "deferred";
@@ -30463,11 +30468,11 @@ function questionBody(context, review, item, back, state) {
 			<input
 				id="answer-source"
 				name="source"
-				value="${state?.values.source ?? ""}"
+				value="${state2?.values.source ?? ""}"
 				placeholder="${context.actor ?? "You"}, in the review UI"
 			/>
 			<label for="answer-rationale">Reason</label>
-			<input id="answer-rationale" name="rationale" value="${state?.values.rationale ?? ""}" />
+			<input id="answer-rationale" name="rationale" value="${state2?.values.rationale ?? ""}" />
 		</div>
 	</details>`;
   return html2`${question?.actual ? html2`<p class="sp-today"><span class="sp-lbl">What the build does</span>${question.actual}</p>` : ""}
@@ -30497,7 +30502,7 @@ function questionBody(context, review, item, back, state) {
       ...item.kind === "gap" ? [["sha", review.sha]] : [],
       ["kind", "clarify"]
     ],
-    value: state?.values.kind === "clarify" ? state.values.value : void 0,
+    value: state2?.values.kind === "clarify" ? state2.values.value : void 0,
     more
   }) : ""}`;
 }
@@ -30515,9 +30520,9 @@ function approvalBody(item) {
 function recordDrawer(store, context, review, item, view, refusal) {
   const list3 = reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`);
   const base = reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`);
-  const state = refusal?.key === item.key ? refusal.state : null;
+  const state2 = refusal?.key === item.key ? refusal.state : null;
   const options3 = optionsOf({ ...context, path: list3 }, review, item);
-  const body = item.claim ? claimBody(context, store, review, item, base, list3, state) : item.kind === "approval" ? approvalBody(item) : questionBody(context, review, item, list3, state);
+  const body = item.claim ? claimBody(context, store, review, item, base, list3, state2) : item.kind === "approval" ? approvalBody(item) : questionBody(context, review, item, list3, state2);
   const when = item.claim ? null : item.question?.at ?? item.waiting?.since ?? null;
   return html2`<aside
 		class="sp-drawer"
@@ -30534,7 +30539,7 @@ function recordDrawer(store, context, review, item, view, refusal) {
 			<a class="sp-btn" href="${list3}" data-close><kbd>Esc</kbd><span>Close</span></a>
 		</div>
 		<div class="sp-db">
-			${state ? html2`<div data-stale-slot>${state.stale ? banner("warn", state.stale) : ""}${state.error ? html2`<p class="form-error" role="alert">${state.error}</p>` : ""}${keptText(state)}</div>` : html2`<div data-stale-slot></div>`}
+			${state2 ? html2`<div data-stale-slot>${state2.stale ? banner("warn", state2.stale) : ""}${state2.error ? html2`<p class="form-error" role="alert">${state2.error}</p>` : ""}${keptText(state2)}</div>` : html2`<div data-stale-slot></div>`}
 			<section class="sp-dhead" tabindex="-1" data-sub data-label="${item.id}">
 				<div class="sp-pills">
 					${itemTag(item)}
@@ -31950,8 +31955,8 @@ var phaseNotes = {
   not_in_level: "The level of this exploration has no verify step.",
   not_run: "Did not run."
 };
-function phaseNote(state) {
-  return phaseNotes[state] ?? "No reason is recorded.";
+function phaseNote(state2) {
+  return phaseNotes[state2] ?? "No reason is recorded.";
 }
 function foundFiles(store, live, entry) {
   return entry.evidence.map((file) => {
@@ -32294,11 +32299,11 @@ function explorerFilePage(store, explorationId, explorer, phase, name2) {
 			<section class="panel" aria-label="${name2}"><pre class="report">${file.text}</pre></section>`
   };
 }
-function questionPage(store, context, explorationId, questionId, state = null) {
+function questionPage(store, context, explorationId, questionId, state2 = null) {
   const report = explorationReport(store, explorationId);
   const question = report.questions.find((item) => item.id === questionId);
   if (!question) throw new Error(`Unknown question ${questionId} in ${explorationId}`);
-  const panel2 = question.answer === null || state ? gapPanel(
+  const panel2 = question.answer === null || state2 ? gapPanel(
     context,
     {
       action: `/explorations/${explorationId}/questions/${question.id}`,
@@ -32308,7 +32313,7 @@ function questionPage(store, context, explorationId, questionId, state = null) {
       question: question.question,
       staleMessage: `${explorationId} changed. Review it before you answer.`
     },
-    state ?? emptyState()
+    state2 ?? emptyState()
   ) : recordPanel("Answer", html2`<blockquote>${question.answer}</blockquote>`);
   return {
     title: `${report.planId} \xB7 ${question.id}`,
@@ -32328,11 +32333,11 @@ function questionPage(store, context, explorationId, questionId, state = null) {
 			${panel2}`
   };
 }
-function claimPage(store, context, explorationId, claimId, state = null) {
+function claimPage(store, context, explorationId, claimId, state2 = null) {
   const report = explorationReport(store, explorationId);
   const claim = report.claims.find((item) => item.id === claimId);
   if (!claim) throw new Error(`Unknown claim ${claimId} in ${explorationId}`);
-  const shown2 = state ?? emptyState();
+  const shown2 = state2 ?? emptyState();
   const panel2 = claim.decision ? recordPanel(
     "Decision",
     html2`<div>${messages(shown2)}</div>
@@ -32347,8 +32352,8 @@ function claimPage(store, context, explorationId, claimId, state = null) {
 					${hidden(context, "")} ${actorField(context, shown2)}
 					${rationaleField(shown2, "Why do you decide this?")}
 					<div class="btns">
-						<button class="btn primary" name="verdict" value="approved">Accept as a defect</button>
-						<button class="btn" name="verdict" value="rejected">Reject</button>
+						<button class="sp-btn pri" name="verdict" value="approved">Accept as a defect</button>
+						<button class="sp-btn" name="verdict" value="rejected">Reject</button>
 					</div>
 				</form>
 			</section>`;
@@ -33406,14 +33411,53 @@ function homePage(store) {
 }
 
 // plugin/src/ui/design.ts
+var keptData = [
+  "act-error",
+  "b",
+  "block",
+  "builds",
+  "cap",
+  "chat-view",
+  "kind",
+  "mark",
+  "panel",
+  "stale-slot",
+  "wide",
+  "zoomed"
+];
+var keptRegions = ["exploration-head", "chat-list"];
 function tokensOf(css) {
   const start = css.indexOf(":root {");
-  const block2 = css.slice(start, css.indexOf("\n}", start));
-  return [...block2.matchAll(/^\t(--[a-z0-9-]+): (.+);$/gm)].map(([, name2, value2]) => ({ name: name2, value: value2 }));
+  const block3 = css.slice(start, css.indexOf("\n}", start));
+  return [...block3.matchAll(/^\t(--[a-z0-9-]+): (.+);$/gm)].map(([, name2, value2]) => ({ name: name2, value: value2 }));
+}
+function inert(markup) {
+  return markup.replace(/\sdata-([a-z-]+)(="[^"]*"|='[^']*')?/g, (attribute, name2, value2 = "") => {
+    if (name2 === "region") return keptRegions.some((region) => value2.includes(region)) ? attribute : "";
+    return keptData.includes(name2) ? attribute : "";
+  }).replace(/\s(id|for|aria-labelledby|aria-describedby|aria-controls)="([^"]+)"/g, ' $1="ds-$2"').replace(/\s(method|action)="[^"]*"/g, "").replace(/<dialog(?![^>]*\sopen)([^>]*)>/g, "<dialog$1 open>");
 }
 function modes(value2) {
   const both = /^light-dark\((.+), (.+)\)$/.exec(value2);
   return both ? [both[1], both[2]] : [value2, value2];
+}
+function table(head, rows2) {
+  return html2`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					${head.map((cell4) => html2`<th scope="col">${cell4}</th>`)}
+				</tr>
+			</thead>
+			<tbody>
+				${rows2.map(
+    (row2) => html2`<tr>
+							${row2.map((cell4) => html2`<td>${cell4}</td>`)}
+						</tr>`
+  )}
+			</tbody>
+		</table>
+	</div>`;
 }
 function section(id2, title2, intro, body) {
   return html2`<section class="ds-sec" id="${id2}" aria-labelledby="${id2}-h">
@@ -33422,85 +33466,51 @@ function section(id2, title2, intro, body) {
 		${body}
 	</section>`;
 }
-function tokenTable(tokens, sample, columns2 = ["Token", "Sample", "Value"]) {
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					${columns2.map((column) => html2`<th scope="col">${column}</th>`)}
-				</tr>
-			</thead>
-			<tbody>
-				${tokens.map(
-    (token) => html2`<tr>
-							<td><code>${token.name}</code></td>
-							<td>${sample(token)}</td>
-							<td><code>${token.value}</code></td>
-						</tr>`
-  )}
-			</tbody>
-		</table>
-	</div>`;
+function tokenRows(tokens, sample) {
+  return table(
+    ["Token", "Sample", "Value"],
+    tokens.map((token) => [html2`<code>${token.name}</code>`, sample(token), html2`<code>${token.value}</code>`])
+  );
 }
-function colors(tokens) {
-  const list3 = tokens.filter((token) => token.value.startsWith("light-dark("));
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Token</th>
-					<th scope="col">Sample</th>
-					<th scope="col">Light</th>
-					<th scope="col">Dark</th>
-				</tr>
-			</thead>
-			<tbody>
-				${list3.map((token) => {
-    const [light, dark] = modes(token.value);
-    return html2`<tr>
-						<td><code>${token.name}</code></td>
-						<td><span class="ds-swatch" data-style="background: var(${token.name})"></span></td>
-						<td><code>${light}</code></td>
-						<td><code>${dark}</code></td>
-					</tr>`;
-  })}
-			</tbody>
-		</table>
-	</div>`;
-}
-function pick(tokens, prefix) {
-  return tokens.filter((token) => token.name.startsWith(prefix));
+function pick(tokens, test) {
+  return tokens.filter((token) => test(token.name));
 }
 function foundations(tokens) {
-  const type = pick(tokens, "--type-");
-  const space = pick(tokens, "--sp-");
-  const size2 = pick(tokens, "--size-");
-  const shape = tokens.filter(
-    (token) => [
-      "--radius",
-      "--radius-round",
-      "--line-w",
-      "--mark-w",
-      "--line",
-      "--focus-ring",
-      "--sep",
-      "--mark-inset"
-    ].includes(token.name)
-  );
-  const motion = pick(tokens, "--motion-");
+  const colors = tokens.filter((token) => token.value.startsWith("light-dark("));
+  const shape = [
+    "--radius",
+    "--radius-round",
+    "--line-w",
+    "--mark-w",
+    "--line",
+    "--focus-ring",
+    "--sep",
+    "--mark-inset"
+  ];
   return html2`
 		${section(
     "color",
     "Color",
     "One value per mode. The browser picks light or dark from the color scheme. The theme button in the top bar switches it.",
-    colors(tokens)
+    table(
+      ["Token", "Sample", "Light", "Dark"],
+      colors.map((token) => {
+        const [light, dark] = modes(token.value);
+        return [
+          html2`<code>${token.name}</code>`,
+          html2`<span class="ds-swatch" data-style="background: var(${token.name})"></span>`,
+          html2`<code>${light}</code>`,
+          html2`<code>${dark}</code>`
+        ];
+      })
+    )
   )}
 		${section(
     "type",
     "Type",
-    "Each style is a full font shorthand. Line heights are multiples of 4px. Labels are uppercase with the track token.",
-    tokenTable(
-      type,
+    "Each style is a full font shorthand. Line heights are multiples of 4px.",
+    tokenRows(
+      pick(tokens, (name2) => name2.startsWith("--type-")),
       (token) => html2`<span class="ds-type" data-style="font: var(${token.name})">Verify checkout 0123</span>`
     )
   )}
@@ -33508,14 +33518,17 @@ function foundations(tokens) {
     "space",
     "Spacing",
     "The unit is 4px. Padding, margin and gap use only these steps.",
-    tokenTable(space, (token) => html2`<span class="ds-bar" data-style="width: var(${token.name})"></span>`)
+    tokenRows(
+      pick(tokens, (name2) => name2.startsWith("--sp-")),
+      (token) => html2`<span class="ds-bar" data-style="width: var(${token.name})"></span>`
+    )
   )}
 		${section(
     "size",
     "Sizes",
     "Fixed heights of controls and rows. Each is a multiple of 4px and includes its own border.",
-    tokenTable(
-      size2,
+    tokenRows(
+      pick(tokens, (name2) => name2.startsWith("--size-")),
       (token) => html2`<span
 						class="ds-box"
 						data-style="height: var(${token.name}); width: var(${token.name})"
@@ -33523,16 +33536,40 @@ function foundations(tokens) {
     )
   )}
 		${section(
+    "width",
+    "Widths",
+    "Fixed widths of columns, panels and dialogs. Each is a multiple of 8px.",
+    tokenRows(
+      pick(tokens, (name2) => name2.startsWith("--w-") || name2.startsWith("--h-")),
+      (token) => html2`<span class="ds-bar ds-bar-soft" data-style="width: min(100%, var(${token.name}))"></span>`
+    )
+  )}
+		${section(
     "shape",
     "Radius, lines and focus",
     "Corners are nearly square. A line never adds to the size of a box: frames and separators draw inside it.",
-    tokenTable(shape, (token) => html2`<span class="ds-shape" data-token="${token.name}"></span>`)
+    tokenRows(
+      pick(tokens, (name2) => shape.includes(name2)),
+      (token) => html2`<span class="ds-shape" data-token="${token.name}"></span>`
+    )
+  )}
+		${section(
+    "layer",
+    "Layers",
+    "The stack from bottom to top. A layer is above every layer before it in this list.",
+    tokenRows(
+      pick(tokens, (name2) => name2.startsWith("--z-")),
+      () => html2`<span class="muted">—</span>`
+    )
   )}
 		${section(
     "motion",
     "Motion",
     "Motion is short and stops when the system asks for reduced motion.",
-    tokenTable(motion, () => html2`<span class="muted">—</span>`)
+    tokenRows(
+      pick(tokens, (name2) => name2.startsWith("--motion-")),
+      () => html2`<span class="muted">—</span>`
+    )
   )}
 	`;
 }
@@ -33541,7 +33578,7 @@ function grid() {
   return section(
     "grid",
     "Grid",
-    "Turn on the overlay to see the columns and the 4px rows on every page of this UI.",
+    "Turn on the overlay to see the columns and the 4px rows on any page of this UI.",
     html2`<dl class="sp-facts">
 				<dt>Unit</dt>
 				<dd>
@@ -33549,7 +33586,10 @@ function grid() {
 					smaller.
 				</dd>
 				<dt>Columns</dt>
-				<dd>12 above 1100px, 8 from 761px to 1100px, 4 at 760px and below.</dd>
+				<dd>
+					12 above 1100px, 8 from 761px to 1100px, 4 at 760px and below. Columns are whole pixels. The last
+					column takes the rest.
+				</dd>
 				<dt>Gutter</dt>
 				<dd>16px between columns.</dd>
 				<dt>Margin</dt>
@@ -33557,261 +33597,68 @@ function grid() {
 				<dt>Plan nav</dt>
 				<dd>Columns 1 to 3. The page content takes columns 4 to 12.</dd>
 				<dt>Drawer</dt>
-				<dd>
-					Columns 8 to 12 and the right margin. The page content stops at column 7. At 1100px and below the
-					drawer covers the page.
-				</dd>
+				<dd>Columns 8 to 12 and the right margin. At 1100px and below the drawer covers the page.</dd>
 				<dt>Rows</dt>
+				<dd>Every box top and height is on the 4px rows. Lines draw inside boxes.</dd>
+				<dt>Small parts</dt>
 				<dd>
-					Boxes stack on the 4px rows. Lines draw inside boxes, so a 1px frame does not move the next box.
+					Key caps, pills, tags, marks and icon buttons have a fixed height. Their content is centred in it.
 				</dd>
 				<dt>Inset</dt>
-				<dd>
-					Text in a framed box starts 16px from the frame. Rows have 12px vertical padding, or a fixed height.
-				</dd>
+				<dd>Text in a framed box starts 16px from the frame.</dd>
 				<dt>Breakpoints</dt>
-				<dd>
-					400px small phone, 760px phone, 1100px tablet, 1240px narrow desktop. Content width: 560px, 976px,
-					1100px.
-				</dd>
+				<dd>400px, 760px, 1100px and 1240px. Content width: 560px, 976px and 1100px.</dd>
 			</dl>
 			<div class="ds-cols" aria-hidden="true">${cells}</div>`
   );
 }
-function states(items) {
+function block(title2, body) {
+  const id2 = title2.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return html2`<section class="ds-spec" data-block="${id2}">
+		<h3 class="sp-sec">${title2}</h3>
+		<div class="ds-stage">${typeof body === "string" ? { html: body } : body}</div>
+	</section>`;
+}
+function state(label, sample) {
+  return html2`<div class="ds-state"><span class="ds-cap">${label}</span>${sample}</div>`;
+}
+function keyCaps() {
   return html2`<div class="ds-states">
-		${items.map(([label, sample]) => html2`<div><span class="lab">${label}</span>${sample}</div>`)}
+		${state("alone", html2`<kbd>1</kbd> <kbd>Esc</kbd> <kbd>Enter</kbd>`)}
+		${state("glyphs", html2`<kbd>${glyph("\u2191")}${glyph("\u2193")}</kbd> <kbd>${glyph("\u2192")}</kbd> <kbd>${glyph("\u2190")}</kbd>`)}
+		${state("in a button", html2`<button type="button" class="sp-btn"><kbd>1</kbd><span>Right</span></button>`)}
+		${state("in a primary button", html2`<button type="button" class="sp-btn pri"><kbd>Enter</kbd><span>Start</span></button>`)}
+		${state(
+    "in a status hint",
+    html2`<span class="sb-keys"
+				><span class="sb-k"><kbd>${glyph("\u2191")}${glyph("\u2193")}</kbd>rows</span
+				><span class="sb-k"><kbd>/</kbd>find</span></span
+			>`
+  )}
+		${state("in text", html2`<p class="sp-sub">Press <kbd>?</kbd> to see every key.</p>`)}
 	</div>`;
 }
-function part(title2, body) {
-  return html2`<div class="panel ds-part">
-		<h2>${title2}</h2>
-		${body}
+function liveStates2() {
+  return html2`<div class="ds-states">
+		${state("loading", html2`<span class="who"><span class="live">Connecting</span></span>`)}
+		${state("live", html2`<span class="who"><span class="live">${glyph("\u25CF")} Live</span></span>`)}
+		${state("lost", html2`<span class="who"><span class="live down">Reconnecting</span></span>`)}
+		${state("result marks", html2`<span class="ds-row-inline">${icon("passed")}${icon("failed")}${icon("inconclusive")}${icon("running")}${icon(null)}</span>`)}
+		${state("status pills", html2`<span class="ds-row-inline">${pill("passed")}${pill("failed")}${pill("needs_answers")}</span>`)}
 	</div>`;
 }
-function button(look, label, extra = "") {
-  return html2`<button type="button" class="sp-btn ${look}" ${extra}>${label}</button>`;
+function components(parts) {
+  return html2`<section class="ds-sec" id="components" aria-labelledby="components-h">
+		<h2 class="sp-sec" id="components-h">Components</h2>
+		<p class="sp-sub">
+			Each block is the markup of the real page and the real style sheet. Forced states copy the real :hover,
+			:focus-visible and :active rules.
+		</p>
+		${block("Key caps", keyCaps())} ${block("Live, loading and lost", liveStates2())} ${{ html: inert(parts) }}
+		${block("Viewer", inert(viewer.html).replace(/\shidden(?=[\s>])/, ""))}
+	</section>`;
 }
-function listRows() {
-  const row2 = (look, tag, id2, title2, meta2) => html2`<div class="sp-row ${look}" role="listitem">
-			<label class="sp-c-cb"><input type="checkbox" tabindex="-1" aria-label="Select ${id2}" /></label>
-			<span class="sp-c-tag">${tag}</span>
-			<span class="sp-c-id">${id2}</span>
-			<a class="sp-c-title ell" tabindex="-1" href="#components">${title2}</a>
-			<span class="sp-c-meta ell">${meta2}</span>
-		</div>`;
-  return html2`<div class="sp-list" role="list" aria-label="Example items">
-		<div class="sp-gh" role="presentation">Tests <span>3</span></div>
-		${row2("", pill("passed"), "T1", "Standard order total", "default")}
-		${row2("is-hover", pill("failed"), "T2", "Promotion replaces loyalty", "hover")}
-		${row2("sel", pill("inconclusive"), "T4", "Promotion banner", "selected")}
-		${row2("hl", pill("high"), "F1", "The promotion stacks with the loyalty credit", "highlighted (keyboard)")}
-		${row2("cur", pill("open"), "G4", "Must the banner text wrap?", "current")}
-		${row2("dim", pill("answered"), "Q2", "Answered question", "dim")}
-	</div>`;
-}
-function tile2(look) {
-  return html2`<div class="sp-ct ${look}" role="listitem">
-		<div class="sp-ct-main">
-			<div class="sp-ct-head">
-				<span class="sp-c-id">checkout</span>${pill("needs_answers")}
-				<span class="sp-ct-when ell">shop-local@1 · waits on oracle</span>
-			</div>
-			<h2 class="sp-ct-title ell">Verify checkout totals and refund eligibility.</h2>
-			<p class="sp-ct-verdict"><b>Build fixture-build-2: 1 failed.</b> 2 questions open.</p>
-			<p class="sp-ct-cost">Total cost Unknown</p>
-		</div>
-		<div class="sp-nums">
-			<div><b>1</b><span>defects</span></div>
-			<div><b>0</b><span>to look at</span></div>
-			<div><b class="att">2</b><span>questions</span></div>
-			<div><b>0</b><span>handed over</span></div>
-		</div>
-		<div class="sp-ct-opts">
-			<a class="sp-btn" href="#components"><kbd>1</kbd><span>Answer 1 blocking question</span></a>
-		</div>
-	</div>`;
-}
-function nav() {
-  const row2 = (look, id2, text2, end) => html2`<a class="sp-nrow ${look}" role="treeitem" href="#components"
-			><span class="sp-nid">${id2}</span><span class="sp-ntx ell">${text2}</span>${end}</a
-		>`;
-  return html2`<nav class="sp-nav ds-nav" aria-label="Example plan nav">
-		<div class="sp-nlist" role="tree">
-			${row2("", "", "Needs you", html2`<span class="sp-ncount att">3</span>`)}
-			${row2("on", "", "All items", html2`<span class="sp-ncount">3</span>`)}
-			${row2("is-hover", "", "Plan chats", "")}
-			<div class="sp-sep" aria-hidden="true"></div>
-			${row2("hl", "Out", "Outside the rules", html2`<span class="sp-nmarks">${icon("passed")}${icon("failed")}</span>`)}
-			${row2("", "R1", "Rule one", html2`<span class="sp-nmarks">${icon("inconclusive")}${icon(null)}</span>`)}
-		</div>
-	</nav>`;
-}
-function components() {
-  const statuses = ["passed", "failed", "inconclusive", "needs_approval", "running", "blocked", "critical"];
-  return section(
-    "components",
-    "Components",
-    "Each sample is the real markup and the real style sheet. Forced states copy the real :hover, :focus-visible and :active rules.",
-    html2`<div class="ds-parts">
-				${part(
-      "Button",
-      html2`${states([
-        ["Default", button("", "Open the plan")],
-        ["Hover", button("is-hover", "Open the plan")],
-        ["Focus", button("is-focus", "Open the plan")],
-        ["Active", button("is-active", "Open the plan")],
-        ["Disabled", button("", "Open the plan", "disabled")]
-      ])}
-					${states([
-        ["Primary", button("pri", "Accept run-7")],
-        ["Hover", button("pri is-hover", "Accept run-7")],
-        ["Focus", button("pri is-focus", "Accept run-7")],
-        ["Active", button("pri is-active", "Accept run-7")],
-        [
-          "With key",
-          html2`<a class="sp-btn" href="#components"><kbd>1</kbd><span>New change</span></a>`
-        ]
-      ])}`
-    )}
-				${part(
-      "Status pill",
-      states(statuses.map((status) => [status.replace("_", " "), pill(status)]))
-    )}
-				${part(
-      "Result mark",
-      states([
-        ["Pass", icon("passed")],
-        ["Fail", icon("failed")],
-        ["Question", icon("inconclusive")],
-        ["Running", icon("running")],
-        ["None", icon(null)]
-      ])
-    )}
-				${part(
-      "Key and tag",
-      states([
-        ["Key", html2`<kbd>?</kbd>`],
-        ["Tag", html2`<span class="tag">shop-local@1</span>`],
-        [
-          "Glyphs",
-          html2`<span>${glyph("\u2713")} ${glyph("\u2717")} ${glyph("\u25CF")} ${glyph("\u25CB")} ${glyph("\u25D0")}</span>`
-        ]
-      ])
-    )}
-				${part(
-      "Field",
-      html2`<div class="field-group">
-							<label for="ds-text">Name <span class="req">*</span></label>
-							<input id="ds-text" type="text" placeholder="qa-lead" />
-							<p class="help">Checkmate records it with each decision.</p>
-						</div>
-						<div class="field-group">
-							<label for="ds-focus">Focus</label>
-							<input id="ds-focus" class="is-focus" type="text" value="Focused field" />
-						</div>
-						<div class="field-group">
-							<label for="ds-read">Read only</label>
-							<input id="ds-read" type="text" value="sha256 c388…a71b" readonly />
-						</div>
-						<div class="field-group">
-							<label for="ds-area">Rationale</label>
-							<textarea id="ds-area" placeholder="Why do you decide this?"></textarea>
-							<p class="form-error" role="alert">Enter a rationale.</p>
-						</div>
-						<div class="field-group">
-							<label for="ds-select">Model</label>
-							<select id="ds-select">
-								<option>Default</option>
-								<option>Other</option>
-							</select>
-						</div>
-						<fieldset>
-							<legend>Choice</legend>
-							<div class="seg">
-								<label><input type="radio" name="ds-seg" checked /> Clarify</label>
-								<label><input type="radio" name="ds-seg" /> Accept</label>
-								<label><input type="radio" name="ds-seg" disabled /> Defer</label>
-							</div>
-						</fieldset>
-						<label class="check"><input type="checkbox" checked /> Block release</label>`
-    )}
-				${part(
-      "Banner",
-      html2`${banner("info", "Checkmate made a new plan revision.")}
-					${banner("warn", "One question blocks testing.")}
-					${banner("fail", "The run stopped with an error.")}`
-    )}
-				${part(
-      "Empty, loading and error",
-      html2`${emptyNotice("No chats yet.", "Start a new chat to ask Checkmate.")}
-					${states([
-        ["Loading", html2`<span class="who"><span class="live">Connecting</span></span>`],
-        ["Live", html2`<span class="who"><span class="live">● Live</span></span>`],
-        ["Lost", html2`<span class="who"><span class="live down">Reconnecting</span></span>`]
-      ])}`
-    )}
-				${part(
-      "Facts",
-      html2`<dl class="sp-facts">
-						<dt>Completion</dt>
-						<dd>completed</dd>
-						<dt>Coverage</dt>
-						<dd>partial</dd>
-					</dl>`
-    )}
-				${part(
-      "Fold and menu",
-      html2`<details class="fold" open>
-							<summary><h2>Rules of the plan</h2></summary>
-							<div class="fold-b">Four rules. Each rule has checks.</div>
-						</details>
-						${downloads("Download report", "#", "Pick a format.")}`
-    )}
-				${part(
-      "Path",
-      crumbBar([
-        ["Runs", "#"],
-        ["checkout@2", "#"],
-        ["run-7", null]
-      ])
-    )}
-			</div>
-			<h3 class="ds-h">List</h3>
-			${listRows()}
-			<h3 class="ds-h">Plan tile</h3>
-			<div class="sp-home" role="list" aria-label="Example plans">
-				${tile2("")} ${tile2("is-hover")} ${tile2("hl")}
-			</div>
-			<h3 class="ds-h">Plan nav</h3>
-			${nav()}
-			<h3 class="ds-h">Table</h3>
-			<div class="scroll">
-				<table>
-					<thead>
-						<tr>
-							<th scope="col">Run</th>
-							<th scope="col">State</th>
-							<th scope="col">Cost</th>
-						</tr>
-					</thead>
-					<tbody>
-						<tr>
-							<td>run-7</td>
-							<td>${pill("pending", "awaiting acceptance")}</td>
-							<td>Unknown</td>
-						</tr>
-						<tr>
-							<td>run-6</td>
-							<td>${pill("approved", "accepted")}</td>
-							<td>$0.42</td>
-						</tr>
-					</tbody>
-				</table>
-			</div>`
-  );
-}
-function designPage(css) {
+function designPage(css, parts) {
   const tokens = tokensOf(css);
   return {
     title: "Design system",
@@ -33819,13 +33666,18 @@ function designPage(css) {
     subjects: [],
     script: "/assets/design.js",
     body: html2`<div class="ds" data-design>
-			${heading(
-      "Design system",
-      "The reference for this UI. It reads the tokens from the style sheet and shows the real components.",
-      html2`<div class="btns">
+			<div class="sp-h">
+				<div>
+					<h1>Design system</h1>
+					<p class="sp-sub">
+						The reference for this UI. It reads the tokens from the style sheet and shows the real
+						components.
+					</p>
+				</div>
+				<div class="btns">
 					<button type="button" class="sp-btn" data-grid-toggle aria-pressed="false">Grid overlay</button>
-				</div>`
-    )}
+				</div>
+			</div>
 			<nav class="jump" aria-label="Sections">
 				${[
       ["grid", "Grid"],
@@ -33833,12 +33685,14 @@ function designPage(css) {
       ["type", "Type"],
       ["space", "Spacing"],
       ["size", "Sizes"],
+      ["width", "Widths"],
       ["shape", "Lines"],
+      ["layer", "Layers"],
       ["motion", "Motion"],
       ["components", "Components"]
     ].map(([id2, label]) => html2`<a href="#${id2}">${label}</a>`)}
 			</nav>
-			${grid()} ${foundations(tokens)} ${components()}
+			${grid()} ${foundations(tokens)} ${components(parts)}
 		</div>`
   };
 }
@@ -34114,7 +33968,7 @@ function removeTest(context, detail, test) {
 				<input id="remove-actor-${test.id}" name="actor" required autocomplete="name" />
 			</div>`;
   return html2`<details class="test-remove" data-open-key="remove:${test.id}">
-		<summary class="btn small">Remove ${test.id}</summary>
+		<summary class="sp-btn small">Remove ${test.id}</summary>
 		<form method="post" action="/plans/${subject}/edit" class="decision-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			<input type="hidden" name="sha" value="${detail.sha256}" />
@@ -34126,7 +33980,7 @@ function removeTest(context, detail, test) {
 			</div>
 			${actor}
 			<p class="help">Checkmate saves a new revision without ${test.id} and records who removed it and why.</p>
-			<div class="btns"><button class="btn" data-needs-rationale>Remove ${test.id}</button></div>
+			<div class="btns"><button class="sp-btn" data-needs-rationale>Remove ${test.id}</button></div>
 		</form>
 	</details>`;
 }
@@ -34199,7 +34053,7 @@ function gapRow(detail, gap) {
 						<span class="muted">· ${pending.actor} · applies in the next revision</span>
 					</p>` : ""}
 		${answerable ? html2`<p>
-						<a class="btn small" href="/plans/${detail.planId}@${detail.revision}/gaps/${gap.id}"
+						<a class="sp-btn small" href="/plans/${detail.planId}@${detail.revision}/gaps/${gap.id}"
 							>Answer ${gap.id}</a
 						>
 					</p>` : ""}`;
@@ -34366,16 +34220,16 @@ function planHistoryList(store, detail, all2) {
 						class="history-more"
 						href="/plans/${subject}?history=all#history"
 						data-history-more="/plans/${subject}/history"
-						><span class="btn small">Show full history · ${plural(hidden5, "earlier revision")}</span></a
+						><span class="sp-btn small">Show full history · ${plural(hidden5, "earlier revision")}</span></a
 					>` : ""}
 	</div>`;
 }
-function approvalPanel(store, context, detail, state, extra = null) {
+function approvalPanel(store, context, detail, state2, extra = null) {
   const subject = `${detail.planId}@${detail.revision}`;
   const latest = detail.approval.latest;
   if (detail.approval.policy === "none")
     return recordPanel("Approval", html2`<p class="help">The target policy does not require plan approval.</p>`);
-  if (latest && latest.sha256 === detail.sha256 && !state)
+  if (latest && latest.sha256 === detail.sha256 && !state2)
     return recordPanel(
       "Approval",
       html2`<p class="subj">${pill(latest.verdict)} ${subject}</p>
@@ -34411,7 +34265,7 @@ function approvalPanel(store, context, detail, state, extra = null) {
       ...extra ? { extra } : {},
       intro: html2`<p class="help">${planSummaryLine(detail.plan)}</p>`
     },
-    state ?? emptyState()
+    state2 ?? emptyState()
   );
 }
 function planSummaryLine(plan) {
@@ -34457,7 +34311,7 @@ function planContext(store, planId, harness) {
 function nextLine(planId, found) {
   const mine = found.waiting.filter((item) => item.group !== "questions").length;
   const why = found.status.why[0];
-  const action2 = mine > 0 ? html2`<a class="btn small primary" href="/plans/${planId}?view=needs&amp;focus=list"
+  const action2 = mine > 0 ? html2`<a class="sp-btn small pri" href="/plans/${planId}?view=needs&amp;focus=list"
 					>Decide ${plural(mine, "item")} in Needs you</a
 				>` : found.status.next[0] ? html2`<code>${found.status.next[0]}</code>` : "";
   return html2`<div class="next-line" data-region="next">
@@ -34473,12 +34327,12 @@ function chips(found, extra) {
       "claims",
       html2`Claims
 				<b>${found.claims.length}</b
-				>${deciding ? html2` <span class="st warn">${deciding} to decide</span>` : ""}`
+				>${deciding ? html2` <span class="sp-pill">${deciding} to decide</span>` : ""}`
     ],
     [
       "questions",
       html2`Questions
-				<b>${open.length}</b> open${blocking ? html2` <span class="st fail">${blocking} blocking</span>` : ""}`
+				<b>${open.length}</b> open${blocking ? html2` <span class="sp-pill">${blocking} blocking</span>` : ""}`
     ],
     ["explorations", html2`Explorations <b>${found.explorations.length}</b>`],
     ...extra.map(([id2, label, count2]) => [id2, html2`${label} <b>${count2}</b>`])
@@ -34529,7 +34383,7 @@ function explorationsFold(found) {
     "explorations"
   );
 }
-function planPage(store, context, planId, revision2, state = null, allHistory = false, chatting = false) {
+function planPage(store, context, planId, revision2, state2 = null, allHistory = false, chatting = false) {
   const detail = planDetail(store, planId, revision2);
   const { plan } = detail;
   const subject = `${planId}@${revision2}`;
@@ -34547,7 +34401,7 @@ function planPage(store, context, planId, revision2, state = null, allHistory = 
 			>Total cost ${costText(cost.costUsd, cost.costPartial)}</span
 		>
 		<span class="head-actions">
-			${latest ? html2`<a class="btn small" href="/plans/${subject}/edit">Edit plan</a>` : ""}
+			${latest ? html2`<a class="sp-btn small" href="/plans/${subject}/edit">Edit plan</a>` : ""}
 			${downloads("Export", `/plans/${subject}/export`, "The HTML export is print-ready. Open it and print to PDF.")}
 		</span>
 	</div>`;
@@ -34602,7 +34456,7 @@ function planPage(store, context, planId, revision2, state = null, allHistory = 
 				${fold("runs", "Runs", detail.runs.length, accepting, runsTable(detail), "plan-runs")}
 				${fold("history", "History", null, allHistory, planHistoryList(store, detail, allHistory), "history")}
 			</div>
-			${side(approvalPanel(store, context, detail, state))}
+			${side(approvalPanel(store, context, detail, state2))}
 		</div>`;
   return {
     title: subject,
@@ -34707,7 +34561,7 @@ function requestPage(store, planId, harness) {
     nav: navigator(reviewOf(store, planId), "plan")
   };
 }
-function gapPage(store, context, planId, revision2, gapId, state = null) {
+function gapPage(store, context, planId, revision2, gapId, state2 = null) {
   const detail = planDetail(store, planId, revision2);
   const { plan } = detail;
   const latest = detail.revision === detail.latestRevision;
@@ -34725,7 +34579,7 @@ function gapPage(store, context, planId, revision2, gapId, state = null) {
 					answer adds it to ${planId}.`
   ) : "";
   let panel2;
-  if (state || latest && gap.status === "open" && !pending)
+  if (state2 || latest && gap.status === "open" && !pending)
     panel2 = gapPanel(
       context,
       {
@@ -34736,7 +34590,7 @@ function gapPage(store, context, planId, revision2, gapId, state = null) {
         question: gap.question,
         staleMessage: `${planId} changed. Review it before you answer.`
       },
-      state ?? emptyState()
+      state2 ?? emptyState()
     );
   else if (pending)
     panel2 = recordPanel(
@@ -34757,7 +34611,7 @@ function gapPage(store, context, planId, revision2, gapId, state = null) {
       "Answer gap",
       html2`<p class="help">Answer this gap on the latest revision.</p>
 				<p>
-					<a class="btn" href="/plans/${planId}@${detail.latestRevision}/gaps/${gap.id}"
+					<a class="sp-btn" href="/plans/${planId}@${detail.latestRevision}/gaps/${gap.id}"
 						>Open ${planId}@${detail.latestRevision}</a
 					>
 				</p>`
@@ -34903,14 +34757,14 @@ function unsavedPanel(unsaved) {
 		<pre class="code">${unsaved || "You changed no values."}</pre>
 	</section>`;
 }
-function removalField(state) {
-  return html2`<div class="field-group" data-removal${state.removed.length ? "" : html2` hidden`}>
+function removalField(state2) {
+  return html2`<div class="field-group" data-removal${state2.removed.length ? "" : html2` hidden`}>
 		<label class="lab" for="removal">Reason for removal</label>
 		<p class="help" id="removal-help">
-			The edit removes <span class="mono" data-removal-tests>${state.removed.join(", ")}</span>. Checkmate records
+			The edit removes <span class="mono" data-removal-tests>${state2.removed.join(", ")}</span>. Checkmate records
 			who removed which tests and why.
 		</p>
-		<textarea id="removal" name="rationale" rows="2" aria-describedby="removal-help">${state.rationale}</textarea>
+		<textarea id="removal" name="rationale" rows="2" aria-describedby="removal-help">${state2.rationale}</textarea>
 	</div>`;
 }
 function field3(label, name2, value2, help3 = "") {
@@ -35017,7 +34871,7 @@ function hidden3(context, sha256, mode, orig) {
 		<input type="hidden" name="mode" value="${mode}" />
 		<input type="hidden" name="orig" value="${orig}" />`;
 }
-function actorLine(context, state, path, mode) {
+function actorLine(context, state2, path, mode) {
   if (context.actor)
     return html2`<p class="help">
 			Saving as <strong>${context.actor}</strong>.
@@ -35031,12 +34885,12 @@ function actorLine(context, state, path, mode) {
 			required
 			maxlength="${actorLimit}"
 			autocomplete="name"
-			value="${state.actor}"
+			value="${state2.actor}"
 		/>
 		<p class="help">Checkmate records it with the edit.</p>
 	</div>`;
 }
-function editPage(store, context, planId, revision2, state = null) {
+function editPage(store, context, planId, revision2, state2 = null) {
   const detail = planDetail(store, planId, revision2);
   const subject = `${planId}@${revision2}`;
   const path = `/plans/${subject}/edit`;
@@ -35071,7 +34925,7 @@ function editPage(store, context, planId, revision2, state = null) {
     html2`<strong>Edits change this revision in place.</strong> ${subject} is not approved and no run uses
 					it.`
   );
-  const shown2 = state ?? {
+  const shown2 = state2 ?? {
     mode: "form",
     candidate: planCandidate(detail.plan),
     json: candidateJson(planCandidate(detail.plan)),
@@ -35086,8 +34940,8 @@ function editPage(store, context, planId, revision2, state = null) {
   const messages2 = html2`${shown2.stale ? banner("warn", shown2.stale) : ""}
 	${shown2.error ? html2`<p class="form-error" role="alert" data-field="${shown2.field ?? ""}">${shown2.error}</p>` : ""}`;
   const buttons = (mode) => html2`<div class="btns">
-				<button class="btn primary">${save2}</button>
-				<a class="btn" href="/plans/${subject}">Cancel</a>
+				<button class="sp-btn pri">${save2}</button>
+				<a class="sp-btn" href="/plans/${subject}">Cancel</a>
 			</div>
 			${actorLine(context, shown2, path, mode)}`;
   const body = html2`${heading(
@@ -35329,7 +35183,7 @@ function adoptForm(context, detail, gapId, sha256) {
 						placeholder="Your name"
 						aria-label="Your name"
 					/>`}
-		<button class="btn small">Bring into plan</button>
+		<button class="sp-btn small">Bring into plan</button>
 	</form>`;
 }
 function gapCard(store, context, detail, gap, adoptError) {
@@ -35348,7 +35202,7 @@ function gapCard(store, context, detail, gap, adoptError) {
 		<p class="gap-q">${gap.question}</p>
 		<p class="muted">${gap.consequence}</p>
 		<div class="actions">
-			${adopted ? html2`${pill("resolved", "in plan")} <a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
+			${adopted ? html2`${pill("resolved", "in plan")} <a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`<a class="sp-btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
 							${adoptForm(context, detail, gap.id, revision2.sha256)}`}
 		</div>
 		${adoptError?.gapId === gap.id ? html2`<p class="form-error" role="alert">${adoptError.message}</p>` : ""}
@@ -35459,7 +35313,7 @@ function retestList(detail) {
 		</ul>
 	</div>`;
 }
-function decisionPanel(store, context, detail, state, extra = null) {
+function decisionPanel(store, context, detail, state2, extra = null) {
   const result = detail.result;
   if (!result)
     return recordPanel(
@@ -35474,7 +35328,7 @@ function decisionPanel(store, context, detail, state, extra = null) {
 				${retestList(detail)}`
     );
   const latest = result.latestDecision;
-  if (latest && !state)
+  if (latest && !state2)
     return recordPanel(
       "Decision",
       html2`<p class="subj">
@@ -35512,7 +35366,7 @@ function decisionPanel(store, context, detail, state, extra = null) {
       ...extra ? { extra } : {},
       intro: html2`${retestList(detail)}${inconclusiveList(detail)}`
     },
-    state ?? emptyState()
+    state2 ?? emptyState()
   );
 }
 function runRow2(runId, key, selected, label, tag, title2, meta2 = "") {
@@ -35623,7 +35477,7 @@ function openChecks(detail) {
 		</ul>
 	</section>`;
 }
-function summaryDetail2(store, context, detail, state, crumbs) {
+function summaryDetail2(store, context, detail, state2, crumbs) {
   const report = detail.result ? downloads(
     "Download report",
     `/runs/${detail.runId}/report`,
@@ -35635,10 +35489,10 @@ function summaryDetail2(store, context, detail, state, crumbs) {
 		${strip(detail)}
 		<p class="muted small" data-region="run-usage">${runUsageLine(detail)}</p>
 		${detail.warnings.map((warning) => banner("warn", warning))} ${openChecks(detail)}
-		${decisionPanel(store, context, detail, state, returnFields({ key: "summary" }, `/runs/${detail.runId}`))}
+		${decisionPanel(store, context, detail, state2, returnFields({ key: "summary" }, `/runs/${detail.runId}`))}
 		<div class="actions">${report}</div>`;
 }
-function runPage(store, context, runId, params = new URLSearchParams(), state = null, adoptError = null) {
+function runPage(store, context, runId, params = new URLSearchParams(), state2 = null, adoptError = null) {
   const detail = runDetail(store, runId);
   const interruption = detail.attempts.at(-1)?.workerInterruptedAt;
   const asked2 = adoptError ? `gap:${adoptError.gapId}` : params.get("item") ?? "summary";
@@ -35659,7 +35513,7 @@ function runPage(store, context, runId, params = new URLSearchParams(), state = 
 							<h2 class="q-h">Coverage</h2>
 							${coverage(store, detail)}` : asked2 === "cleanup" ? html2`${crumbs}
 								<h2 class="q-h">Cleanup and attempts</h2>
-								${cleanup(detail)}` : summaryDetail2(store, context, detail, state, crumbs);
+								${cleanup(detail)}` : summaryDetail2(store, context, detail, state2, crumbs);
   return {
     viewer: true,
     title: label ? `${runId} \xB7 ${label}` : runId,
@@ -35900,7 +35754,7 @@ function retireControl(context, targetId, instance, retire) {
   if (instance.retired) return html2`<span class="muted small">retired by ${instance.retired.actor}</span>`;
   const failed2 = retire?.instanceId === instance.instanceId ? retire.error : null;
   return html2`<details class="retire" ${failed2 ? html2`open` : ""} data-open-key="retire:${instance.instanceId}">
-		<summary class="btn small" aria-label="Retire ${instance.instanceId}">Retire</summary>
+		<summary class="sp-btn small" aria-label="Retire ${instance.instanceId}">Retire</summary>
 		<form
 			method="post"
 			action="/settings/targets/${targetId}/instances/${instance.instanceId}/retire"
@@ -35911,7 +35765,7 @@ function retireControl(context, targetId, instance, retire) {
 			<p>Retire <code>${instance.instanceId}</code>? No new run can start on it. Its runs stay as they are.</p>
 			${failed2 ? html2`<p class="form-error" role="alert">${failed2}</p>` : ""}
 			${actorInput(context, `retire-actor-${instance.instanceId}`)}
-			<div class="btns"><button class="btn primary">Confirm retire</button></div>
+			<div class="btns"><button class="sp-btn pri">Confirm retire</button></div>
 		</form>
 	</details>`;
 }
@@ -36001,7 +35855,7 @@ ${value2("references")}</textarea>
 				<p class="help" id="references-help">One per line, for example an authentication alias. No secrets.</p>
 			</div>
 			${actorInput(context, "instance-actor")}
-			<div class="btns"><button class="btn primary">Add instance</button></div>
+			<div class="btns"><button class="sp-btn pri">Add instance</button></div>
 		</form>
 	</section>`;
 }
@@ -36107,7 +35961,7 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 					</select>
 					<p class="help">Applies to new tests and chats in this workspace.</p>
 				</div>
-				<div class="btns"><button class="btn primary">Save the program</button></div>
+				<div class="btns"><button class="sp-btn pri">Save the program</button></div>
 			</form>
 			<p id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
 		</div>
@@ -36138,7 +35992,7 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 					</p>
 					${form ? html2`<p class="form-error" role="alert" data-field="rules">${form.error}</p>` : ""}
 				</div>
-				<div class="btns"><button class="btn primary">Save the rules</button></div>
+				<div class="btns"><button class="sp-btn pri">Save the rules</button></div>
 			</form>
 		</section>
 		<section
@@ -36154,7 +36008,7 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 				says so.
 			</p>
 			<p class="help" role="status" data-model-status>Loading models from ${pi ? "Pi" : "Claude Code"}…</p>
-			<button class="btn" type="button" data-model-refresh>Refresh models</button>
+			<button class="sp-btn" type="button" data-model-refresh>Refresh models</button>
 			<div class="field-group">
 				<label class="lab" for="model-filter">Filter models</label>
 				<input id="model-filter" type="search" autocomplete="off" placeholder="Search available models" />
@@ -36214,7 +36068,7 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 					</div>
 					${model?.error ? html2`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ""}
 				</div>
-				<div class="btns"><button class="btn primary">Save models</button></div>
+				<div class="btns"><button class="sp-btn pri">Save models</button></div>
 			</form>
 		</section>
 		<section class="panel" aria-labelledby="chat-settings">
@@ -36224,7 +36078,7 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 				New chats use ${pi ? "Pi" : "Claude Code"} and your chat model by default. Change the harness, model, or
 				effort for the next message in the chat.
 			</p>
-			<div class="btns"><a class="btn" href="/chats">Open Chats</a></div>
+			<div class="btns"><a class="sp-btn" href="/chats">Open Chats</a></div>
 		</section>`;
   return settingsPage("/settings/harness", "Coding harness", ["*"], body);
 }
@@ -36582,7 +36436,7 @@ function readStreamLine(line, harness = "claude") {
     if (event2.type === "agent_end" && !event2.willRetry) {
       const message2 = event2.messages?.at(-1);
       const error = message2?.role !== "assistant" || message2.stopReason !== "stop";
-      const reply = message2?.content?.flatMap((part2) => part2.type === "text" && part2.text ? [part2.text] : []).join("") ?? "";
+      const reply = message2?.content?.flatMap((part) => part.type === "text" && part.text ? [part.text] : []).join("") ?? "";
       return [
         {
           kind: "result",
@@ -36609,11 +36463,11 @@ function readStreamLine(line, harness = "claude") {
   if (fields.type !== "assistant") return [{ kind: "other" }];
   const content = fields.message?.content;
   const tools = (Array.isArray(content) ? content : []).flatMap(
-    (block2) => block2?.type === "tool_use" && typeof block2.name === "string" ? [
+    (block3) => block3?.type === "tool_use" && typeof block3.name === "string" ? [
       {
         kind: "tool",
-        name: block2.name,
-        input: block2.input,
+        name: block3.name,
+        input: block3.input,
         cwd: typeof fields.cwd === "string" ? fields.cwd : void 0
       }
     ] : []
@@ -37315,23 +37169,23 @@ Url.prototype.parse = function(url, slashesDenoteHost) {
     if (!ipv6Hostname) {
       const hostparts = this.hostname.split(/\./);
       for (let i = 0, l = hostparts.length; i < l; i++) {
-        const part2 = hostparts[i];
-        if (!part2) {
+        const part = hostparts[i];
+        if (!part) {
           continue;
         }
-        if (!part2.match(hostnamePartPattern)) {
+        if (!part.match(hostnamePartPattern)) {
           let newpart = "";
-          for (let j = 0, k = part2.length; j < k; j++) {
-            if (part2.charCodeAt(j) > 127) {
+          for (let j = 0, k = part.length; j < k; j++) {
+            if (part.charCodeAt(j) > 127) {
               newpart += "x";
             } else {
-              newpart += part2[j];
+              newpart += part[j];
             }
           }
           if (!newpart.match(hostnamePartPattern)) {
             const validParts = hostparts.slice(0, i);
             const notHost = hostparts.slice(i + 1);
-            const bit = part2.match(hostnamePartStart);
+            const bit = part.match(hostnamePartStart);
             if (bit) {
               validParts.push(bit[1]);
               notHost.unshift(bit[2]);
@@ -37455,14 +37309,14 @@ function codePointToString(codePoint) {
 
 // node_modules/entities/dist/internal/decode-shared.js
 var BASE91_INVERSE = /* @__PURE__ */ (() => {
-  const table2 = new Uint8Array(127);
+  const table3 = new Uint8Array(127);
   let code2 = 0;
   for (let char = 33; char <= 126; char++) {
     if (char !== 34 && char !== 36 && char !== 92) {
-      table2[char] = code2++;
+      table3[char] = code2++;
     }
   }
-  return table2;
+  return table3;
 })();
 function decodeTrieDict(input, resultLength, atomCount, dict1AtomCount, ngramCount, dictSize) {
   const base = 91;
@@ -38576,14 +38430,14 @@ var lib = {
   mdurl: mdurl_exports,
   ucmicro: build_exports
 };
-function parseLinkLabel(state, start, disableNested) {
+function parseLinkLabel(state2, start, disableNested) {
   let level, found, marker, prevPos;
-  const max = state.posMax;
-  const oldPos = state.pos;
-  state.pos = start + 1;
+  const max = state2.posMax;
+  const oldPos = state2.pos;
+  state2.pos = start + 1;
   level = 1;
-  while (state.pos < max) {
-    marker = state.src.charCodeAt(state.pos);
+  while (state2.pos < max) {
+    marker = state2.src.charCodeAt(state2.pos);
     if (marker === 93) {
       level--;
       if (level === 0) {
@@ -38591,19 +38445,19 @@ function parseLinkLabel(state, start, disableNested) {
         break;
       }
     }
-    prevPos = state.pos;
-    state.md.inline.skipToken(state);
+    prevPos = state2.pos;
+    state2.md.inline.skipToken(state2);
     if (marker === 91) {
-      if (prevPos === state.pos - 1) level++;
+      if (prevPos === state2.pos - 1) level++;
       else if (disableNested) {
-        state.pos = oldPos;
+        state2.pos = oldPos;
         return -1;
       }
     }
   }
   let labelEnd = -1;
-  if (found) labelEnd = state.pos;
-  state.pos = oldPos;
+  if (found) labelEnd = state2.pos;
+  state2.pos = oldPos;
   return labelEnd;
 }
 function parseLinkDestination(str, start, max) {
@@ -38667,7 +38521,7 @@ function parseLinkDestination(str, start, max) {
 function parseLinkTitle(str, start, max, prev_state) {
   let code2;
   let pos = start;
-  const state = {
+  const state2 = {
     ok: false,
     can_continue: false,
     pos: 0,
@@ -38675,31 +38529,31 @@ function parseLinkTitle(str, start, max, prev_state) {
     marker: 0
   };
   if (prev_state) {
-    state.str = prev_state.str;
-    state.marker = prev_state.marker;
+    state2.str = prev_state.str;
+    state2.marker = prev_state.marker;
   } else {
-    if (pos >= max) return state;
+    if (pos >= max) return state2;
     let marker = str.charCodeAt(pos);
-    if (marker !== 34 && marker !== 39 && marker !== 40) return state;
+    if (marker !== 34 && marker !== 39 && marker !== 40) return state2;
     start++;
     pos++;
     if (marker === 40) marker = 41;
-    state.marker = marker;
+    state2.marker = marker;
   }
   while (pos < max) {
     code2 = str.charCodeAt(pos);
-    if (code2 === state.marker) {
-      state.pos = pos + 1;
-      state.str += unescapeAll(str.slice(start, pos));
-      state.ok = true;
-      return state;
-    } else if (code2 === 40 && state.marker === 41) return state;
+    if (code2 === state2.marker) {
+      state2.pos = pos + 1;
+      state2.str += unescapeAll(str.slice(start, pos));
+      state2.ok = true;
+      return state2;
+    } else if (code2 === 40 && state2.marker === 41) return state2;
     else if (code2 === 92 && pos + 1 < max) pos++;
     pos++;
   }
-  state.can_continue = true;
-  state.str += unescapeAll(str.slice(start, pos));
-  return state;
+  state2.can_continue = true;
+  state2.str += unescapeAll(str.slice(start, pos));
+  return state2;
 }
 var helpers_exports = /* @__PURE__ */ __exportAll({
   parseLinkDestination: () => parseLinkDestination,
@@ -39263,24 +39117,24 @@ var StateCore = class {
 };
 var UNNORMALIZED_NEWLINE_RE = /\r\n?/g;
 var NULL_RE = /\0/g;
-function normalize(state) {
+function normalize(state2) {
   let str;
-  str = state.src.replace(UNNORMALIZED_NEWLINE_RE, "\n");
+  str = state2.src.replace(UNNORMALIZED_NEWLINE_RE, "\n");
   str = str.replace(NULL_RE, "\uFFFD");
-  state.src = str;
+  state2.src = str;
 }
-function block(state) {
+function block2(state2) {
   let token;
-  if (state.inlineMode) {
-    token = new state.Token("inline", "", 0);
-    token.content = state.src;
+  if (state2.inlineMode) {
+    token = new state2.Token("inline", "", 0);
+    token.content = state2.src;
     token.map = [0, 1];
     token.children = [];
-    state.tokens.push(token);
-  } else state.md.block.parse(state.src, state.md, state.env, state.tokens);
+    state2.tokens.push(token);
+  } else state2.md.block.parse(state2.src, state2.md, state2.env, state2.tokens);
 }
-function strip_references(state) {
-  const tokens = state.tokens;
+function strip_references(state2) {
+  const tokens = state2.tokens;
   let last = 0;
   for (let curr = 0; curr < tokens.length; curr++) {
     if (tokens[curr].type === "reference_definition") continue;
@@ -39289,11 +39143,11 @@ function strip_references(state) {
   }
   if (tokens.length !== last) tokens.length = last;
 }
-function inline(state) {
-  const tokens = state.tokens;
+function inline(state2) {
+  const tokens = state2.tokens;
   for (let i = 0, l = tokens.length; i < l; i++) {
     const tok = tokens[i];
-    if (tok.type === "inline") state.md.inline.parse(tok.content, state.md, state.env, tok.children);
+    if (tok.type === "inline") state2.md.inline.parse(tok.content, state2.md, state2.env, tok.children);
   }
 }
 function isLinkOpen$1(str) {
@@ -39302,11 +39156,11 @@ function isLinkOpen$1(str) {
 function isLinkClose$1(str) {
   return /^<\/a\s*>/i.test(str);
 }
-function linkify$1(state) {
-  const blockTokens = state.tokens;
-  if (!state.md.options.linkify) return;
+function linkify$1(state2) {
+  const blockTokens = state2.tokens;
+  if (!state2.md.options.linkify) return;
   for (let j = 0, l = blockTokens.length; j < l; j++) {
-    if (blockTokens[j].type !== "inline" || !state.md.linkify.test(blockTokens[j].content)) continue;
+    if (blockTokens[j].type !== "inline" || !state2.md.linkify.test(blockTokens[j].content)) continue;
     const tokens = blockTokens[j].children;
     const replacements = [];
     let htmlLinkLevel = 0;
@@ -39322,39 +39176,39 @@ function linkify$1(state) {
         if (isLinkClose$1(currentToken.content)) htmlLinkLevel++;
       }
       if (htmlLinkLevel > 0) continue;
-      if (currentToken.type === "text" && state.md.linkify.test(currentToken.content)) {
+      if (currentToken.type === "text" && state2.md.linkify.test(currentToken.content)) {
         const text2 = currentToken.content;
-        let links = state.md.linkify.match(text2);
+        let links = state2.md.linkify.match(text2);
         const nodes = [];
         let level = currentToken.level;
         let lastPos = 0;
         if (links.length > 0 && links[0].index === 0 && i > 0 && tokens[i - 1].type === "text_special") links = links.slice(1);
         for (let ln = 0; ln < links.length; ln++) {
           const url = links[ln].url;
-          const fullUrl = state.md.normalizeLink(url);
-          if (!state.md.validateLink(fullUrl)) continue;
+          const fullUrl = state2.md.normalizeLink(url);
+          if (!state2.md.validateLink(fullUrl)) continue;
           let urlText = links[ln].text;
-          if (!links[ln].schema) urlText = state.md.normalizeLinkText(`http://${urlText}`).replace(/^http:\/\//, "");
-          else if (links[ln].schema === "mailto:" && !/^mailto:/i.test(urlText)) urlText = state.md.normalizeLinkText(`mailto:${urlText}`).replace(/^mailto:/, "");
-          else urlText = state.md.normalizeLinkText(urlText);
+          if (!links[ln].schema) urlText = state2.md.normalizeLinkText(`http://${urlText}`).replace(/^http:\/\//, "");
+          else if (links[ln].schema === "mailto:" && !/^mailto:/i.test(urlText)) urlText = state2.md.normalizeLinkText(`mailto:${urlText}`).replace(/^mailto:/, "");
+          else urlText = state2.md.normalizeLinkText(urlText);
           const pos = links[ln].index;
           if (pos > lastPos) {
-            const token = new state.Token("text", "", 0);
+            const token = new state2.Token("text", "", 0);
             token.content = text2.slice(lastPos, pos);
             token.level = level;
             nodes.push(token);
           }
-          const token_o = new state.Token("link_open", "a", 1);
+          const token_o = new state2.Token("link_open", "a", 1);
           token_o.attrs = [["href", fullUrl]];
           token_o.level = level++;
           token_o.markup = "linkify";
           token_o.info = "auto";
           nodes.push(token_o);
-          const token_t = new state.Token("text", "", 0);
+          const token_t = new state2.Token("text", "", 0);
           token_t.content = urlText;
           token_t.level = level;
           nodes.push(token_t);
-          const token_c = new state.Token("link_close", "a", -1);
+          const token_c = new state2.Token("link_close", "a", -1);
           token_c.level = --level;
           token_c.markup = "linkify";
           token_c.info = "auto";
@@ -39362,7 +39216,7 @@ function linkify$1(state) {
           lastPos = links[ln].lastIndex;
         }
         if (lastPos < text2.length) {
-          const token = new state.Token("text", "", 0);
+          const token = new state2.Token("text", "", 0);
           token.content = text2.slice(lastPos);
           token.level = level;
           nodes.push(token);
@@ -39422,13 +39276,13 @@ function replace_rare(inlineTokens) {
     if (token.type === "link_close" && token.info === "auto") inside_autolink++;
   }
 }
-function replace(state) {
+function replace(state2) {
   let blkIdx;
-  if (!state.md.options.typographer) return;
-  for (blkIdx = state.tokens.length - 1; blkIdx >= 0; blkIdx--) {
-    if (state.tokens[blkIdx].type !== "inline") continue;
-    if (SCOPED_ABBR_TEST_RE.test(state.tokens[blkIdx].content)) replace_scoped(state.tokens[blkIdx].children);
-    if (RARE_RE.test(state.tokens[blkIdx].content)) replace_rare(state.tokens[blkIdx].children);
+  if (!state2.md.options.typographer) return;
+  for (blkIdx = state2.tokens.length - 1; blkIdx >= 0; blkIdx--) {
+    if (state2.tokens[blkIdx].type !== "inline") continue;
+    if (SCOPED_ABBR_TEST_RE.test(state2.tokens[blkIdx].content)) replace_scoped(state2.tokens[blkIdx].children);
+    if (RARE_RE.test(state2.tokens[blkIdx].content)) replace_rare(state2.tokens[blkIdx].children);
   }
 }
 var QUOTE_TEST_RE = /['"]/;
@@ -39460,7 +39314,7 @@ function applyReplacements(str, replacements) {
   }
   return result + str.slice(lastPos);
 }
-function process_inlines(tokens, state) {
+function process_inlines(tokens, state2) {
   let j;
   const stack = [];
   const heads = {
@@ -39531,11 +39385,11 @@ function process_inlines(tokens, state) {
           let openQuote;
           let closeQuote;
           if (isSingle) {
-            openQuote = state.md.options.quotes[2];
-            closeQuote = state.md.options.quotes[3];
+            openQuote = state2.md.options.quotes[2];
+            closeQuote = state2.md.options.quotes[3];
           } else {
-            openQuote = state.md.options.quotes[0];
-            closeQuote = state.md.options.quotes[1];
+            openQuote = state2.md.options.quotes[0];
+            closeQuote = state2.md.options.quotes[1];
           }
           addReplacement(replacements, i, t.index, closeQuote);
           addReplacement(replacements, item.tokenIdx, item.contentPos, openQuote);
@@ -39562,11 +39416,11 @@ function process_inlines(tokens, state) {
     tokens[idx].content = applyReplacements(tokens[idx].content, replacements[tokenIdx]);
   });
 }
-function smartquotes(state) {
-  if (!state.md.options.typographer) return;
-  for (let blkIdx = state.tokens.length - 1; blkIdx >= 0; blkIdx--) {
-    if (state.tokens[blkIdx].type !== "inline" || !QUOTE_TEST_RE.test(state.tokens[blkIdx].content)) continue;
-    process_inlines(state.tokens[blkIdx].children, state);
+function smartquotes(state2) {
+  if (!state2.md.options.typographer) return;
+  for (let blkIdx = state2.tokens.length - 1; blkIdx >= 0; blkIdx--) {
+    if (state2.tokens[blkIdx].type !== "inline" || !QUOTE_TEST_RE.test(state2.tokens[blkIdx].content)) continue;
+    process_inlines(state2.tokens[blkIdx].children, state2);
   }
 }
 function join_alt(tokens) {
@@ -39580,9 +39434,9 @@ function join_alt(tokens) {
   }
   if (curr !== last) tokens.length = last;
 }
-function text_join(state) {
+function text_join(state2) {
   let curr, last;
-  const blockTokens = state.tokens;
+  const blockTokens = state2.tokens;
   const l = blockTokens.length;
   for (let j = 0; j < l; j++) {
     if (blockTokens[j].type !== "inline") continue;
@@ -39602,7 +39456,7 @@ function text_join(state) {
 }
 var _rules$2 = [
   ["normalize", normalize],
-  ["block", block],
+  ["block", block2],
   ["strip_references", strip_references],
   ["inline", inline],
   ["linkify", linkify$1],
@@ -39626,9 +39480,9 @@ var ParserCore = class {
   /**
   * Executes core chain rules.
   */
-  process(state) {
+  process(state2) {
     const rules = this.ruler.getRules("");
-    for (let i = 0, l = rules.length; i < l; i++) rules[i](state);
+    for (let i = 0, l = rules.length; i < l; i++) rules[i](state2);
   }
 };
 var StateBlock = class {
@@ -39741,10 +39595,10 @@ var StateBlock = class {
   }
 };
 var MAX_AUTOCOMPLETED_CELLS = 65536;
-function getLine(state, line) {
-  const pos = state.bMarks[line] + state.tShift[line];
-  const max = state.eMarks[line];
-  return state.src.slice(pos, max);
+function getLine(state2, line) {
+  const pos = state2.bMarks[line] + state2.tShift[line];
+  const max = state2.eMarks[line];
+  return state2.src.slice(pos, max);
 }
 function escapedSplit(str) {
   const result = [];
@@ -39772,25 +39626,25 @@ function escapedSplit(str) {
   result.push(current2 + str.substring(lastPos));
   return result;
 }
-function table(state, startLine, endLine, silent) {
+function table2(state2, startLine, endLine, silent) {
   if (startLine + 2 > endLine) return false;
   let nextLine2 = startLine + 1;
-  if (state.sCount[nextLine2] < state.blkIndent) return false;
-  if (state.sCount[nextLine2] - state.blkIndent >= 4) return false;
-  let pos = state.bMarks[nextLine2] + state.tShift[nextLine2];
-  if (pos >= state.eMarks[nextLine2]) return false;
-  const firstCh = state.src.charCodeAt(pos++);
+  if (state2.sCount[nextLine2] < state2.blkIndent) return false;
+  if (state2.sCount[nextLine2] - state2.blkIndent >= 4) return false;
+  let pos = state2.bMarks[nextLine2] + state2.tShift[nextLine2];
+  if (pos >= state2.eMarks[nextLine2]) return false;
+  const firstCh = state2.src.charCodeAt(pos++);
   if (firstCh !== 124 && firstCh !== 45 && firstCh !== 58) return false;
-  if (pos >= state.eMarks[nextLine2]) return false;
-  const secondCh = state.src.charCodeAt(pos++);
+  if (pos >= state2.eMarks[nextLine2]) return false;
+  const secondCh = state2.src.charCodeAt(pos++);
   if (secondCh !== 124 && secondCh !== 45 && secondCh !== 58 && !isSpace(secondCh)) return false;
   if (firstCh === 45 && isSpace(secondCh)) return false;
-  while (pos < state.eMarks[nextLine2]) {
-    const ch = state.src.charCodeAt(pos);
+  while (pos < state2.eMarks[nextLine2]) {
+    const ch = state2.src.charCodeAt(pos);
     if (ch !== 124 && ch !== 45 && ch !== 58 && !isSpace(ch)) return false;
     pos++;
   }
-  let lineText = getLine(state, startLine + 1);
+  let lineText = getLine(state2, startLine + 1);
   let columns2 = lineText.split("|");
   const aligns = [];
   for (let i = 0; i < columns2.length; i++) {
@@ -39804,114 +39658,114 @@ function table(state, startLine, endLine, silent) {
     else if (t.charCodeAt(0) === 58) aligns.push("left");
     else aligns.push("");
   }
-  lineText = getLine(state, startLine).trim();
+  lineText = getLine(state2, startLine).trim();
   if (lineText.indexOf("|") === -1) return false;
-  if (state.sCount[startLine] - state.blkIndent >= 4) return false;
+  if (state2.sCount[startLine] - state2.blkIndent >= 4) return false;
   columns2 = escapedSplit(lineText);
   if (columns2.length && columns2[0] === "") columns2.shift();
   if (columns2.length && columns2[columns2.length - 1] === "") columns2.pop();
   const columnCount = columns2.length;
   if (columnCount === 0 || columnCount !== aligns.length) return false;
   if (silent) return true;
-  const oldParentType = state.parentType;
-  state.parentType = "table";
-  const terminatorRules = state.md.block.ruler.getRules("blockquote");
-  const token_to = state.push("table_open", "table", 1);
+  const oldParentType = state2.parentType;
+  state2.parentType = "table";
+  const terminatorRules = state2.md.block.ruler.getRules("blockquote");
+  const token_to = state2.push("table_open", "table", 1);
   const tableLines = [startLine, 0];
   token_to.map = tableLines;
-  const token_tho = state.push("thead_open", "thead", 1);
+  const token_tho = state2.push("thead_open", "thead", 1);
   token_tho.map = [startLine, startLine + 1];
-  const token_htro = state.push("tr_open", "tr", 1);
+  const token_htro = state2.push("tr_open", "tr", 1);
   token_htro.map = [startLine, startLine + 1];
   for (let i = 0; i < columns2.length; i++) {
-    const token_ho = state.push("th_open", "th", 1);
+    const token_ho = state2.push("th_open", "th", 1);
     if (aligns[i]) token_ho.attrs = [["style", `text-align:${aligns[i]}`]];
-    const token_il = state.push("inline", "", 0);
+    const token_il = state2.push("inline", "", 0);
     token_il.content = columns2[i].trim();
     token_il.children = [];
-    state.push("th_close", "th", -1);
+    state2.push("th_close", "th", -1);
   }
-  state.push("tr_close", "tr", -1);
-  state.push("thead_close", "thead", -1);
+  state2.push("tr_close", "tr", -1);
+  state2.push("thead_close", "thead", -1);
   let tbodyLines;
   let autocompletedCells = 0;
   for (nextLine2 = startLine + 2; nextLine2 < endLine; nextLine2++) {
-    if (state.sCount[nextLine2] < state.blkIndent) break;
+    if (state2.sCount[nextLine2] < state2.blkIndent) break;
     let terminate = false;
-    for (let i = 0, l = terminatorRules.length; i < l; i++) if (terminatorRules[i](state, nextLine2, endLine, true)) {
+    for (let i = 0, l = terminatorRules.length; i < l; i++) if (terminatorRules[i](state2, nextLine2, endLine, true)) {
       terminate = true;
       break;
     }
     if (terminate) break;
-    lineText = getLine(state, nextLine2).trim();
+    lineText = getLine(state2, nextLine2).trim();
     if (!lineText) break;
-    if (state.sCount[nextLine2] - state.blkIndent >= 4) break;
+    if (state2.sCount[nextLine2] - state2.blkIndent >= 4) break;
     columns2 = escapedSplit(lineText);
     if (columns2.length && columns2[0] === "") columns2.shift();
     if (columns2.length && columns2[columns2.length - 1] === "") columns2.pop();
     autocompletedCells += columnCount - columns2.length;
     if (autocompletedCells > MAX_AUTOCOMPLETED_CELLS) break;
     if (nextLine2 === startLine + 2) {
-      const token_tbo = state.push("tbody_open", "tbody", 1);
+      const token_tbo = state2.push("tbody_open", "tbody", 1);
       token_tbo.map = tbodyLines = [startLine + 2, 0];
     }
-    const token_tro = state.push("tr_open", "tr", 1);
+    const token_tro = state2.push("tr_open", "tr", 1);
     token_tro.map = [nextLine2, nextLine2 + 1];
     for (let i = 0; i < columnCount; i++) {
-      const token_tdo = state.push("td_open", "td", 1);
+      const token_tdo = state2.push("td_open", "td", 1);
       if (aligns[i]) token_tdo.attrs = [["style", `text-align:${aligns[i]}`]];
-      const token_il = state.push("inline", "", 0);
+      const token_il = state2.push("inline", "", 0);
       token_il.content = columns2[i] ? columns2[i].trim() : "";
       token_il.children = [];
-      state.push("td_close", "td", -1);
+      state2.push("td_close", "td", -1);
     }
-    state.push("tr_close", "tr", -1);
+    state2.push("tr_close", "tr", -1);
   }
   if (tbodyLines) {
-    state.push("tbody_close", "tbody", -1);
+    state2.push("tbody_close", "tbody", -1);
     tbodyLines[1] = nextLine2;
   }
-  state.push("table_close", "table", -1);
+  state2.push("table_close", "table", -1);
   tableLines[1] = nextLine2;
-  state.parentType = oldParentType;
-  state.line = nextLine2;
+  state2.parentType = oldParentType;
+  state2.line = nextLine2;
   return true;
 }
-function code(state, startLine, endLine) {
-  if (state.sCount[startLine] - state.blkIndent < 4) return false;
+function code(state2, startLine, endLine) {
+  if (state2.sCount[startLine] - state2.blkIndent < 4) return false;
   let nextLine2 = startLine + 1;
   let last = nextLine2;
   while (nextLine2 < endLine) {
-    if (state.isEmpty(nextLine2)) {
+    if (state2.isEmpty(nextLine2)) {
       nextLine2++;
       continue;
     }
-    if (state.sCount[nextLine2] - state.blkIndent >= 4) {
+    if (state2.sCount[nextLine2] - state2.blkIndent >= 4) {
       nextLine2++;
       last = nextLine2;
       continue;
     }
     break;
   }
-  state.line = last;
-  const token = state.push("code_block", "code", 0);
-  token.content = state.getLines(startLine, last, 4 + state.blkIndent, false) + "\n";
-  token.map = [startLine, state.line];
+  state2.line = last;
+  const token = state2.push("code_block", "code", 0);
+  token.content = state2.getLines(startLine, last, 4 + state2.blkIndent, false) + "\n";
+  token.map = [startLine, state2.line];
   return true;
 }
-function fence2(state, startLine, endLine, silent) {
-  let pos = state.bMarks[startLine] + state.tShift[startLine];
-  let max = state.eMarks[startLine];
-  if (state.sCount[startLine] - state.blkIndent >= 4) return false;
+function fence2(state2, startLine, endLine, silent) {
+  let pos = state2.bMarks[startLine] + state2.tShift[startLine];
+  let max = state2.eMarks[startLine];
+  if (state2.sCount[startLine] - state2.blkIndent >= 4) return false;
   if (pos + 3 > max) return false;
-  const marker = state.src.charCodeAt(pos);
+  const marker = state2.src.charCodeAt(pos);
   if (marker !== 126 && marker !== 96) return false;
   let mem = pos;
-  pos = state.skipChars(pos, marker);
+  pos = state2.skipChars(pos, marker);
   let len = pos - mem;
   if (len < 3) return false;
-  const markup = state.src.slice(mem, pos);
-  const params = state.src.slice(pos, max);
+  const markup = state2.src.slice(mem, pos);
+  const params = state2.src.slice(pos, max);
   if (marker === 96) {
     if (params.indexOf(String.fromCharCode(marker)) >= 0) return false;
   }
@@ -39921,169 +39775,169 @@ function fence2(state, startLine, endLine, silent) {
   for (; ; ) {
     nextLine2++;
     if (nextLine2 >= endLine) break;
-    pos = mem = state.bMarks[nextLine2] + state.tShift[nextLine2];
-    max = state.eMarks[nextLine2];
-    if (pos < max && state.sCount[nextLine2] < state.blkIndent) break;
-    if (state.src.charCodeAt(pos) !== marker) continue;
-    if (state.sCount[nextLine2] - state.blkIndent >= 4) continue;
-    pos = state.skipChars(pos, marker);
+    pos = mem = state2.bMarks[nextLine2] + state2.tShift[nextLine2];
+    max = state2.eMarks[nextLine2];
+    if (pos < max && state2.sCount[nextLine2] < state2.blkIndent) break;
+    if (state2.src.charCodeAt(pos) !== marker) continue;
+    if (state2.sCount[nextLine2] - state2.blkIndent >= 4) continue;
+    pos = state2.skipChars(pos, marker);
     if (pos - mem < len) continue;
-    pos = state.skipSpaces(pos);
+    pos = state2.skipSpaces(pos);
     if (pos < max) continue;
     haveEndMarker = true;
     break;
   }
-  len = state.sCount[startLine];
-  state.line = nextLine2 + (haveEndMarker ? 1 : 0);
-  const token = state.push("fence", "code", 0);
+  len = state2.sCount[startLine];
+  state2.line = nextLine2 + (haveEndMarker ? 1 : 0);
+  const token = state2.push("fence", "code", 0);
   token.info = params;
-  token.content = state.getLines(startLine + 1, nextLine2, len, true);
+  token.content = state2.getLines(startLine + 1, nextLine2, len, true);
   token.markup = markup;
-  token.map = [startLine, state.line];
+  token.map = [startLine, state2.line];
   return true;
 }
-function blockquote(state, startLine, endLine, silent) {
-  let pos = state.bMarks[startLine] + state.tShift[startLine];
-  let max = state.eMarks[startLine];
-  const oldLineMax = state.lineMax;
-  if (state.sCount[startLine] - state.blkIndent >= 4) return false;
-  if (state.src.charCodeAt(pos) !== 62) return false;
+function blockquote(state2, startLine, endLine, silent) {
+  let pos = state2.bMarks[startLine] + state2.tShift[startLine];
+  let max = state2.eMarks[startLine];
+  const oldLineMax = state2.lineMax;
+  if (state2.sCount[startLine] - state2.blkIndent >= 4) return false;
+  if (state2.src.charCodeAt(pos) !== 62) return false;
   if (silent) return true;
   const oldBMarks = [];
   const oldBSCount = [];
   const oldSCount = [];
   const oldTShift = [];
-  const terminatorRules = state.md.block.ruler.getRules("blockquote");
-  const oldParentType = state.parentType;
-  state.parentType = "blockquote";
+  const terminatorRules = state2.md.block.ruler.getRules("blockquote");
+  const oldParentType = state2.parentType;
+  state2.parentType = "blockquote";
   let lastLineEmpty = false;
   let nextLine2;
   for (nextLine2 = startLine; nextLine2 < endLine; nextLine2++) {
-    const isOutdented = state.sCount[nextLine2] < state.blkIndent;
-    pos = state.bMarks[nextLine2] + state.tShift[nextLine2];
-    max = state.eMarks[nextLine2];
+    const isOutdented = state2.sCount[nextLine2] < state2.blkIndent;
+    pos = state2.bMarks[nextLine2] + state2.tShift[nextLine2];
+    max = state2.eMarks[nextLine2];
     if (pos >= max) break;
-    if (state.src.charCodeAt(pos++) === 62 && !isOutdented) {
-      let initial = state.sCount[nextLine2] + 1;
+    if (state2.src.charCodeAt(pos++) === 62 && !isOutdented) {
+      let initial = state2.sCount[nextLine2] + 1;
       let spaceAfterMarker;
       let adjustTab;
-      if (state.src.charCodeAt(pos) === 32) {
+      if (state2.src.charCodeAt(pos) === 32) {
         pos++;
         initial++;
         adjustTab = false;
         spaceAfterMarker = true;
-      } else if (state.src.charCodeAt(pos) === 9) {
+      } else if (state2.src.charCodeAt(pos) === 9) {
         spaceAfterMarker = true;
-        if ((state.bsCount[nextLine2] + initial) % 4 === 3) {
+        if ((state2.bsCount[nextLine2] + initial) % 4 === 3) {
           pos++;
           initial++;
           adjustTab = false;
         } else adjustTab = true;
       } else spaceAfterMarker = false;
       let offset = initial;
-      oldBMarks.push(state.bMarks[nextLine2]);
-      state.bMarks[nextLine2] = pos;
+      oldBMarks.push(state2.bMarks[nextLine2]);
+      state2.bMarks[nextLine2] = pos;
       while (pos < max) {
-        const ch = state.src.charCodeAt(pos);
+        const ch = state2.src.charCodeAt(pos);
         if (isSpace(ch)) {
-          if (ch === 9) offset += 4 - (offset + state.bsCount[nextLine2] + (adjustTab ? 1 : 0)) % 4;
+          if (ch === 9) offset += 4 - (offset + state2.bsCount[nextLine2] + (adjustTab ? 1 : 0)) % 4;
           else offset++;
         } else break;
         pos++;
       }
       lastLineEmpty = pos >= max;
-      oldBSCount.push(state.bsCount[nextLine2]);
-      state.bsCount[nextLine2] = state.sCount[nextLine2] + 1 + (spaceAfterMarker ? 1 : 0);
-      oldSCount.push(state.sCount[nextLine2]);
-      state.sCount[nextLine2] = offset - initial;
-      oldTShift.push(state.tShift[nextLine2]);
-      state.tShift[nextLine2] = pos - state.bMarks[nextLine2];
+      oldBSCount.push(state2.bsCount[nextLine2]);
+      state2.bsCount[nextLine2] = state2.sCount[nextLine2] + 1 + (spaceAfterMarker ? 1 : 0);
+      oldSCount.push(state2.sCount[nextLine2]);
+      state2.sCount[nextLine2] = offset - initial;
+      oldTShift.push(state2.tShift[nextLine2]);
+      state2.tShift[nextLine2] = pos - state2.bMarks[nextLine2];
       continue;
     }
     if (lastLineEmpty) break;
     let terminate = false;
-    for (let i = 0, l = terminatorRules.length; i < l; i++) if (terminatorRules[i](state, nextLine2, endLine, true)) {
+    for (let i = 0, l = terminatorRules.length; i < l; i++) if (terminatorRules[i](state2, nextLine2, endLine, true)) {
       terminate = true;
       break;
     }
     if (terminate) {
-      state.lineMax = nextLine2;
-      if (state.blkIndent !== 0) {
-        oldBMarks.push(state.bMarks[nextLine2]);
-        oldBSCount.push(state.bsCount[nextLine2]);
-        oldTShift.push(state.tShift[nextLine2]);
-        oldSCount.push(state.sCount[nextLine2]);
-        state.sCount[nextLine2] -= state.blkIndent;
+      state2.lineMax = nextLine2;
+      if (state2.blkIndent !== 0) {
+        oldBMarks.push(state2.bMarks[nextLine2]);
+        oldBSCount.push(state2.bsCount[nextLine2]);
+        oldTShift.push(state2.tShift[nextLine2]);
+        oldSCount.push(state2.sCount[nextLine2]);
+        state2.sCount[nextLine2] -= state2.blkIndent;
       }
       break;
     }
-    oldBMarks.push(state.bMarks[nextLine2]);
-    oldBSCount.push(state.bsCount[nextLine2]);
-    oldTShift.push(state.tShift[nextLine2]);
-    oldSCount.push(state.sCount[nextLine2]);
-    state.sCount[nextLine2] = -1;
+    oldBMarks.push(state2.bMarks[nextLine2]);
+    oldBSCount.push(state2.bsCount[nextLine2]);
+    oldTShift.push(state2.tShift[nextLine2]);
+    oldSCount.push(state2.sCount[nextLine2]);
+    state2.sCount[nextLine2] = -1;
   }
-  const oldIndent = state.blkIndent;
-  state.blkIndent = 0;
-  const token_o = state.push("blockquote_open", "blockquote", 1);
+  const oldIndent = state2.blkIndent;
+  state2.blkIndent = 0;
+  const token_o = state2.push("blockquote_open", "blockquote", 1);
   token_o.markup = ">";
   const lines2 = [startLine, 0];
   token_o.map = lines2;
-  state.md.block.tokenize(state, startLine, nextLine2);
-  const token_c = state.push("blockquote_close", "blockquote", -1);
+  state2.md.block.tokenize(state2, startLine, nextLine2);
+  const token_c = state2.push("blockquote_close", "blockquote", -1);
   token_c.markup = ">";
-  state.lineMax = oldLineMax;
-  state.parentType = oldParentType;
-  lines2[1] = state.line;
+  state2.lineMax = oldLineMax;
+  state2.parentType = oldParentType;
+  lines2[1] = state2.line;
   for (let i = 0; i < oldTShift.length; i++) {
-    state.bMarks[i + startLine] = oldBMarks[i];
-    state.tShift[i + startLine] = oldTShift[i];
-    state.sCount[i + startLine] = oldSCount[i];
-    state.bsCount[i + startLine] = oldBSCount[i];
+    state2.bMarks[i + startLine] = oldBMarks[i];
+    state2.tShift[i + startLine] = oldTShift[i];
+    state2.sCount[i + startLine] = oldSCount[i];
+    state2.bsCount[i + startLine] = oldBSCount[i];
   }
-  state.blkIndent = oldIndent;
+  state2.blkIndent = oldIndent;
   return true;
 }
-function hr(state, startLine, endLine, silent) {
-  const max = state.eMarks[startLine];
-  if (state.sCount[startLine] - state.blkIndent >= 4) return false;
-  let pos = state.bMarks[startLine] + state.tShift[startLine];
-  const marker = state.src.charCodeAt(pos++);
+function hr(state2, startLine, endLine, silent) {
+  const max = state2.eMarks[startLine];
+  if (state2.sCount[startLine] - state2.blkIndent >= 4) return false;
+  let pos = state2.bMarks[startLine] + state2.tShift[startLine];
+  const marker = state2.src.charCodeAt(pos++);
   if (marker !== 42 && marker !== 45 && marker !== 95) return false;
   let cnt = 1;
   while (pos < max) {
-    const ch = state.src.charCodeAt(pos++);
+    const ch = state2.src.charCodeAt(pos++);
     if (ch !== marker && !isSpace(ch)) return false;
     if (ch === marker) cnt++;
   }
   if (cnt < 3) return false;
   if (silent) return true;
-  state.line = startLine + 1;
-  const token = state.push("hr", "hr", 0);
-  token.map = [startLine, state.line];
+  state2.line = startLine + 1;
+  const token = state2.push("hr", "hr", 0);
+  token.map = [startLine, state2.line];
   token.markup = Array(cnt + 1).join(String.fromCharCode(marker));
   return true;
 }
-function skipBulletListMarker(state, startLine) {
-  const max = state.eMarks[startLine];
-  let pos = state.bMarks[startLine] + state.tShift[startLine];
-  const marker = state.src.charCodeAt(pos++);
+function skipBulletListMarker(state2, startLine) {
+  const max = state2.eMarks[startLine];
+  let pos = state2.bMarks[startLine] + state2.tShift[startLine];
+  const marker = state2.src.charCodeAt(pos++);
   if (marker !== 42 && marker !== 45 && marker !== 43) return -1;
   if (pos < max) {
-    if (!isSpace(state.src.charCodeAt(pos))) return -1;
+    if (!isSpace(state2.src.charCodeAt(pos))) return -1;
   }
   return pos;
 }
-function skipOrderedListMarker(state, startLine) {
-  const start = state.bMarks[startLine] + state.tShift[startLine];
-  const max = state.eMarks[startLine];
+function skipOrderedListMarker(state2, startLine) {
+  const start = state2.bMarks[startLine] + state2.tShift[startLine];
+  const max = state2.eMarks[startLine];
   let pos = start;
   if (pos + 1 >= max) return -1;
-  let ch = state.src.charCodeAt(pos++);
+  let ch = state2.src.charCodeAt(pos++);
   if (ch < 48 || ch > 57) return -1;
   for (; ; ) {
     if (pos >= max) return -1;
-    ch = state.src.charCodeAt(pos++);
+    ch = state2.src.charCodeAt(pos++);
     if (ch >= 48 && ch <= 57) {
       if (pos - start >= 10) return -1;
       continue;
@@ -40092,64 +39946,64 @@ function skipOrderedListMarker(state, startLine) {
     return -1;
   }
   if (pos < max) {
-    ch = state.src.charCodeAt(pos);
+    ch = state2.src.charCodeAt(pos);
     if (!isSpace(ch)) return -1;
   }
   return pos;
 }
-function markTightParagraphs(state, idx) {
-  const level = state.level + 2;
-  for (let i = idx + 2, l = state.tokens.length - 2; i < l; i++) if (state.tokens[i].level === level && state.tokens[i].type === "paragraph_open") {
-    state.tokens[i + 2].hidden = true;
-    state.tokens[i].hidden = true;
+function markTightParagraphs(state2, idx) {
+  const level = state2.level + 2;
+  for (let i = idx + 2, l = state2.tokens.length - 2; i < l; i++) if (state2.tokens[i].level === level && state2.tokens[i].type === "paragraph_open") {
+    state2.tokens[i + 2].hidden = true;
+    state2.tokens[i].hidden = true;
     i += 2;
   }
 }
-function list(state, startLine, endLine, silent) {
+function list(state2, startLine, endLine, silent) {
   let max, pos, start, token;
   let nextLine2 = startLine;
   let tight = true;
-  if (state.sCount[nextLine2] - state.blkIndent >= 4) return false;
-  if (state.listIndent >= 0 && state.sCount[nextLine2] - state.listIndent >= 4 && state.sCount[nextLine2] < state.blkIndent) return false;
+  if (state2.sCount[nextLine2] - state2.blkIndent >= 4) return false;
+  if (state2.listIndent >= 0 && state2.sCount[nextLine2] - state2.listIndent >= 4 && state2.sCount[nextLine2] < state2.blkIndent) return false;
   let isTerminatingParagraph = false;
-  if (silent && state.parentType === "paragraph") {
-    if (state.sCount[nextLine2] >= state.blkIndent) isTerminatingParagraph = true;
+  if (silent && state2.parentType === "paragraph") {
+    if (state2.sCount[nextLine2] >= state2.blkIndent) isTerminatingParagraph = true;
   }
   let isOrdered;
   let markerValue;
   let posAfterMarker;
-  if ((posAfterMarker = skipOrderedListMarker(state, nextLine2)) >= 0) {
+  if ((posAfterMarker = skipOrderedListMarker(state2, nextLine2)) >= 0) {
     isOrdered = true;
-    start = state.bMarks[nextLine2] + state.tShift[nextLine2];
-    markerValue = Number(state.src.slice(start, posAfterMarker - 1));
+    start = state2.bMarks[nextLine2] + state2.tShift[nextLine2];
+    markerValue = Number(state2.src.slice(start, posAfterMarker - 1));
     if (isTerminatingParagraph && markerValue !== 1) return false;
-  } else if ((posAfterMarker = skipBulletListMarker(state, nextLine2)) >= 0) isOrdered = false;
+  } else if ((posAfterMarker = skipBulletListMarker(state2, nextLine2)) >= 0) isOrdered = false;
   else return false;
   if (isTerminatingParagraph) {
-    if (state.skipSpaces(posAfterMarker) >= state.eMarks[nextLine2]) return false;
+    if (state2.skipSpaces(posAfterMarker) >= state2.eMarks[nextLine2]) return false;
   }
   if (silent) return true;
-  const markerCharCode = state.src.charCodeAt(posAfterMarker - 1);
-  const listTokIdx = state.tokens.length;
+  const markerCharCode = state2.src.charCodeAt(posAfterMarker - 1);
+  const listTokIdx = state2.tokens.length;
   if (isOrdered) {
-    token = state.push("ordered_list_open", "ol", 1);
+    token = state2.push("ordered_list_open", "ol", 1);
     if (markerValue !== 1) token.attrs = [["start", markerValue]];
-  } else token = state.push("bullet_list_open", "ul", 1);
+  } else token = state2.push("bullet_list_open", "ul", 1);
   const listLines = [nextLine2, 0];
   token.map = listLines;
   token.markup = String.fromCharCode(markerCharCode);
   let prevEmptyEnd = false;
-  const terminatorRules = state.md.block.ruler.getRules("list");
-  const oldParentType = state.parentType;
-  state.parentType = "list";
+  const terminatorRules = state2.md.block.ruler.getRules("list");
+  const oldParentType = state2.parentType;
+  state2.parentType = "list";
   while (nextLine2 < endLine) {
     pos = posAfterMarker;
-    max = state.eMarks[nextLine2];
-    const initial = state.sCount[nextLine2] + posAfterMarker - (state.bMarks[nextLine2] + state.tShift[nextLine2]);
+    max = state2.eMarks[nextLine2];
+    const initial = state2.sCount[nextLine2] + posAfterMarker - (state2.bMarks[nextLine2] + state2.tShift[nextLine2]);
     let offset = initial;
     while (pos < max) {
-      const ch = state.src.charCodeAt(pos);
-      if (ch === 9) offset += 4 - (offset + state.bsCount[nextLine2]) % 4;
+      const ch = state2.src.charCodeAt(pos);
+      if (ch === 9) offset += 4 - (offset + state2.bsCount[nextLine2]) % 4;
       else if (ch === 32) offset++;
       else break;
       pos++;
@@ -40160,59 +40014,59 @@ function list(state, startLine, endLine, silent) {
     else indentAfterMarker = offset - initial;
     if (indentAfterMarker > 4) indentAfterMarker = 1;
     const indent2 = initial + indentAfterMarker;
-    token = state.push("list_item_open", "li", 1);
+    token = state2.push("list_item_open", "li", 1);
     token.markup = String.fromCharCode(markerCharCode);
     const itemLines = [nextLine2, 0];
     token.map = itemLines;
-    if (isOrdered) token.info = state.src.slice(start, posAfterMarker - 1);
-    const oldTight = state.tight;
-    const oldTShift = state.tShift[nextLine2];
-    const oldSCount = state.sCount[nextLine2];
-    const oldListIndent = state.listIndent;
-    state.listIndent = state.blkIndent;
-    state.blkIndent = indent2;
-    state.tight = true;
-    state.tShift[nextLine2] = contentStart - state.bMarks[nextLine2];
-    state.sCount[nextLine2] = offset;
-    if (contentStart >= max && state.isEmpty(nextLine2 + 1)) state.line = Math.min(state.line + 2, endLine);
-    else state.md.block.tokenize(state, nextLine2, endLine);
-    if (!state.tight || prevEmptyEnd) tight = false;
-    prevEmptyEnd = state.line - nextLine2 > 1 && state.isEmpty(state.line - 1);
-    state.blkIndent = state.listIndent;
-    state.listIndent = oldListIndent;
-    state.tShift[nextLine2] = oldTShift;
-    state.sCount[nextLine2] = oldSCount;
-    state.tight = oldTight;
-    token = state.push("list_item_close", "li", -1);
+    if (isOrdered) token.info = state2.src.slice(start, posAfterMarker - 1);
+    const oldTight = state2.tight;
+    const oldTShift = state2.tShift[nextLine2];
+    const oldSCount = state2.sCount[nextLine2];
+    const oldListIndent = state2.listIndent;
+    state2.listIndent = state2.blkIndent;
+    state2.blkIndent = indent2;
+    state2.tight = true;
+    state2.tShift[nextLine2] = contentStart - state2.bMarks[nextLine2];
+    state2.sCount[nextLine2] = offset;
+    if (contentStart >= max && state2.isEmpty(nextLine2 + 1)) state2.line = Math.min(state2.line + 2, endLine);
+    else state2.md.block.tokenize(state2, nextLine2, endLine);
+    if (!state2.tight || prevEmptyEnd) tight = false;
+    prevEmptyEnd = state2.line - nextLine2 > 1 && state2.isEmpty(state2.line - 1);
+    state2.blkIndent = state2.listIndent;
+    state2.listIndent = oldListIndent;
+    state2.tShift[nextLine2] = oldTShift;
+    state2.sCount[nextLine2] = oldSCount;
+    state2.tight = oldTight;
+    token = state2.push("list_item_close", "li", -1);
     token.markup = String.fromCharCode(markerCharCode);
-    nextLine2 = state.line;
+    nextLine2 = state2.line;
     itemLines[1] = nextLine2;
     if (nextLine2 >= endLine) break;
-    if (state.sCount[nextLine2] < state.blkIndent) break;
-    if (state.sCount[nextLine2] - state.blkIndent >= 4) break;
+    if (state2.sCount[nextLine2] < state2.blkIndent) break;
+    if (state2.sCount[nextLine2] - state2.blkIndent >= 4) break;
     let terminate = false;
-    for (let i = 0, l = terminatorRules.length; i < l; i++) if (terminatorRules[i](state, nextLine2, endLine, true)) {
+    for (let i = 0, l = terminatorRules.length; i < l; i++) if (terminatorRules[i](state2, nextLine2, endLine, true)) {
       terminate = true;
       break;
     }
     if (terminate) break;
     if (isOrdered) {
-      posAfterMarker = skipOrderedListMarker(state, nextLine2);
+      posAfterMarker = skipOrderedListMarker(state2, nextLine2);
       if (posAfterMarker < 0) break;
-      start = state.bMarks[nextLine2] + state.tShift[nextLine2];
+      start = state2.bMarks[nextLine2] + state2.tShift[nextLine2];
     } else {
-      posAfterMarker = skipBulletListMarker(state, nextLine2);
+      posAfterMarker = skipBulletListMarker(state2, nextLine2);
       if (posAfterMarker < 0) break;
     }
-    if (markerCharCode !== state.src.charCodeAt(posAfterMarker - 1)) break;
+    if (markerCharCode !== state2.src.charCodeAt(posAfterMarker - 1)) break;
   }
-  if (isOrdered) token = state.push("ordered_list_close", "ol", -1);
-  else token = state.push("bullet_list_close", "ul", -1);
+  if (isOrdered) token = state2.push("ordered_list_close", "ol", -1);
+  else token = state2.push("bullet_list_close", "ul", -1);
   token.markup = String.fromCharCode(markerCharCode);
   listLines[1] = nextLine2;
-  state.line = nextLine2;
-  state.parentType = oldParentType;
-  if (tight) markTightParagraphs(state, listTokIdx);
+  state2.line = nextLine2;
+  state2.parentType = oldParentType;
+  if (tight) markTightParagraphs(state2, listTokIdx);
   return true;
 }
 var MAX_LABEL_LENGTH = 999;
@@ -40229,36 +40083,36 @@ function countCodePoints(str) {
   }
   return length;
 }
-function lineEnd(state, line) {
-  return Math.min(state.eMarks[line] + 1, state.src.length);
+function lineEnd(state2, line) {
+  return Math.min(state2.eMarks[line] + 1, state2.src.length);
 }
-function getNextLinePos(state, nextLine2) {
-  const endLine = state.lineMax;
-  if (nextLine2 >= endLine || state.isEmpty(nextLine2)) return -1;
+function getNextLinePos(state2, nextLine2) {
+  const endLine = state2.lineMax;
+  if (nextLine2 >= endLine || state2.isEmpty(nextLine2)) return -1;
   let isContinuation = false;
-  if (state.sCount[nextLine2] - state.blkIndent > 3) isContinuation = true;
-  if (state.sCount[nextLine2] < 0) isContinuation = true;
+  if (state2.sCount[nextLine2] - state2.blkIndent > 3) isContinuation = true;
+  if (state2.sCount[nextLine2] < 0) isContinuation = true;
   if (!isContinuation) {
-    const terminatorRules = state.md.block.ruler.getRules("reference");
-    const oldParentType = state.parentType;
-    state.parentType = "reference";
+    const terminatorRules = state2.md.block.ruler.getRules("reference");
+    const oldParentType = state2.parentType;
+    state2.parentType = "reference";
     let terminate = false;
-    for (let i = 0, l = terminatorRules.length; i < l; i++) if (terminatorRules[i](state, nextLine2, endLine, true)) {
+    for (let i = 0, l = terminatorRules.length; i < l; i++) if (terminatorRules[i](state2, nextLine2, endLine, true)) {
       terminate = true;
       break;
     }
-    state.parentType = oldParentType;
+    state2.parentType = oldParentType;
     if (terminate) return -1;
   }
-  return state.bMarks[nextLine2] + state.tShift[nextLine2];
+  return state2.bMarks[nextLine2] + state2.tShift[nextLine2];
 }
-function reference(state, startLine, _endLine, silent) {
-  const src = state.src;
-  let pos = state.bMarks[startLine] + state.tShift[startLine];
+function reference(state2, startLine, _endLine, silent) {
+  const src = state2.src;
+  let pos = state2.bMarks[startLine] + state2.tShift[startLine];
   let nextLine2 = startLine + 1;
-  if (state.sCount[startLine] - state.blkIndent >= 4) return false;
+  if (state2.sCount[startLine] - state2.blkIndent >= 4) return false;
   if (src.charCodeAt(pos) !== 91) return false;
-  let max = lineEnd(state, startLine);
+  let max = lineEnd(state2, startLine);
   let rawLabel = "";
   let labelEnd = -1;
   let segmentStart = ++pos;
@@ -40272,11 +40126,11 @@ function reference(state, startLine, _endLine, silent) {
     }
     if (ch === 92) ch = src.charCodeAt(++pos);
     if (ch === 10 && pos < max) {
-      const nextPos = getNextLinePos(state, nextLine2);
+      const nextPos = getNextLinePos(state2, nextLine2);
       if (nextPos < 0) return false;
       rawLabel += src.slice(segmentStart, max);
       pos = segmentStart = nextPos;
-      max = lineEnd(state, nextLine2++);
+      max = lineEnd(state2, nextLine2++);
       continue;
     }
     pos++;
@@ -40288,17 +40142,17 @@ function reference(state, startLine, _endLine, silent) {
   while (pos < max) {
     const ch = src.charCodeAt(pos);
     if (ch === 10) {
-      const nextPos = getNextLinePos(state, nextLine2);
+      const nextPos = getNextLinePos(state2, nextLine2);
       if (nextPos < 0) break;
       pos = nextPos;
-      max = lineEnd(state, nextLine2++);
+      max = lineEnd(state2, nextLine2++);
     } else if (isSpace(ch)) pos++;
     else break;
   }
-  const destRes = state.md.helpers.parseLinkDestination(src, pos, max);
+  const destRes = state2.md.helpers.parseLinkDestination(src, pos, max);
   if (!destRes.ok) return false;
-  const href = state.md.normalizeLink(destRes.str);
-  if (!state.md.validateLink(href)) return false;
+  const href = state2.md.normalizeLink(destRes.str);
+  if (!state2.md.validateLink(href)) return false;
   pos = destRes.pos;
   const destEndPos = pos;
   const destEndMax = max;
@@ -40306,21 +40160,21 @@ function reference(state, startLine, _endLine, silent) {
   while (pos < max) {
     const ch = src.charCodeAt(pos);
     if (ch === 10) {
-      const nextPos = getNextLinePos(state, nextLine2);
+      const nextPos = getNextLinePos(state2, nextLine2);
       if (nextPos < 0) break;
       pos = nextPos;
-      max = lineEnd(state, nextLine2++);
+      max = lineEnd(state2, nextLine2++);
     } else if (isSpace(ch)) pos++;
     else break;
   }
   const titleStart = pos;
-  let titleRes = state.md.helpers.parseLinkTitle(src, pos, max);
+  let titleRes = state2.md.helpers.parseLinkTitle(src, pos, max);
   while (titleRes.can_continue) {
-    const nextPos = getNextLinePos(state, nextLine2);
+    const nextPos = getNextLinePos(state2, nextLine2);
     if (nextPos < 0) break;
     pos = nextPos;
-    max = lineEnd(state, nextLine2++);
-    titleRes = state.md.helpers.parseLinkTitle(src, pos, max, titleRes);
+    max = lineEnd(state2, nextLine2++);
+    titleRes = state2.md.helpers.parseLinkTitle(src, pos, max, titleRes);
   }
   let title2;
   if (titleStart !== destEndPos && titleRes.ok) {
@@ -40352,18 +40206,18 @@ function reference(state, startLine, _endLine, silent) {
   const label = normalizeReference(rawLabel);
   if (!label) return false;
   if (silent) return true;
-  if (typeof state.env.references === "undefined") state.env.references = {};
-  if (typeof state.env.references[label] === "undefined") state.env.references[label] = {
+  if (typeof state2.env.references === "undefined") state2.env.references = {};
+  if (typeof state2.env.references[label] === "undefined") state2.env.references[label] = {
     title: title2,
     href
   };
-  const token = state.push("reference_definition", "", 0);
+  const token = state2.push("reference_definition", "", 0);
   token.map = [startLine, nextLine2];
   token.hidden = true;
   const meta2 = /* @__PURE__ */ Object.create(null);
   meta2.label = label;
   token.meta = meta2;
-  state.line = nextLine2;
+  state2.line = nextLine2;
   return true;
 }
 var html_blocks_default = [
@@ -40471,13 +40325,13 @@ var HTML_SEQUENCES = [
     false
   ]
 ];
-function html_block(state, startLine, endLine, silent) {
-  let pos = state.bMarks[startLine] + state.tShift[startLine];
-  let max = state.eMarks[startLine];
-  if (state.sCount[startLine] - state.blkIndent >= 4) return false;
-  if (!state.md.options.html) return false;
-  if (state.src.charCodeAt(pos) !== 60) return false;
-  let lineText = state.src.slice(pos, max);
+function html_block(state2, startLine, endLine, silent) {
+  let pos = state2.bMarks[startLine] + state2.tShift[startLine];
+  let max = state2.eMarks[startLine];
+  if (state2.sCount[startLine] - state2.blkIndent >= 4) return false;
+  if (!state2.md.options.html) return false;
+  if (state2.src.charCodeAt(pos) !== 60) return false;
+  let lineText = state2.src.slice(pos, max);
   let i = 0;
   for (; i < HTML_SEQUENCES.length; i++) if (HTML_SEQUENCES[i][0].test(lineText)) break;
   if (i === HTML_SEQUENCES.length) return false;
@@ -40485,70 +40339,70 @@ function html_block(state, startLine, endLine, silent) {
   let nextLine2 = startLine + 1;
   const endsOnBlankLine = HTML_SEQUENCES[i][1].test("");
   if (!HTML_SEQUENCES[i][1].test(lineText)) for (; nextLine2 < endLine; nextLine2++) {
-    if (state.sCount[nextLine2] < state.blkIndent) {
-      if (endsOnBlankLine || !state.isEmpty(nextLine2)) break;
+    if (state2.sCount[nextLine2] < state2.blkIndent) {
+      if (endsOnBlankLine || !state2.isEmpty(nextLine2)) break;
     }
-    pos = state.bMarks[nextLine2] + state.tShift[nextLine2];
-    max = state.eMarks[nextLine2];
-    lineText = state.src.slice(pos, max);
+    pos = state2.bMarks[nextLine2] + state2.tShift[nextLine2];
+    max = state2.eMarks[nextLine2];
+    lineText = state2.src.slice(pos, max);
     if (HTML_SEQUENCES[i][1].test(lineText)) {
       if (lineText.length !== 0) nextLine2++;
       break;
     }
   }
-  state.line = nextLine2;
-  const token = state.push("html_block", "", 0);
+  state2.line = nextLine2;
+  const token = state2.push("html_block", "", 0);
   token.map = [startLine, nextLine2];
-  token.content = state.getLines(startLine, nextLine2, state.blkIndent, true);
+  token.content = state2.getLines(startLine, nextLine2, state2.blkIndent, true);
   return true;
 }
-function heading2(state, startLine, endLine, silent) {
-  let pos = state.bMarks[startLine] + state.tShift[startLine];
-  let max = state.eMarks[startLine];
-  if (state.sCount[startLine] - state.blkIndent >= 4) return false;
-  let ch = state.src.charCodeAt(pos);
+function heading2(state2, startLine, endLine, silent) {
+  let pos = state2.bMarks[startLine] + state2.tShift[startLine];
+  let max = state2.eMarks[startLine];
+  if (state2.sCount[startLine] - state2.blkIndent >= 4) return false;
+  let ch = state2.src.charCodeAt(pos);
   if (ch !== 35 || pos >= max) return false;
   let level = 1;
-  ch = state.src.charCodeAt(++pos);
+  ch = state2.src.charCodeAt(++pos);
   while (ch === 35 && pos < max && level <= 6) {
     level++;
-    ch = state.src.charCodeAt(++pos);
+    ch = state2.src.charCodeAt(++pos);
   }
   if (level > 6 || pos < max && !isSpace(ch)) return false;
   if (silent) return true;
-  max = state.skipSpacesBack(max, pos);
-  const tmp = state.skipCharsBack(max, 35, pos);
-  if (tmp > pos && isSpace(state.src.charCodeAt(tmp - 1))) max = tmp;
-  state.line = startLine + 1;
-  const token_o = state.push("heading_open", `h${level}`, 1);
+  max = state2.skipSpacesBack(max, pos);
+  const tmp = state2.skipCharsBack(max, 35, pos);
+  if (tmp > pos && isSpace(state2.src.charCodeAt(tmp - 1))) max = tmp;
+  state2.line = startLine + 1;
+  const token_o = state2.push("heading_open", `h${level}`, 1);
   token_o.markup = "########".slice(0, level);
-  token_o.map = [startLine, state.line];
-  const token_i = state.push("inline", "", 0);
-  token_i.content = asciiTrim(state.src.slice(pos, max));
-  token_i.map = [startLine, state.line];
+  token_o.map = [startLine, state2.line];
+  const token_i = state2.push("inline", "", 0);
+  token_i.content = asciiTrim(state2.src.slice(pos, max));
+  token_i.map = [startLine, state2.line];
   token_i.children = [];
-  const token_c = state.push("heading_close", `h${level}`, -1);
+  const token_c = state2.push("heading_close", `h${level}`, -1);
   token_c.markup = "########".slice(0, level);
   return true;
 }
-function lheading(state, startLine, endLine) {
-  const terminatorRules = state.md.block.ruler.getRules("paragraph");
-  if (state.sCount[startLine] - state.blkIndent >= 4) return false;
-  const oldParentType = state.parentType;
-  state.parentType = "paragraph";
+function lheading(state2, startLine, endLine) {
+  const terminatorRules = state2.md.block.ruler.getRules("paragraph");
+  if (state2.sCount[startLine] - state2.blkIndent >= 4) return false;
+  const oldParentType = state2.parentType;
+  state2.parentType = "paragraph";
   let level = 0;
   let marker;
   let nextLine2 = startLine + 1;
-  for (; nextLine2 < endLine && !state.isEmpty(nextLine2); nextLine2++) {
-    if (state.sCount[nextLine2] - state.blkIndent > 3) continue;
-    if (state.sCount[nextLine2] >= state.blkIndent) {
-      let pos = state.bMarks[nextLine2] + state.tShift[nextLine2];
-      const max = state.eMarks[nextLine2];
+  for (; nextLine2 < endLine && !state2.isEmpty(nextLine2); nextLine2++) {
+    if (state2.sCount[nextLine2] - state2.blkIndent > 3) continue;
+    if (state2.sCount[nextLine2] >= state2.blkIndent) {
+      let pos = state2.bMarks[nextLine2] + state2.tShift[nextLine2];
+      const max = state2.eMarks[nextLine2];
       if (pos < max) {
-        marker = state.src.charCodeAt(pos);
+        marker = state2.src.charCodeAt(pos);
         if (marker === 45 || marker === 61) {
-          pos = state.skipChars(pos, marker);
-          pos = state.skipSpaces(pos);
+          pos = state2.skipChars(pos, marker);
+          pos = state2.skipSpaces(pos);
           if (pos >= max) {
             level = marker === 61 ? 1 : 2;
             break;
@@ -40556,63 +40410,63 @@ function lheading(state, startLine, endLine) {
         }
       }
     }
-    if (state.sCount[nextLine2] < 0) continue;
+    if (state2.sCount[nextLine2] < 0) continue;
     let terminate = false;
-    for (let i = 0, l = terminatorRules.length; i < l; i++) if (terminatorRules[i](state, nextLine2, endLine, true)) {
+    for (let i = 0, l = terminatorRules.length; i < l; i++) if (terminatorRules[i](state2, nextLine2, endLine, true)) {
       terminate = true;
       break;
     }
     if (terminate) break;
   }
   if (!level) {
-    state.parentType = oldParentType;
+    state2.parentType = oldParentType;
     return false;
   }
-  const content = asciiTrim(state.getLines(startLine, nextLine2, state.blkIndent, false));
-  state.line = nextLine2 + 1;
-  const token_o = state.push("heading_open", `h${level}`, 1);
+  const content = asciiTrim(state2.getLines(startLine, nextLine2, state2.blkIndent, false));
+  state2.line = nextLine2 + 1;
+  const token_o = state2.push("heading_open", `h${level}`, 1);
   token_o.markup = String.fromCharCode(marker);
-  token_o.map = [startLine, state.line];
-  const token_i = state.push("inline", "", 0);
+  token_o.map = [startLine, state2.line];
+  const token_i = state2.push("inline", "", 0);
   token_i.content = content;
-  token_i.map = [startLine, state.line - 1];
+  token_i.map = [startLine, state2.line - 1];
   token_i.children = [];
-  const token_c = state.push("heading_close", `h${level}`, -1);
+  const token_c = state2.push("heading_close", `h${level}`, -1);
   token_c.markup = String.fromCharCode(marker);
-  state.parentType = oldParentType;
+  state2.parentType = oldParentType;
   return true;
 }
-function paragraph(state, startLine, endLine) {
-  const terminatorRules = state.md.block.ruler.getRules("paragraph");
-  const oldParentType = state.parentType;
+function paragraph(state2, startLine, endLine) {
+  const terminatorRules = state2.md.block.ruler.getRules("paragraph");
+  const oldParentType = state2.parentType;
   let nextLine2 = startLine + 1;
-  state.parentType = "paragraph";
-  for (; nextLine2 < endLine && !state.isEmpty(nextLine2); nextLine2++) {
-    if (state.sCount[nextLine2] - state.blkIndent > 3) continue;
-    if (state.sCount[nextLine2] < 0) continue;
+  state2.parentType = "paragraph";
+  for (; nextLine2 < endLine && !state2.isEmpty(nextLine2); nextLine2++) {
+    if (state2.sCount[nextLine2] - state2.blkIndent > 3) continue;
+    if (state2.sCount[nextLine2] < 0) continue;
     let terminate = false;
-    for (let i = 0, l = terminatorRules.length; i < l; i++) if (terminatorRules[i](state, nextLine2, endLine, true)) {
+    for (let i = 0, l = terminatorRules.length; i < l; i++) if (terminatorRules[i](state2, nextLine2, endLine, true)) {
       terminate = true;
       break;
     }
     if (terminate) break;
   }
-  const content = asciiTrim(state.getLines(startLine, nextLine2, state.blkIndent, false));
-  state.line = nextLine2;
-  const token_o = state.push("paragraph_open", "p", 1);
-  token_o.map = [startLine, state.line];
-  const token_i = state.push("inline", "", 0);
+  const content = asciiTrim(state2.getLines(startLine, nextLine2, state2.blkIndent, false));
+  state2.line = nextLine2;
+  const token_o = state2.push("paragraph_open", "p", 1);
+  token_o.map = [startLine, state2.line];
+  const token_i = state2.push("inline", "", 0);
   token_i.content = content;
-  token_i.map = [startLine, state.line];
+  token_i.map = [startLine, state2.line];
   token_i.children = [];
-  state.push("paragraph_close", "p", -1);
-  state.parentType = oldParentType;
+  state2.push("paragraph_close", "p", -1);
+  state2.parentType = oldParentType;
   return true;
 }
 var _rules$1 = [
   [
     "table",
-    table,
+    table2,
     ["paragraph", "reference"]
   ],
   ["code", code],
@@ -40690,37 +40544,37 @@ var ParserBlock = class {
     _defineProperty(this, "State", StateBlock);
     for (let i = 0; i < _rules$1.length; i++) this.ruler.push(_rules$1[i][0], _rules$1[i][1], { alt: (_rules$1[i][2] || []).slice() });
   }
-  tokenize(state, startLine, endLine) {
+  tokenize(state2, startLine, endLine) {
     const rules = this.ruler.getRules("");
     const len = rules.length;
-    const maxNesting = state.md.options.maxNesting;
+    const maxNesting = state2.md.options.maxNesting;
     let line = startLine;
     let hasEmptyLines = false;
     while (line < endLine) {
-      state.line = line = state.skipEmptyLines(line);
+      state2.line = line = state2.skipEmptyLines(line);
       if (line >= endLine) break;
-      if (state.sCount[line] < state.blkIndent) break;
-      if (state.level >= maxNesting) {
-        state.line = endLine;
+      if (state2.sCount[line] < state2.blkIndent) break;
+      if (state2.level >= maxNesting) {
+        state2.line = endLine;
         break;
       }
-      const prevLine = state.line;
+      const prevLine = state2.line;
       let ok = false;
       for (let i = 0; i < len; i++) {
-        ok = rules[i](state, line, endLine, false);
+        ok = rules[i](state2, line, endLine, false);
         if (ok) {
-          if (prevLine >= state.line) throw new Error("block rule didn't increment state.line");
+          if (prevLine >= state2.line) throw new Error("block rule didn't increment state.line");
           break;
         }
       }
       if (!ok) throw new Error("none of the block rules matched");
-      state.tight = !hasEmptyLines;
-      if (state.isEmpty(state.line - 1)) hasEmptyLines = true;
-      line = state.line;
-      if (line < endLine && state.isEmpty(line)) {
+      state2.tight = !hasEmptyLines;
+      if (state2.isEmpty(state2.line - 1)) hasEmptyLines = true;
+      line = state2.line;
+      if (line < endLine && state2.isEmpty(line)) {
         hasEmptyLines = true;
         line++;
-        state.line = line;
+        state2.line = line;
       }
     }
   }
@@ -40729,8 +40583,8 @@ var ParserBlock = class {
   */
   parse(src, md, env, outTokens) {
     if (!src) return;
-    const state = new this.State(src, md, env, outTokens);
-    this.tokenize(state, state.line, state.lineMax);
+    const state2 = new this.State(src, md, env, outTokens);
+    this.tokenize(state2, state2.line, state2.lineMax);
   }
 };
 var StateInline = class {
@@ -40848,12 +40702,12 @@ function isTerminatorChar(ch) {
       return false;
   }
 }
-function text(state, silent) {
-  let pos = state.pos;
-  while (pos < state.posMax && !isTerminatorChar(state.src.charCodeAt(pos))) pos++;
-  if (pos === state.pos) return false;
-  if (!silent) state.pending += state.src.slice(state.pos, pos);
-  state.pos = pos;
+function text(state2, silent) {
+  let pos = state2.pos;
+  while (pos < state2.posMax && !isTerminatorChar(state2.src.charCodeAt(pos))) pos++;
+  if (pos === state2.pos) return false;
+  if (!silent) state2.pending += state2.src.slice(state2.pos, pos);
+  state2.pos = pos;
   return true;
 }
 function isAsciiAlpha(code2) {
@@ -40862,65 +40716,65 @@ function isAsciiAlpha(code2) {
 function isSchemeChar(code2) {
   return code2 >= 65 && code2 <= 90 || code2 >= 97 && code2 <= 122 || code2 >= 48 && code2 <= 57 || code2 === 43 || code2 === 45 || code2 === 46;
 }
-function linkify(state, silent) {
-  if (!state.md.options.linkify) return false;
-  if (state.linkLevel > 0) return false;
-  const pos = state.pos;
-  const max = state.posMax;
+function linkify(state2, silent) {
+  if (!state2.md.options.linkify) return false;
+  if (state2.linkLevel > 0) return false;
+  const pos = state2.pos;
+  const max = state2.posMax;
   if (pos + 3 > max) return false;
-  if (state.src.charCodeAt(pos) !== 58) return false;
-  if (state.src.charCodeAt(pos + 1) !== 47) return false;
-  if (state.src.charCodeAt(pos + 2) !== 47) return false;
-  const protoMin = pos - Math.min(10, state.pending.length, pos);
+  if (state2.src.charCodeAt(pos) !== 58) return false;
+  if (state2.src.charCodeAt(pos + 1) !== 47) return false;
+  if (state2.src.charCodeAt(pos + 2) !== 47) return false;
+  const protoMin = pos - Math.min(10, state2.pending.length, pos);
   let protoStart = pos;
-  while (protoStart > protoMin && isSchemeChar(state.src.charCodeAt(protoStart - 1))) protoStart--;
-  if (protoStart === pos || !isAsciiAlpha(state.src.charCodeAt(protoStart))) return false;
+  while (protoStart > protoMin && isSchemeChar(state2.src.charCodeAt(protoStart - 1))) protoStart--;
+  if (protoStart === pos || !isAsciiAlpha(state2.src.charCodeAt(protoStart))) return false;
   const protoLength = pos - protoStart;
-  const link2 = state.md.linkify.matchAtStart(state.src.slice(protoStart));
+  const link2 = state2.md.linkify.matchAtStart(state2.src.slice(protoStart));
   if (!link2) return false;
   let url = link2.url;
   if (url.length <= protoLength) return false;
   let urlEnd = url.length;
   while (urlEnd > 0 && url.charCodeAt(urlEnd - 1) === 42) urlEnd--;
   if (urlEnd !== url.length) url = url.slice(0, urlEnd);
-  const fullUrl = state.md.normalizeLink(url);
-  if (!state.md.validateLink(fullUrl)) return false;
+  const fullUrl = state2.md.normalizeLink(url);
+  if (!state2.md.validateLink(fullUrl)) return false;
   if (!silent) {
-    state.pending = state.pending.slice(0, -protoLength);
-    const token_o = state.push("link_open", "a", 1);
+    state2.pending = state2.pending.slice(0, -protoLength);
+    const token_o = state2.push("link_open", "a", 1);
     token_o.attrs = [["href", fullUrl]];
     token_o.markup = "linkify";
     token_o.info = "auto";
-    const token_t = state.push("text", "", 0);
-    token_t.content = state.md.normalizeLinkText(url);
-    const token_c = state.push("link_close", "a", -1);
+    const token_t = state2.push("text", "", 0);
+    token_t.content = state2.md.normalizeLinkText(url);
+    const token_c = state2.push("link_close", "a", -1);
     token_c.markup = "linkify";
     token_c.info = "auto";
   }
-  state.pos += url.length - protoLength;
+  state2.pos += url.length - protoLength;
   return true;
 }
-function newline(state, silent) {
-  let pos = state.pos;
-  if (state.src.charCodeAt(pos) !== 10) return false;
-  const pmax = state.pending.length - 1;
-  const max = state.posMax;
+function newline(state2, silent) {
+  let pos = state2.pos;
+  if (state2.src.charCodeAt(pos) !== 10) return false;
+  const pmax = state2.pending.length - 1;
+  const max = state2.posMax;
   if (!silent) {
-    if (pmax >= 0 && state.pending.charCodeAt(pmax) === 32) {
-      if (pmax >= 1 && state.pending.charCodeAt(pmax - 1) === 32) {
+    if (pmax >= 0 && state2.pending.charCodeAt(pmax) === 32) {
+      if (pmax >= 1 && state2.pending.charCodeAt(pmax - 1) === 32) {
         let ws2 = pmax - 1;
-        while (ws2 >= 1 && state.pending.charCodeAt(ws2 - 1) === 32) ws2--;
-        state.pending = state.pending.slice(0, ws2);
-        state.push("hardbreak", "br", 0);
+        while (ws2 >= 1 && state2.pending.charCodeAt(ws2 - 1) === 32) ws2--;
+        state2.pending = state2.pending.slice(0, ws2);
+        state2.push("hardbreak", "br", 0);
       } else {
-        state.pending = state.pending.slice(0, -1);
-        state.push("softbreak", "br", 0);
+        state2.pending = state2.pending.slice(0, -1);
+        state2.push("softbreak", "br", 0);
       }
-    } else state.push("softbreak", "br", 0);
+    } else state2.push("softbreak", "br", 0);
   }
   pos++;
-  while (pos < max && isSpace(state.src.charCodeAt(pos))) pos++;
-  state.pos = pos;
+  while (pos < max && isSpace(state2.src.charCodeAt(pos))) pos++;
+  state2.pos = pos;
   return true;
 }
 var ESCAPED = [];
@@ -40928,51 +40782,51 @@ for (let i = 0; i < 256; i++) ESCAPED.push(0);
 "\\!\"#$%&'()*+,./:;<=>?@[]^_`{|}~-".split("").forEach(function(ch) {
   ESCAPED[ch.charCodeAt(0)] = 1;
 });
-function escape2(state, silent) {
-  let pos = state.pos;
-  const max = state.posMax;
-  if (state.src.charCodeAt(pos) !== 92) return false;
+function escape2(state2, silent) {
+  let pos = state2.pos;
+  const max = state2.posMax;
+  if (state2.src.charCodeAt(pos) !== 92) return false;
   pos++;
   if (pos >= max) return false;
-  let ch1 = state.src.charCodeAt(pos);
+  let ch1 = state2.src.charCodeAt(pos);
   if (ch1 === 10) {
-    if (!silent) state.push("hardbreak", "br", 0);
+    if (!silent) state2.push("hardbreak", "br", 0);
     pos++;
     while (pos < max) {
-      ch1 = state.src.charCodeAt(pos);
+      ch1 = state2.src.charCodeAt(pos);
       if (!isSpace(ch1)) break;
       pos++;
     }
-    state.pos = pos;
+    state2.pos = pos;
     return true;
   }
   if (ch1 === 32) {
     if (!silent) {
-      const token = state.push("text_special", "", 0);
+      const token = state2.push("text_special", "", 0);
       token.content = "\\";
       token.markup = "\\";
       token.info = "escape";
     }
-    state.pos = pos;
+    state2.pos = pos;
     return true;
   }
-  let escapedStr = state.src[pos];
+  let escapedStr = state2.src[pos];
   if (ch1 >= 55296 && ch1 <= 56319 && pos + 1 < max) {
-    const ch2 = state.src.charCodeAt(pos + 1);
+    const ch2 = state2.src.charCodeAt(pos + 1);
     if (ch2 >= 56320 && ch2 <= 57343) {
-      escapedStr += state.src[pos + 1];
+      escapedStr += state2.src[pos + 1];
       pos++;
     }
   }
   const origStr = "\\" + escapedStr;
   if (!silent) {
-    const token = state.push("text_special", "", 0);
+    const token = state2.push("text_special", "", 0);
     if (ch1 < 256 && ESCAPED[ch1] !== 0) token.content = escapedStr;
     else token.content = origStr;
     token.markup = origStr;
     token.info = "escape";
   }
-  state.pos = pos + 1;
+  state2.pos = pos + 1;
   return true;
 }
 function buildLastRuns(src) {
@@ -40985,74 +40839,74 @@ function buildLastRuns(src) {
   }
   return lastRuns;
 }
-function backtick(state, silent) {
+function backtick(state2, silent) {
   var _state$backticks$open;
-  const start = state.pos;
-  if (state.src.charCodeAt(start) !== 96) return false;
-  const max = state.posMax;
+  const start = state2.pos;
+  if (state2.src.charCodeAt(start) !== 96) return false;
+  const max = state2.posMax;
   let pos = start + 1;
-  while (pos < max && state.src.charCodeAt(pos) === 96) pos++;
-  const marker = state.src.slice(start, pos);
+  while (pos < max && state2.src.charCodeAt(pos) === 96) pos++;
+  const marker = state2.src.slice(start, pos);
   const openerLength = marker.length;
-  if (!state.backticksScanned) {
-    state.backticks = buildLastRuns(state.src);
-    state.backticksScanned = true;
+  if (!state2.backticksScanned) {
+    state2.backticks = buildLastRuns(state2.src);
+    state2.backticksScanned = true;
   }
-  if (((_state$backticks$open = state.backticks[openerLength]) !== null && _state$backticks$open !== void 0 ? _state$backticks$open : -1) >= pos) {
+  if (((_state$backticks$open = state2.backticks[openerLength]) !== null && _state$backticks$open !== void 0 ? _state$backticks$open : -1) >= pos) {
     let matchEnd = pos;
     let matchStart;
-    while ((matchStart = state.src.indexOf("`", matchEnd)) !== -1 && matchStart < max) {
+    while ((matchStart = state2.src.indexOf("`", matchEnd)) !== -1 && matchStart < max) {
       matchEnd = matchStart + 1;
-      while (state.src.charCodeAt(matchEnd) === 96) matchEnd++;
+      while (state2.src.charCodeAt(matchEnd) === 96) matchEnd++;
       if (matchEnd > max) break;
       if (matchEnd - matchStart === openerLength) {
         if (!silent) {
-          const token = state.push("code_inline", "code", 0);
+          const token = state2.push("code_inline", "code", 0);
           token.markup = marker;
-          let content = state.src.slice(pos, matchStart).replace(/\n/g, " ");
+          let content = state2.src.slice(pos, matchStart).replace(/\n/g, " ");
           if (content.startsWith(" ") && content.endsWith(" ") && /[^ ]/.test(content)) content = content.slice(1, -1);
           token.content = content;
         }
-        state.pos = matchEnd;
+        state2.pos = matchEnd;
         return true;
       }
     }
   }
-  if (!silent) state.pending += marker;
-  state.pos = pos;
+  if (!silent) state2.pending += marker;
+  state2.pos = pos;
   return true;
 }
-function strikethrough_tokenize(state, silent) {
-  const start = state.pos;
-  const marker = state.src.charCodeAt(start);
+function strikethrough_tokenize(state2, silent) {
+  const start = state2.pos;
+  const marker = state2.src.charCodeAt(start);
   if (silent) return false;
   if (marker !== 126) return false;
-  const scanned = state.scanDelims(state.pos, true);
+  const scanned = state2.scanDelims(state2.pos, true);
   let len = scanned.length;
   const ch = String.fromCharCode(marker);
   if (len < 2) return false;
   let token;
   if (len % 2) {
-    token = state.push("text", "", 0);
+    token = state2.push("text", "", 0);
     token.content = ch;
     len--;
   }
   for (let i = 0; i < len; i += 2) {
-    token = state.push("text", "", 0);
+    token = state2.push("text", "", 0);
     token.content = ch + ch;
-    state.delimiters.push({
+    state2.delimiters.push({
       marker,
       length: 0,
-      token: state.tokens.length - 1,
+      token: state2.tokens.length - 1,
       end: -1,
       open: scanned.can_open,
       close: scanned.can_close
     });
   }
-  state.pos += scanned.length;
+  state2.pos += scanned.length;
   return true;
 }
-function postProcess$1(state, delimiters) {
+function postProcess$1(state2, delimiters) {
   let token;
   const loneMarkers = [];
   const max = delimiters.length;
@@ -41061,68 +40915,68 @@ function postProcess$1(state, delimiters) {
     if (startDelim.marker !== 126) continue;
     if (startDelim.end === -1) continue;
     const endDelim = delimiters[startDelim.end];
-    token = state.tokens[startDelim.token];
+    token = state2.tokens[startDelim.token];
     token.type = "s_open";
     token.tag = "s";
     token.nesting = 1;
     token.markup = "~~";
     token.content = "";
-    token = state.tokens[endDelim.token];
+    token = state2.tokens[endDelim.token];
     token.type = "s_close";
     token.tag = "s";
     token.nesting = -1;
     token.markup = "~~";
     token.content = "";
-    if (state.tokens[endDelim.token - 1].type === "text" && state.tokens[endDelim.token - 1].content === "~") loneMarkers.push(endDelim.token - 1);
+    if (state2.tokens[endDelim.token - 1].type === "text" && state2.tokens[endDelim.token - 1].content === "~") loneMarkers.push(endDelim.token - 1);
   }
   while (loneMarkers.length) {
     const i = loneMarkers.pop();
     let j = i + 1;
-    while (j < state.tokens.length && state.tokens[j].type === "s_close") j++;
+    while (j < state2.tokens.length && state2.tokens[j].type === "s_close") j++;
     j--;
     if (i !== j) {
-      token = state.tokens[j];
-      state.tokens[j] = state.tokens[i];
-      state.tokens[i] = token;
+      token = state2.tokens[j];
+      state2.tokens[j] = state2.tokens[i];
+      state2.tokens[i] = token;
     }
   }
 }
-function strikethrough_postProcess(state) {
-  const tokens_meta = state.tokens_meta;
-  const max = state.tokens_meta.length;
-  postProcess$1(state, state.delimiters);
+function strikethrough_postProcess(state2) {
+  const tokens_meta = state2.tokens_meta;
+  const max = state2.tokens_meta.length;
+  postProcess$1(state2, state2.delimiters);
   for (let curr = 0; curr < max; curr++) {
     var _tokens_meta$curr;
     const delimiters = (_tokens_meta$curr = tokens_meta[curr]) === null || _tokens_meta$curr === void 0 ? void 0 : _tokens_meta$curr.delimiters;
-    if (delimiters) postProcess$1(state, delimiters);
+    if (delimiters) postProcess$1(state2, delimiters);
   }
 }
 var strikethrough_default = {
   tokenize: strikethrough_tokenize,
   postProcess: strikethrough_postProcess
 };
-function emphasis_tokenize(state, silent) {
-  const start = state.pos;
-  const marker = state.src.charCodeAt(start);
+function emphasis_tokenize(state2, silent) {
+  const start = state2.pos;
+  const marker = state2.src.charCodeAt(start);
   if (silent) return false;
   if (marker !== 95 && marker !== 42) return false;
-  const scanned = state.scanDelims(state.pos, marker === 42);
+  const scanned = state2.scanDelims(state2.pos, marker === 42);
   for (let i = 0; i < scanned.length; i++) {
-    const token = state.push("text", "", 0);
+    const token = state2.push("text", "", 0);
     token.content = String.fromCharCode(marker);
-    state.delimiters.push({
+    state2.delimiters.push({
       marker,
       length: scanned.length,
-      token: state.tokens.length - 1,
+      token: state2.tokens.length - 1,
       end: -1,
       open: scanned.can_open,
       close: scanned.can_close
     });
   }
-  state.pos += scanned.length;
+  state2.pos += scanned.length;
   return true;
 }
-function postProcess(state, delimiters) {
+function postProcess(state2, delimiters) {
   const max = delimiters.length;
   for (let i = max - 1; i >= 0; i--) {
     const startDelim = delimiters[i];
@@ -41131,106 +40985,106 @@ function postProcess(state, delimiters) {
     const endDelim = delimiters[startDelim.end];
     const isStrong = i > 0 && delimiters[i - 1].end === startDelim.end + 1 && delimiters[i - 1].marker === startDelim.marker && delimiters[i - 1].token === startDelim.token - 1 && delimiters[startDelim.end + 1].token === endDelim.token + 1;
     const ch = String.fromCharCode(startDelim.marker);
-    const token_o = state.tokens[startDelim.token];
+    const token_o = state2.tokens[startDelim.token];
     token_o.type = isStrong ? "strong_open" : "em_open";
     token_o.tag = isStrong ? "strong" : "em";
     token_o.nesting = 1;
     token_o.markup = isStrong ? ch + ch : ch;
     token_o.content = "";
-    const token_c = state.tokens[endDelim.token];
+    const token_c = state2.tokens[endDelim.token];
     token_c.type = isStrong ? "strong_close" : "em_close";
     token_c.tag = isStrong ? "strong" : "em";
     token_c.nesting = -1;
     token_c.markup = isStrong ? ch + ch : ch;
     token_c.content = "";
     if (isStrong) {
-      state.tokens[delimiters[i - 1].token].content = "";
-      state.tokens[delimiters[startDelim.end + 1].token].content = "";
+      state2.tokens[delimiters[i - 1].token].content = "";
+      state2.tokens[delimiters[startDelim.end + 1].token].content = "";
       i--;
     }
   }
 }
-function emphasis_post_process(state) {
-  const tokens_meta = state.tokens_meta;
-  const max = state.tokens_meta.length;
-  postProcess(state, state.delimiters);
+function emphasis_post_process(state2) {
+  const tokens_meta = state2.tokens_meta;
+  const max = state2.tokens_meta.length;
+  postProcess(state2, state2.delimiters);
   for (let curr = 0; curr < max; curr++) {
     var _tokens_meta$curr;
     const delimiters = (_tokens_meta$curr = tokens_meta[curr]) === null || _tokens_meta$curr === void 0 ? void 0 : _tokens_meta$curr.delimiters;
-    if (delimiters) postProcess(state, delimiters);
+    if (delimiters) postProcess(state2, delimiters);
   }
 }
 var emphasis_default = {
   tokenize: emphasis_tokenize,
   postProcess: emphasis_post_process
 };
-function link(state, silent) {
+function link(state2, silent) {
   let code2, label, res, ref;
   let href = "";
   let title2 = "";
-  let start = state.pos;
+  let start = state2.pos;
   let parseReference = true;
-  if (state.src.charCodeAt(state.pos) !== 91) return false;
-  const oldPos = state.pos;
-  const max = state.posMax;
-  const labelStart = state.pos + 1;
-  const labelEnd = state.md.helpers.parseLinkLabel(state, state.pos, true);
+  if (state2.src.charCodeAt(state2.pos) !== 91) return false;
+  const oldPos = state2.pos;
+  const max = state2.posMax;
+  const labelStart = state2.pos + 1;
+  const labelEnd = state2.md.helpers.parseLinkLabel(state2, state2.pos, true);
   if (labelEnd < 0) return false;
   let pos = labelEnd + 1;
-  if (pos < max && state.src.charCodeAt(pos) === 40) {
+  if (pos < max && state2.src.charCodeAt(pos) === 40) {
     parseReference = false;
     pos++;
     for (; pos < max; pos++) {
-      code2 = state.src.charCodeAt(pos);
+      code2 = state2.src.charCodeAt(pos);
       if (!isSpace(code2) && code2 !== 10) break;
     }
     if (pos >= max) return false;
     start = pos;
-    res = state.md.helpers.parseLinkDestination(state.src, pos, state.posMax);
+    res = state2.md.helpers.parseLinkDestination(state2.src, pos, state2.posMax);
     if (res.ok) {
-      href = state.md.normalizeLink(res.str);
-      if (state.md.validateLink(href)) pos = res.pos;
+      href = state2.md.normalizeLink(res.str);
+      if (state2.md.validateLink(href)) pos = res.pos;
       else href = "";
       start = pos;
       for (; pos < max; pos++) {
-        code2 = state.src.charCodeAt(pos);
+        code2 = state2.src.charCodeAt(pos);
         if (!isSpace(code2) && code2 !== 10) break;
       }
-      res = state.md.helpers.parseLinkTitle(state.src, pos, state.posMax);
+      res = state2.md.helpers.parseLinkTitle(state2.src, pos, state2.posMax);
       if (pos < max && start !== pos && res.ok) {
         title2 = res.str;
         pos = res.pos;
         for (; pos < max; pos++) {
-          code2 = state.src.charCodeAt(pos);
+          code2 = state2.src.charCodeAt(pos);
           if (!isSpace(code2) && code2 !== 10) break;
         }
       }
     }
-    if (pos >= max || state.src.charCodeAt(pos) !== 41) parseReference = true;
+    if (pos >= max || state2.src.charCodeAt(pos) !== 41) parseReference = true;
     pos++;
   }
   if (parseReference) {
-    if (typeof state.env.references === "undefined") return false;
-    if (pos < max && state.src.charCodeAt(pos) === 91) {
+    if (typeof state2.env.references === "undefined") return false;
+    if (pos < max && state2.src.charCodeAt(pos) === 91) {
       start = pos + 1;
-      pos = state.md.helpers.parseLinkLabel(state, pos);
-      if (pos >= 0) label = state.src.slice(start, pos++);
+      pos = state2.md.helpers.parseLinkLabel(state2, pos);
+      if (pos >= 0) label = state2.src.slice(start, pos++);
       else pos = labelEnd + 1;
     } else pos = labelEnd + 1;
-    if (!label) label = state.src.slice(labelStart, labelEnd);
+    if (!label) label = state2.src.slice(labelStart, labelEnd);
     label = normalizeReference(label);
-    ref = state.env.references[label];
+    ref = state2.env.references[label];
     if (!ref) {
-      state.pos = oldPos;
+      state2.pos = oldPos;
       return false;
     }
     href = ref.href;
     title2 = ref.title;
   }
   if (!silent) {
-    state.pos = labelStart;
-    state.posMax = labelEnd;
-    const token_o = state.push("link_open", "a", 1);
+    state2.pos = labelStart;
+    state2.posMax = labelEnd;
+    const token_o = state2.push("link_open", "a", 1);
     const attrs = [["href", href]];
     token_o.attrs = attrs;
     if (title2) attrs.push(["title", title2]);
@@ -41239,82 +41093,82 @@ function link(state, silent) {
       meta2.label = label;
       token_o.meta = meta2;
     }
-    state.linkLevel++;
-    state.md.inline.tokenize(state);
-    state.linkLevel--;
-    state.push("link_close", "a", -1);
+    state2.linkLevel++;
+    state2.md.inline.tokenize(state2);
+    state2.linkLevel--;
+    state2.push("link_close", "a", -1);
   }
-  state.pos = pos;
-  state.posMax = max;
+  state2.pos = pos;
+  state2.posMax = max;
   return true;
 }
-function image(state, silent) {
+function image(state2, silent) {
   let code2, content, label, pos, ref, res, title2, start;
   let href = "";
-  const oldPos = state.pos;
-  const max = state.posMax;
-  if (state.src.charCodeAt(state.pos) !== 33) return false;
-  if (state.src.charCodeAt(state.pos + 1) !== 91) return false;
-  const labelStart = state.pos + 2;
-  const labelEnd = state.md.helpers.parseLinkLabel(state, state.pos + 1, false);
+  const oldPos = state2.pos;
+  const max = state2.posMax;
+  if (state2.src.charCodeAt(state2.pos) !== 33) return false;
+  if (state2.src.charCodeAt(state2.pos + 1) !== 91) return false;
+  const labelStart = state2.pos + 2;
+  const labelEnd = state2.md.helpers.parseLinkLabel(state2, state2.pos + 1, false);
   if (labelEnd < 0) return false;
   pos = labelEnd + 1;
-  if (pos < max && state.src.charCodeAt(pos) === 40) {
+  if (pos < max && state2.src.charCodeAt(pos) === 40) {
     pos++;
     for (; pos < max; pos++) {
-      code2 = state.src.charCodeAt(pos);
+      code2 = state2.src.charCodeAt(pos);
       if (!isSpace(code2) && code2 !== 10) break;
     }
     if (pos >= max) return false;
     start = pos;
-    res = state.md.helpers.parseLinkDestination(state.src, pos, state.posMax);
+    res = state2.md.helpers.parseLinkDestination(state2.src, pos, state2.posMax);
     if (res.ok) {
-      href = state.md.normalizeLink(res.str);
-      if (state.md.validateLink(href)) pos = res.pos;
+      href = state2.md.normalizeLink(res.str);
+      if (state2.md.validateLink(href)) pos = res.pos;
       else href = "";
     }
     start = pos;
     for (; pos < max; pos++) {
-      code2 = state.src.charCodeAt(pos);
+      code2 = state2.src.charCodeAt(pos);
       if (!isSpace(code2) && code2 !== 10) break;
     }
-    res = state.md.helpers.parseLinkTitle(state.src, pos, state.posMax);
+    res = state2.md.helpers.parseLinkTitle(state2.src, pos, state2.posMax);
     if (pos < max && start !== pos && res.ok) {
       title2 = res.str;
       pos = res.pos;
       for (; pos < max; pos++) {
-        code2 = state.src.charCodeAt(pos);
+        code2 = state2.src.charCodeAt(pos);
         if (!isSpace(code2) && code2 !== 10) break;
       }
     } else title2 = "";
-    if (pos >= max || state.src.charCodeAt(pos) !== 41) {
-      state.pos = oldPos;
+    if (pos >= max || state2.src.charCodeAt(pos) !== 41) {
+      state2.pos = oldPos;
       return false;
     }
     pos++;
   } else {
-    if (typeof state.env.references === "undefined") return false;
-    if (pos < max && state.src.charCodeAt(pos) === 91) {
+    if (typeof state2.env.references === "undefined") return false;
+    if (pos < max && state2.src.charCodeAt(pos) === 91) {
       start = pos + 1;
-      pos = state.md.helpers.parseLinkLabel(state, pos);
-      if (pos >= 0) label = state.src.slice(start, pos++);
+      pos = state2.md.helpers.parseLinkLabel(state2, pos);
+      if (pos >= 0) label = state2.src.slice(start, pos++);
       else pos = labelEnd + 1;
     } else pos = labelEnd + 1;
-    if (!label) label = state.src.slice(labelStart, labelEnd);
+    if (!label) label = state2.src.slice(labelStart, labelEnd);
     label = normalizeReference(label);
-    ref = state.env.references[label];
+    ref = state2.env.references[label];
     if (!ref) {
-      state.pos = oldPos;
+      state2.pos = oldPos;
       return false;
     }
     href = ref.href;
     title2 = ref.title;
   }
   if (!silent) {
-    content = state.src.slice(labelStart, labelEnd);
+    content = state2.src.slice(labelStart, labelEnd);
     const tokens = [];
-    state.md.inline.parse(content, state.md, state.env, tokens);
-    const token = state.push("image", "img", 0);
+    state2.md.inline.parse(content, state2.md, state2.env, tokens);
+    const token = state2.push("image", "img", 0);
     const attrs = [["src", href], ["alt", ""]];
     token.attrs = attrs;
     token.children = tokens;
@@ -41326,56 +41180,56 @@ function image(state, silent) {
       token.meta = meta2;
     }
   }
-  state.pos = pos;
-  state.posMax = max;
+  state2.pos = pos;
+  state2.posMax = max;
   return true;
 }
 var EMAIL_RE = /^([a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*)$/;
 var AUTOLINK_RE = /^([a-zA-Z][a-zA-Z0-9+.-]{1,31}):([^<>\x00-\x20]*)$/;
-function autolink(state, silent) {
-  let pos = state.pos;
-  if (state.src.charCodeAt(pos) !== 60) return false;
-  const start = state.pos;
-  const max = state.posMax;
+function autolink(state2, silent) {
+  let pos = state2.pos;
+  if (state2.src.charCodeAt(pos) !== 60) return false;
+  const start = state2.pos;
+  const max = state2.posMax;
   for (; ; ) {
     if (++pos >= max) return false;
-    const ch = state.src.charCodeAt(pos);
+    const ch = state2.src.charCodeAt(pos);
     if (ch === 60) return false;
     if (ch === 62) break;
   }
-  const url = state.src.slice(start + 1, pos);
+  const url = state2.src.slice(start + 1, pos);
   if (AUTOLINK_RE.test(url)) {
-    const fullUrl = state.md.normalizeLink(url);
-    if (!state.md.validateLink(fullUrl)) return false;
+    const fullUrl = state2.md.normalizeLink(url);
+    if (!state2.md.validateLink(fullUrl)) return false;
     if (!silent) {
-      const token_o = state.push("link_open", "a", 1);
+      const token_o = state2.push("link_open", "a", 1);
       token_o.attrs = [["href", fullUrl]];
       token_o.markup = "autolink";
       token_o.info = "auto";
-      const token_t = state.push("text", "", 0);
-      token_t.content = state.md.normalizeLinkText(url);
-      const token_c = state.push("link_close", "a", -1);
+      const token_t = state2.push("text", "", 0);
+      token_t.content = state2.md.normalizeLinkText(url);
+      const token_c = state2.push("link_close", "a", -1);
       token_c.markup = "autolink";
       token_c.info = "auto";
     }
-    state.pos += url.length + 2;
+    state2.pos += url.length + 2;
     return true;
   }
   if (EMAIL_RE.test(url)) {
-    const fullUrl = state.md.normalizeLink(`mailto:${url}`);
-    if (!state.md.validateLink(fullUrl)) return false;
+    const fullUrl = state2.md.normalizeLink(`mailto:${url}`);
+    if (!state2.md.validateLink(fullUrl)) return false;
     if (!silent) {
-      const token_o = state.push("link_open", "a", 1);
+      const token_o = state2.push("link_open", "a", 1);
       token_o.attrs = [["href", fullUrl]];
       token_o.markup = "autolink";
       token_o.info = "auto";
-      const token_t = state.push("text", "", 0);
-      token_t.content = state.md.normalizeLinkText(url);
-      const token_c = state.push("link_close", "a", -1);
+      const token_t = state2.push("text", "", 0);
+      token_t.content = state2.md.normalizeLinkText(url);
+      const token_c = state2.push("link_close", "a", -1);
       token_c.markup = "autolink";
       token_c.info = "auto";
     }
-    state.pos += url.length + 2;
+    state2.pos += url.length + 2;
     return true;
   }
   return false;
@@ -41390,8 +41244,8 @@ function isLetter(ch) {
   const lc = ch | 32;
   return lc >= 97 && lc <= 122;
 }
-function scanSpecial(state, pos) {
-  const src = state.src;
+function scanSpecial(state2, pos) {
+  const src = state2.src;
   let start;
   let terminator;
   if (src.startsWith("<!--", pos)) {
@@ -41409,68 +41263,68 @@ function scanSpecial(state, pos) {
     start = pos + 3;
     terminator = ">";
   } else return -1;
-  if (state.skipHtmlSpecial) return -1;
+  if (state2.skipHtmlSpecial) return -1;
   const end = src.indexOf(terminator, start);
   if (end < 0) {
-    state.skipHtmlSpecial = true;
+    state2.skipHtmlSpecial = true;
     return -1;
   }
   return end + terminator.length;
 }
-function html_inline(state, silent) {
-  if (!state.md.options.html) return false;
-  const max = state.posMax;
-  const pos = state.pos;
-  if (state.src.charCodeAt(pos) !== 60 || pos + 2 >= max) return false;
+function html_inline(state2, silent) {
+  if (!state2.md.options.html) return false;
+  const max = state2.posMax;
+  const pos = state2.pos;
+  if (state2.src.charCodeAt(pos) !== 60 || pos + 2 >= max) return false;
   let end;
-  const ch = state.src.charCodeAt(pos + 1);
-  if (ch === 33 || ch === 63) end = scanSpecial(state, pos);
+  const ch = state2.src.charCodeAt(pos + 1);
+  if (ch === 33 || ch === 63) end = scanSpecial(state2, pos);
   else if (ch === 47 || isLetter(ch)) {
-    const match = state.src.slice(pos).match(HTML_OPEN_CLOSE_TAG_RE);
+    const match = state2.src.slice(pos).match(HTML_OPEN_CLOSE_TAG_RE);
     end = match ? pos + match[0].length : -1;
   } else return false;
   if (end < 0) return false;
   if (!silent) {
-    const token = state.push("html_inline", "", 0);
-    token.content = state.src.slice(pos, end);
-    if (isLinkOpen(token.content)) state.linkLevel++;
-    if (isLinkClose(token.content)) state.linkLevel--;
+    const token = state2.push("html_inline", "", 0);
+    token.content = state2.src.slice(pos, end);
+    if (isLinkOpen(token.content)) state2.linkLevel++;
+    if (isLinkClose(token.content)) state2.linkLevel--;
   }
-  state.pos = end;
+  state2.pos = end;
   return true;
 }
 var DIGITAL_RE = /^&#((?:x[a-f0-9]{1,6}|[0-9]{1,7}));/i;
 var NAMED_RE = /^&([a-z][a-z0-9]{1,31});/i;
-function entity(state, silent) {
-  const pos = state.pos;
-  const max = state.posMax;
-  if (state.src.charCodeAt(pos) !== 38) return false;
+function entity(state2, silent) {
+  const pos = state2.pos;
+  const max = state2.posMax;
+  if (state2.src.charCodeAt(pos) !== 38) return false;
   if (pos + 1 >= max) return false;
-  if (state.src.charCodeAt(pos + 1) === 35) {
-    const match = state.src.slice(pos).match(DIGITAL_RE);
+  if (state2.src.charCodeAt(pos + 1) === 35) {
+    const match = state2.src.slice(pos).match(DIGITAL_RE);
     if (match) {
       if (!silent) {
         const code2 = match[1][0].toLowerCase() === "x" ? parseInt(match[1].slice(1), 16) : parseInt(match[1], 10);
-        const token = state.push("text_special", "", 0);
+        const token = state2.push("text_special", "", 0);
         token.content = isValidEntityCode(code2) ? fromCodePoint(code2) : fromCodePoint(65533);
         token.markup = match[0];
         token.info = "entity";
       }
-      state.pos += match[0].length;
+      state2.pos += match[0].length;
       return true;
     }
   } else {
-    const match = state.src.slice(pos).match(NAMED_RE);
+    const match = state2.src.slice(pos).match(NAMED_RE);
     if (match) {
       const decoded = decodeHTMLStrict(match[0]);
       if (decoded !== match[0]) {
         if (!silent) {
-          const token = state.push("text_special", "", 0);
+          const token = state2.push("text_special", "", 0);
           token.content = decoded;
           token.markup = match[0];
           token.info = "entity";
         }
-        state.pos += match[0].length;
+        state2.pos += match[0].length;
         return true;
       }
     }
@@ -41528,21 +41382,21 @@ function processDelimiters(delimiters) {
     if (newMinOpenerIdx !== -1) openersBottom[closer.marker][(closer.open ? 3 : 0) + (closer.length || 0) % 3] = newMinOpenerIdx;
   }
 }
-function link_pairs(state) {
-  const tokens_meta = state.tokens_meta;
-  const max = state.tokens_meta.length;
-  processDelimiters(state.delimiters);
+function link_pairs(state2) {
+  const tokens_meta = state2.tokens_meta;
+  const max = state2.tokens_meta.length;
+  processDelimiters(state2.delimiters);
   for (let curr = 0; curr < max; curr++) {
     var _tokens_meta$curr;
     const delimiters = (_tokens_meta$curr = tokens_meta[curr]) === null || _tokens_meta$curr === void 0 ? void 0 : _tokens_meta$curr.delimiters;
     if (delimiters) processDelimiters(delimiters);
   }
 }
-function fragments_join(state) {
+function fragments_join(state2) {
   let curr, last;
   let level = 0;
-  const tokens = state.tokens;
-  const max = state.tokens.length;
+  const tokens = state2.tokens;
+  const max = state2.tokens.length;
   for (curr = last = 0; curr < max; curr++) {
     if (tokens[curr].nesting < 0) level--;
     tokens[curr].level = level;
@@ -41598,62 +41452,62 @@ var ParserInline = class {
     for (let i = 0; i < _rules.length; i++) this.ruler.push(_rules[i][0], _rules[i][1]);
     for (let i = 0; i < _rules2.length; i++) this.ruler2.push(_rules2[i][0], _rules2[i][1]);
   }
-  skipToken(state) {
-    const pos = state.pos;
+  skipToken(state2) {
+    const pos = state2.pos;
     const rules = this.ruler.getRules("");
     const len = rules.length;
-    const maxNesting = state.md.options.maxNesting;
-    const cache = state.cache;
+    const maxNesting = state2.md.options.maxNesting;
+    const cache = state2.cache;
     if (typeof cache[pos] !== "undefined") {
-      state.pos = cache[pos];
+      state2.pos = cache[pos];
       return;
     }
     let ok = false;
-    if (state.level < maxNesting) for (let i = 0; i < len; i++) {
-      state.level++;
-      ok = rules[i](state, true);
-      state.level--;
+    if (state2.level < maxNesting) for (let i = 0; i < len; i++) {
+      state2.level++;
+      ok = rules[i](state2, true);
+      state2.level--;
       if (ok) {
-        if (pos >= state.pos) throw new Error("inline rule didn't increment state.pos");
+        if (pos >= state2.pos) throw new Error("inline rule didn't increment state.pos");
         break;
       }
     }
-    else state.pos = state.posMax;
-    if (!ok) state.pos++;
-    cache[pos] = state.pos;
+    else state2.pos = state2.posMax;
+    if (!ok) state2.pos++;
+    cache[pos] = state2.pos;
   }
-  tokenize(state) {
+  tokenize(state2) {
     const rules = this.ruler.getRules("");
     const len = rules.length;
-    const end = state.posMax;
-    const maxNesting = state.md.options.maxNesting;
-    while (state.pos < end) {
-      const prevPos = state.pos;
+    const end = state2.posMax;
+    const maxNesting = state2.md.options.maxNesting;
+    while (state2.pos < end) {
+      const prevPos = state2.pos;
       let ok = false;
-      if (state.level < maxNesting) for (let i = 0; i < len; i++) {
-        ok = rules[i](state, false);
+      if (state2.level < maxNesting) for (let i = 0; i < len; i++) {
+        ok = rules[i](state2, false);
         if (ok) {
-          if (prevPos >= state.pos) throw new Error("inline rule didn't increment state.pos");
+          if (prevPos >= state2.pos) throw new Error("inline rule didn't increment state.pos");
           break;
         }
       }
       if (ok) {
-        if (state.pos >= end) break;
+        if (state2.pos >= end) break;
         continue;
       }
-      state.pending += state.src[state.pos++];
+      state2.pending += state2.src[state2.pos++];
     }
-    if (state.pending) state.pushPending();
+    if (state2.pending) state2.pushPending();
   }
   /**
   * Process input string and push inline tokens into `outTokens`
   */
   parse(str, md, env, outTokens) {
-    const state = new this.State(str, md, env, outTokens);
-    this.tokenize(state);
+    const state2 = new this.State(str, md, env, outTokens);
+    this.tokenize(state2);
     const rules = this.ruler2.getRules("");
     const len = rules.length;
-    for (let i = 0; i < len; i++) rules[i](state);
+    for (let i = 0; i < len; i++) rules[i](state2);
   }
 };
 var config = {
@@ -42044,9 +41898,9 @@ var MarkdownIt = class {
   */
   parse(src, env) {
     if (typeof src !== "string") throw new Error("Input data should be a String");
-    const state = new this.core.State(src, this, env);
-    this.core.process(state);
-    return state.tokens;
+    const state2 = new this.core.State(src, this, env);
+    this.core.process(state2);
+    return state2.tokens;
   }
   /**
   * Render markdown string into html. It does all magic for you :).
@@ -42064,10 +41918,10 @@ var MarkdownIt = class {
   * inline tokens in `children` property. Also updates `env` object.
   */
   parseInline(src, env) {
-    const state = new this.core.State(src, this, env);
-    state.inlineMode = true;
-    this.core.process(state);
-    return state.tokens;
+    const state2 = new this.core.State(src, this, env);
+    state2.inlineMode = true;
+    this.core.process(state2);
+    return state2.tokens;
   }
   /**
   * Similar to {@link MarkdownIt.render} but for single paragraph content.
@@ -42423,7 +42277,7 @@ function composer(context, action2, selection, screen = "", back = "") {
 					<option value="">Host default</option>
 				</select></label
 			>
-			<button class="btn primary" type="submit">Send</button>
+			<button class="sp-btn pri" type="submit">Send</button>
 		</div>
 		<p class="help" data-chat-model-status aria-live="polite"></p>
 		<p class="form-error" data-chat-error role="alert" hidden></p>
@@ -42523,7 +42377,7 @@ function turn(store, request2, context, number, back) {
 								${request2.changes.map((change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text}</li>`)}
 							</ul>
 						</details>` : ""}
-			${request2.state === "running" || request2.state === "waiting" ? html2`<form method="post" action="/requests/${request2.id}/stop"><input type="hidden" name="csrf" value="${context.csrf}" /><input type="hidden" name="return" value="${back}" /><button class="btn" type="submit">Stop</button></form>` : ""}
+			${request2.state === "running" || request2.state === "waiting" ? html2`<form method="post" action="/requests/${request2.id}/stop"><input type="hidden" name="csrf" value="${context.csrf}" /><input type="hidden" name="return" value="${back}" /><button class="sp-btn" type="submit">Stop</button></form>` : ""}
 		</div>
 	</article>`;
 }
@@ -42558,7 +42412,7 @@ function workspace(view, newHref, list3, conversation) {
 		<aside class="chat-sidebar" aria-label="Conversations" data-chat-lane="list">
 			<div class="chat-sidebar-header">
 				<h2>Conversations</h2>
-				<a class="btn" href="${newHref}" ${chatRow2("chat:new", newHref, "New chat")}>New chat</a>
+				<a class="sp-btn" href="${newHref}" ${chatRow2("chat:new", newHref, "New chat")}>New chat</a>
 			</div>
 			${list3}
 		</aside>
@@ -42764,6 +42618,7 @@ function assets() {
     "/assets/client.js": { type: "text/javascript; charset=utf-8", body: read("client.js") },
     "/assets/design.js": { type: "text/javascript; charset=utf-8", body: read("design.js") },
     "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
+    designParts: read("design-parts.html").toString(),
     font: (name2) => readFileSync13(`${fonts}${name2}.woff2`)
   };
 }
@@ -42785,11 +42640,11 @@ function redirect(res, location, cookies = []) {
 }
 function parseCookies(header2) {
   const cookies = {};
-  for (const part2 of (header2 ?? "").split(";")) {
-    const index2 = part2.indexOf("=");
+  for (const part of (header2 ?? "").split(";")) {
+    const index2 = part.indexOf("=");
     if (index2 < 0) continue;
     try {
-      cookies[part2.slice(0, index2).trim()] = decodeURIComponent(part2.slice(index2 + 1).trim());
+      cookies[part.slice(0, index2).trim()] = decodeURIComponent(part.slice(index2 + 1).trim());
     } catch {
     }
   }
@@ -42843,7 +42698,7 @@ function plainMessage(error) {
   return schema[1].split(", ").map((problem) => {
     const [path, rule] = problem.split(/ must (.*)/);
     const place = path.split("/").slice(1).map(
-      (part2) => /^\d+$/.test(part2) ? String(Number(part2) + 1) : part2.replace(/([a-z])([A-Z])/g, "$1 $2")
+      (part) => /^\d+$/.test(part) ? String(Number(part) + 1) : part.replace(/([a-z])([A-Z])/g, "$1 $2")
     ).join(" ");
     const what = place ? place[0].toUpperCase() + place.slice(1) : "The form";
     if (/fewer than 1 characters|fewer than 1 items/.test(rule)) return `${what} cannot be empty.`;
@@ -42974,8 +42829,8 @@ data: ${matched.join(",") || "*"}
       back: "/",
       body: html2`${heading(title2, message2)}
 				<p class="actions">
-					<a class="btn primary" href="/">Needs you</a> <a class="btn" href="/plans">Plans</a>
-					<a class="btn" href="/runs">Runs</a>
+					<a class="sp-btn pri" href="/">Needs you</a> <a class="sp-btn" href="/plans">Plans</a>
+					<a class="sp-btn" href="/runs">Runs</a>
 				</p>`
     });
   }
@@ -42985,18 +42840,18 @@ data: ${matched.join(",") || "*"}
       cookies: [...actorCookie, cookie("checkmate_toast", flash, 60)]
     };
   }
-  function inQueue(request2, form, page, state, gap) {
+  function inQueue(request2, form, page, state2, gap) {
     const key = gap ? `g:${gap.id}` : form.get("item");
     if (form.get("return") === null || key === null) return page;
     const back = safeBack(form.get("return"));
     const url = new URL(back, request2.url);
     const run2 = routes.run.exec(url.pathname);
-    if (run2 && !gap) return () => runPage(store, context(request2, back), run2[1], url.searchParams, state);
+    if (run2 && !gap) return () => runPage(store, context(request2, back), run2[1], url.searchParams, state2);
     const plan = routes.latestPlan.exec(url.pathname);
     if (plan && (!gap || gap.planId === plan[1]))
       return () => reviewPage(store, context(request2, back), plan[1], url.searchParams, {
         key,
-        state,
+        state: state2,
         subject: gap ? `${gap.planId}@${gap.revision} \xB7 ${gap.id}` : void 0
       });
     return page;
@@ -43099,7 +42954,8 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/claims") return redirect(request2.res, oldItem(searchParams, "all"));
     if (pathname === "/runs") return render(request2, runsPage(store, searchParams));
     if (pathname === "/log") return render(request2, logPage(store, searchParams));
-    if (pathname === "/design") return render(request2, designPage(files2["/assets/style.css"].body.toString()));
+    if (pathname === "/design")
+      return render(request2, designPage(files2["/assets/style.css"].body.toString(), files2.designParts));
     if (pathname === "/activity")
       return render(request2, activityPage(store, shown2, searchParams, { build: defaultBuild(store.workspace) }));
     if (pathname === "/permissions") return firstRequest(request2);
@@ -43282,7 +43138,7 @@ data: ${matched.join(",") || "*"}
 						value="${shown2.actor ?? ""}"
 					/>
 					<div class="btns">
-						<button class="btn primary">Save name</button> <a class="btn" href="${back}">Cancel</a>
+						<button class="sp-btn pri">Save name</button> <a class="sp-btn" href="${back}">Cancel</a>
 					</div>
 				</form>`
     };
@@ -43308,21 +43164,21 @@ data: ${matched.join(",") || "*"}
     render(request2, { ...shown2, status: shown2.status ?? 422 }, cookies);
   }
   function answer2(request2, form, planId, revision2, gapId) {
-    const state = {
+    const state2 = {
       ...emptyState(),
       values: values(form, ["kind", "value", "source", "rationale", "actor"])
     };
     const { actor, cookies } = actorFrom(request2, form);
-    const input = answerInput(form, state, actor);
+    const input = answerInput(form, state2, actor);
     const page = inQueue(
       request2,
       form,
-      () => gapPage(store, context(request2), planId, revision2, gapId, state),
-      state,
+      () => gapPage(store, context(request2), planId, revision2, gapId, state2),
+      state2,
       { planId, revision: revision2, id: gapId }
     );
-    state.error = answerProblem(input, actor);
-    if (state.error) return refuse4(request2, page, cookies);
+    state2.error = answerProblem(input, actor);
+    if (state2.error) return refuse4(request2, page, cookies);
     try {
       answerGap(store, actor, {
         planId,
@@ -43337,22 +43193,22 @@ data: ${matched.join(",") || "*"}
       const latest = planDetail(store, planId);
       const pending = latest.pendingDecisions.find((each) => each.gapId === gapId);
       if (latest.sha256 !== form.get("sha"))
-        state.stale = html2`<strong>${planId} has a newer revision (${latest.latestRevision}).</strong> Your
+        state2.stale = html2`<strong>${planId} has a newer revision (${latest.latestRevision}).</strong> Your
 					answer was not recorded. Your text is kept below.
 					<a href="/plans/${planId}@${latest.latestRevision}/gaps/${gapId}"
 						>Review revision ${latest.latestRevision}</a
 					>, then send again.`;
       else if (pending && form.has("return"))
-        state.stale = html2`<strong>${gapId} was answered by ${pending.actor}.</strong> Your answer was not
+        state2.stale = html2`<strong>${gapId} was answered by ${pending.actor}.</strong> Your answer was not
 					recorded. Your text is kept below.`;
-      else state.error = plainMessage(error);
+      else state2.error = plainMessage(error);
       return refuse4(request2, page, cookies);
     }
     const next = nextItem(`${input.kind === "defer" ? "Deferred" : "Answered"} ${planId} \xB7 ${gapId}`, cookies, form);
     redirect(request2.res, next.location, next.cookies);
   }
-  function answerInput(form, state, actor) {
-    const typed = state.values;
+  function answerInput(form, state2, actor) {
+    const typed = state2.values;
     const trimmed = {
       kind: typed.kind || "clarify",
       value: typed.value.trim(),
@@ -43379,22 +43235,22 @@ data: ${matched.join(",") || "*"}
     return null;
   }
   function answerExplorationQuestion(request2, form, explorationId, questionId) {
-    const state = {
+    const state2 = {
       ...emptyState(),
       values: values(form, ["kind", "value", "source", "rationale", "actor"])
     };
     const { actor, cookies } = actorFrom(request2, form);
-    const input = answerInput(form, state, actor);
+    const input = answerInput(form, state2, actor);
     const planId = planOfExploration(explorationId);
-    const page = () => questionPage(store, context(request2), explorationId, questionId, state);
+    const page = () => questionPage(store, context(request2), explorationId, questionId, state2);
     const asked2 = mergedQuestions(store, planId).find((item) => item.id === questionId);
     if (asked2 && asked2.answer !== null && (asked2.decision !== "defer" || input.kind === "defer")) {
-      state.stale = html2`<strong>${questionId} has an answer now: ${asked2.answer}</strong> Your answer was not
+      state2.stale = html2`<strong>${questionId} has an answer now: ${asked2.answer}</strong> Your answer was not
 				recorded. Your text is kept below.`;
-      return refuse4(request2, inQueue(request2, form, page, state), cookies);
+      return refuse4(request2, inQueue(request2, form, page, state2), cookies);
     }
-    state.error = answerProblem(input, actor);
-    if (state.error) return refuse4(request2, inQueue(request2, form, page, state), cookies);
+    state2.error = answerProblem(input, actor);
+    if (state2.error) return refuse4(request2, inQueue(request2, form, page, state2), cookies);
     try {
       answerGap(store, actor, {
         planId,
@@ -43405,8 +43261,8 @@ data: ${matched.join(",") || "*"}
         rationale: input.rationale
       });
     } catch (error) {
-      state.error = plainMessage(error);
-      return refuse4(request2, inQueue(request2, form, page, state), cookies);
+      state2.error = plainMessage(error);
+      return refuse4(request2, inQueue(request2, form, page, state2), cookies);
     }
     const next = nextItem(
       `${input.kind === "defer" ? "Deferred" : "Answered"} ${planId} \xB7 ${questionId}`,
@@ -43416,38 +43272,38 @@ data: ${matched.join(",") || "*"}
     redirect(request2.res, next.location, next.cookies);
   }
   function decideExplorationClaim(request2, form, explorationId, claimId) {
-    const state = { ...emptyState(), values: values(form, ["verdict", "rationale", "actor"]) };
+    const state2 = { ...emptyState(), values: values(form, ["verdict", "rationale", "actor"]) };
     const { actor, cookies } = actorFrom(request2, form);
     const planId = planOfExploration(explorationId);
-    const verdict = state.values.verdict;
+    const verdict = state2.values.verdict;
     const page = inQueue(
       request2,
       form,
-      () => claimPage(store, context(request2), explorationId, claimId, state),
-      state
+      () => claimPage(store, context(request2), explorationId, claimId, state2),
+      state2
     );
     if (verdict !== "approved" && verdict !== "rejected") {
-      state.error = "Choose Accept as a defect or Reject.";
+      state2.error = "Choose Accept as a defect or Reject.";
       return refuse4(request2, page, cookies);
     }
     const decided = mergedClaims(store, planId).find((item) => item.id === claimId)?.decision;
     if (decided) {
       const verdict2 = decided.verdict === "approved" ? "accepted" : "rejected";
       const what = `${claimId} was ${verdict2} by ${decided.actor}.`;
-      state.stale = html2`<strong>${what}</strong> Your decision was not recorded. Your text is kept below.`;
+      state2.stale = html2`<strong>${what}</strong> Your decision was not recorded. Your text is kept below.`;
       return refuse4(request2, page, cookies);
     }
-    const typed = state.values.rationale.trim();
+    const typed = state2.values.rationale.trim();
     const quick = form.get("return") !== null;
     if (quick && verdict === "rejected" && !typed) {
-      state.error = "Write a short reason for the reject.";
+      state2.error = "Write a short reason for the reject.";
       return refuse4(request2, page, cookies);
     }
     const rationale = typed || (quick ? "Accepted in the review UI. No reason was given." : "");
     try {
       decideClaim(store, actor, { planId, claimId, verdict, rationale });
     } catch (error) {
-      state.error = plainMessage(error);
+      state2.error = plainMessage(error);
       return refuse4(request2, page, cookies);
     }
     const next = nextItem(
@@ -43457,19 +43313,19 @@ data: ${matched.join(",") || "*"}
     );
     redirect(request2.res, next.location, next.cookies);
   }
-  function bulkPage(request2, back, state) {
+  function bulkPage(request2, back, state2) {
     const url = new URL(back, request2.url);
     const plan = routes.latestPlan.exec(url.pathname);
     if (!plan) return () => homePage(store);
     const shown2 = context(request2, url.pathname + url.search);
-    return () => reviewPage(store, shown2, plan[1], url.searchParams, null, state.error);
+    return () => reviewPage(store, shown2, plan[1], url.searchParams, null, state2.error);
   }
   function bulk(request2, form) {
     const what = form.get("what") === "claims" ? "claims" : "questions";
     const picks = form.getAll("pick");
     const back = safeBack(form.get("return"));
     const { actor, cookies } = actorFrom(request2, form);
-    const state = {
+    const state2 = {
       what,
       values: values(
         form,
@@ -43478,7 +43334,7 @@ data: ${matched.join(",") || "*"}
       error: null,
       confirm: false
     };
-    const page = bulkPage(request2, back, state);
+    const page = bulkPage(request2, back, state2);
     const waiting = what === "claims" ? claimsAcross(store).filter((claim) => !claim.decision).map((claim) => ({
       key: `claim:${claim.planId}:${claim.id}`,
       planId: claim.planId,
@@ -43487,16 +43343,16 @@ data: ${matched.join(",") || "*"}
     })) : needsYou(store).items.filter((item) => item.kind === "question" || item.kind === "gap");
     const found = picks.map((key) => waiting.find((item) => item.key === key));
     const gone = picks.filter((_, index2) => !found[index2]);
-    if (!picks.length) state.error = "Select at least one item.";
+    if (!picks.length) state2.error = "Select at least one item.";
     else if (gone.length)
-      state.error = `${gone.map((key) => key.split(":").slice(1).join(" \xB7 ")).join(", ")} ${gone.length === 1 ? "does" : "do"} not wait for a decision now. Nothing is recorded. Clear the selection and select again.`;
-    else state.error = bulkProblem(what, state.values, actor);
-    if (!state.error && form.get("confirmed") !== "1")
-      state.error = `Confirm the action for ${plural(picks.length, "item")}. Nothing is recorded.`;
-    if (state.error) return refuse4(request2, page, cookies);
+      state2.error = `${gone.map((key) => key.split(":").slice(1).join(" \xB7 ")).join(", ")} ${gone.length === 1 ? "does" : "do"} not wait for a decision now. Nothing is recorded. Clear the selection and select again.`;
+    else state2.error = bulkProblem(what, state2.values, actor);
+    if (!state2.error && form.get("confirmed") !== "1")
+      state2.error = `Confirm the action for ${plural(picks.length, "item")}. Nothing is recorded.`;
+    if (state2.error) return refuse4(request2, page, cookies);
     const items = found.map((item) => item);
     if (what === "claims") {
-      const decision = claimDefaults(state.values);
+      const decision = claimDefaults(state2.values);
       for (const item of items)
         decideClaim(store, actor, {
           planId: item.planId,
@@ -43507,7 +43363,7 @@ data: ${matched.join(",") || "*"}
       const flash2 = `${decision.verdict === "approved" ? "Accepted" : "Rejected"} ${plural(items.length, "claim")}`;
       return redirect(request2.res, back, [...cookies, cookie("checkmate_toast", flash2, 60)]);
     }
-    const answer3 = answerDefaults(state.values, actor);
+    const answer3 = answerDefaults(state2.values, actor);
     for (const item of items)
       answerGap(store, actor, {
         planId: item.planId,
@@ -43593,7 +43449,7 @@ data: ${matched.join(",") || "*"}
       back,
       body: html2`${heading("Nothing was done")}
 				<p class="form-error" role="alert" ${field4 ? html2`data-field="${field4}"` : ""}>${message2}</p>
-				<p class="actions"><a class="btn primary" href="${back}">Go back</a></p>`
+				<p class="actions"><a class="sp-btn pri" href="${back}">Go back</a></p>`
     });
   }
   function engineText(error) {
@@ -44497,29 +44353,29 @@ data: ${matched.join(",") || "*"}
     return { ...emptyState(), values: values(form, ["verdict", "rationale", "actor"]) };
   }
   function decide(request2, form, choices2, page, record, staleCheck) {
-    const state = verdictState(form);
+    const state2 = verdictState(form);
     const { actor, cookies } = actorFrom(request2, form);
-    const view = () => page(state);
+    const view = () => page(state2);
     const sha = form.get("sha") ?? "";
     const token = form.get("decision") ?? "";
-    state.stale = staleCheck(sha, token);
-    if (state.stale) return refuse4(request2, view, cookies);
+    state2.stale = staleCheck(sha, token);
+    if (state2.stale) return refuse4(request2, view, cookies);
     if (form.get("back")) return refuse4(request2, () => ({ ...view(), status: 200 }), cookies);
-    if (!choices2.includes(state.values.verdict)) state.error = "Choose a decision.";
-    else if (!actor) state.error = "Enter your name. Checkmate records it with your decision.";
-    else if (!state.values.rationale.trim())
-      state.error = "Write a rationale. Checkmate records it with your decision.";
-    if (state.error) return refuse4(request2, view, cookies);
+    if (!choices2.includes(state2.values.verdict)) state2.error = "Choose a decision.";
+    else if (!actor) state2.error = "Enter your name. Checkmate records it with your decision.";
+    else if (!state2.values.rationale.trim())
+      state2.error = "Write a rationale. Checkmate records it with your decision.";
+    if (state2.error) return refuse4(request2, view, cookies);
     if (form.get("confirmed") !== "1") {
-      state.confirm = true;
+      state2.confirm = true;
       return refuse4(request2, () => ({ ...view(), status: 200 }), cookies);
     }
     let flash;
     try {
-      flash = record(actor, state.values.verdict, state.values.rationale.trim(), sha, token);
+      flash = record(actor, state2.values.verdict, state2.values.rationale.trim(), sha, token);
     } catch (error) {
-      state.stale = staleCheck(sha, token);
-      if (!state.stale) state.error = plainMessage(error);
+      state2.stale = staleCheck(sha, token);
+      if (!state2.stale) state2.error = plainMessage(error);
       return refuse4(request2, view, cookies);
     }
     const next = nextItem(flash, cookies, form);
@@ -44536,7 +44392,7 @@ data: ${matched.join(",") || "*"}
       request2,
       form,
       ["approve", "reject"],
-      (state) => inQueue(request2, form, () => planPage(store, context(request2), planId, revision2, state), state)(),
+      (state2) => inQueue(request2, form, () => planPage(store, context(request2), planId, revision2, state2), state2)(),
       (actor, verdict, rationale, sha, token) => {
         const input = { reference: subject, rationale, expectSha256: sha, expectDecision: token };
         if (verdict === "approve") approvePlan(store, actor, input);
@@ -44561,7 +44417,7 @@ data: ${matched.join(",") || "*"}
       request2,
       form,
       ["accept", "reject"],
-      (state) => inQueue(request2, form, () => runPage(store, context(request2), runId, void 0, state), state)(),
+      (state2) => inQueue(request2, form, () => runPage(store, context(request2), runId, void 0, state2), state2)(),
       (actor, verdict, rationale, sha, token) => {
         const input = { runId, rationale, expectSha256: sha, expectDecision: token };
         if (verdict === "accept") acceptResult(store, actor, input);
@@ -44615,7 +44471,7 @@ data: ${matched.join(",") || "*"}
     const removing = form.get("mode") === "remove" ? form.get("test") ?? "" : null;
     const mode = form.get("mode") === "json" || removing !== null ? "json" : "form";
     const sha = form.get("sha") ?? "";
-    const state = {
+    const state2 = {
       mode,
       candidate: base,
       json: form.get("json") ?? "",
@@ -44628,38 +44484,38 @@ data: ${matched.join(",") || "*"}
       removed: [],
       rationale: form.get("rationale") ?? ""
     };
-    const page = () => editPage(store, context(request2), planId, revision2, state);
+    const page = () => editPage(store, context(request2), planId, revision2, state2);
     let candidate;
     if (removing !== null) {
       candidate = { ...base, tests: base.tests.filter((test) => test.id !== removing) };
-      state.json = candidateJson(candidate);
-      if (!base.tests.some((test) => test.id === removing)) state.error = `${subject} has no test ${removing}.`;
+      state2.json = candidateJson(candidate);
+      if (!base.tests.some((test) => test.id === removing)) state2.error = `${subject} has no test ${removing}.`;
     } else if (mode === "json") {
       try {
-        candidate = JSON.parse(state.json);
+        candidate = JSON.parse(state2.json);
       } catch (error) {
-        state.error = `The JSON is not valid: ${plainMessage(error)}`;
-        state.field = "json";
+        state2.error = `The JSON is not valid: ${plainMessage(error)}`;
+        state2.field = "json";
       }
     } else {
-      state.candidate = candidateFromForm(base, form);
-      state.json = candidateJson(state.candidate);
-      candidate = state.candidate;
+      state2.candidate = candidateFromForm(base, form);
+      state2.json = candidateJson(state2.candidate);
+      candidate = state2.candidate;
     }
-    state.removed = removedTests(base, candidate);
-    const rationale = state.rationale.trim();
+    state2.removed = removedTests(base, candidate);
+    const rationale = state2.rationale.trim();
     const blank = mode === "form" ? emptyField(base, form) : null;
-    if (blank && !state.error)
-      [state.error, state.field] = [`Fill in ${blank.label}. It cannot be empty.`, blank.name];
-    if (!state.error && !state.removed.length && candidateJson(candidate) === candidateJson(base))
+    if (blank && !state2.error)
+      [state2.error, state2.field] = [`Fill in ${blank.label}. It cannot be empty.`, blank.name];
+    if (!state2.error && !state2.removed.length && candidateJson(candidate) === candidateJson(base))
       return redirect(request2.res, `/plans/${subject}`, [
         ...cookies,
         cookie("checkmate_toast", `No changes. ${subject} is not saved again.`, 60)
       ]);
-    if (!actor) state.error ??= "Enter your name. Checkmate records it with the edit.";
-    if (state.removed.length && !rationale)
-      state.error ??= `The edit removes ${state.removed.join(", ")}. Write the reason in Reason for removal.`;
-    if (state.error) return refuse4(request2, page, cookies);
+    if (!actor) state2.error ??= "Enter your name. Checkmate records it with the edit.";
+    if (state2.removed.length && !rationale)
+      state2.error ??= `The edit removes ${state2.removed.join(", ")}. Write the reason in Reason for removal.`;
+    if (state2.error) return refuse4(request2, page, cookies);
     let saved;
     try {
       saved = editPlan(store, actor, {
@@ -44671,21 +44527,21 @@ data: ${matched.join(",") || "*"}
     } catch (error) {
       const latest = planDetail(store, planId);
       if (latest.latestRevision === revision2 && latest.sha256 === sha) {
-        state.error = plainMessage(error);
+        state2.error = plainMessage(error);
         return refuse4(request2, page, cookies);
       }
       const fresh = planCandidate(latest.plan);
-      state.unsaved = ownChanges(form, fresh);
-      state.orig = JSON.stringify(fresh);
-      state.candidate = fresh;
-      state.json = candidateJson(fresh);
-      state.removed = [];
-      state.stale = html2`<strong>${planId} changed after you opened the editor.</strong> Your edits were not
+      state2.unsaved = ownChanges(form, fresh);
+      state2.orig = JSON.stringify(fresh);
+      state2.candidate = fresh;
+      state2.json = candidateJson(fresh);
+      state2.removed = [];
+      state2.stale = html2`<strong>${planId} changed after you opened the editor.</strong> Your edits were not
 				saved. The editor shows ${planId}@${latest.latestRevision} as it is now. Your changes are listed above
 				it.`;
       return refuse4(
         request2,
-        () => editPage(store, context(request2), planId, latest.latestRevision, state),
+        () => editPage(store, context(request2), planId, latest.latestRevision, state2),
         cookies
       );
     }
@@ -44696,7 +44552,7 @@ data: ${matched.join(",") || "*"}
   function saveInstance(request2, form, targetId) {
     const { actor, cookies } = actorFrom(request2, form);
     const entryPoints2 = targetRequest(store, targetId).entryPoints;
-    const state = {
+    const state2 = {
       values: values(form, [
         "instanceId",
         "environment",
@@ -44707,26 +44563,26 @@ data: ${matched.join(",") || "*"}
       field: null
     };
     const again = () => {
-      const kept = JSON.stringify(state);
+      const kept = JSON.stringify(state2);
       if (kept.length > 3e3)
-        return refuse4(request2, () => targetPage(store, context(request2), targetId, null, state), cookies);
+        return refuse4(request2, () => targetPage(store, context(request2), targetId, null, state2), cookies);
       redirect(request2.res, `/settings/targets/${targetId}#add-instance`, [
         ...cookies,
         cookie("checkmate_instance", kept, 60)
       ]);
     };
-    const instanceId = state.values.instanceId.trim();
-    const empty = entryPoints2.find((entry) => !state.values[`entry.${entry.name}`].trim());
+    const instanceId = state2.values.instanceId.trim();
+    const empty = entryPoints2.find((entry) => !state2.values[`entry.${entry.name}`].trim());
     if (!actor)
-      [state.error, state.field] = ["Enter your name. Checkmate records it with the instance.", "instance-actor"];
-    else if (!instanceId) [state.error, state.field] = ["Enter an instance ID.", "instance-id"];
+      [state2.error, state2.field] = ["Enter your name. Checkmate records it with the instance.", "instance-actor"];
+    else if (!instanceId) [state2.error, state2.field] = ["Enter an instance ID.", "instance-id"];
     else if (empty)
-      [state.error, state.field] = [`Fill in ${empty.name}. It cannot be empty.`, `entry-${empty.name}`];
-    if (state.error) return again();
+      [state2.error, state2.field] = [`Fill in ${empty.name}. It cannot be empty.`, `entry-${empty.name}`];
+    if (state2.error) return again();
     try {
       addInstance(store, actor, { targetId, instanceId, instance: instanceFromForm(entryPoints2, form) });
     } catch (error) {
-      state.error = plainMessage(error);
+      state2.error = plainMessage(error);
       return again();
     }
     redirect(request2.res, `/settings/targets/${targetId}#instance-${instanceId}`, [
@@ -45819,7 +45675,7 @@ var commands = {
           `${plan.planId}@${plan.revision}`,
           `gaps=${cell2(plan.openBlockingGaps)}`,
           `approval=${plan.approval}`,
-          `blocked=${cell2(plan.blocked.map((block2) => `${block2.testId}<-${block2.dependency}: ${block2.cause}`))}`,
+          `blocked=${cell2(plan.blocked.map((block3) => `${block3.testId}<-${block3.dependency}: ${block3.cause}`))}`,
           `state=${plan.loop.state}`,
           `waitsOn=${plan.loop.waitsOn}`
         ]
@@ -47815,8 +47671,8 @@ function hostReply(store, name2, reply) {
     next = first.action === "finished" ? finished : first.action === "wait" ? stepDone2 : stepsStarted2;
   } else if (name2 === "tester_steps_started" && done) next = stepDone2;
   else if (name2 === "tester_step_done" && done) {
-    const { event: event2, state, ...rest2 } = reply.data;
-    data = { ...rest2, stepEvent: event2, stepState: state, explorationState: status().state };
+    const { event: event2, state: state2, ...rest2 } = reply.data;
+    data = { ...rest2, stepEvent: event2, stepState: state2, explorationState: status().state };
     next = {
       action: "next_tester_steps",
       instruction: `This records one step of ${String(reply.data.name)}. The exploration is not finished. Call ${call("next_tester_steps", "explorationId")} now. ${untilFinished}`
@@ -48842,13 +48698,13 @@ function recordAttempt(store, stage, subject, harness, response, usage2, executi
 }
 var testAttempts = 2;
 var testSeconds = 300;
-function testOrder(state) {
-  const retests2 = new Set((state.request.retestDefects ?? []).flatMap((defect) => defect.testIds));
-  const pending = [...state.request.selectedTestIds].sort((a, b) => Number(retests2.has(b)) - Number(retests2.has(a)));
+function testOrder(state2) {
+  const retests2 = new Set((state2.request.retestDefects ?? []).flatMap((defect) => defect.testIds));
+  const pending = [...state2.request.selectedTestIds].sort((a, b) => Number(retests2.has(b)) - Number(retests2.has(a)));
   const ordered = [];
   while (pending.length) {
     const ready = pending.findIndex((id2) => {
-      const test = state.plan.tests.find((item) => item.id === id2);
+      const test = state2.plan.tests.find((item) => item.id === id2);
       return test.dependsOn.every((dependency) => dependency.includes(":") || !pending.includes(dependency));
     });
     ordered.push(pending.splice(Math.max(ready, 0), 1)[0]);
@@ -48856,16 +48712,16 @@ function testOrder(state) {
   return ordered;
 }
 function testView(store, runId, testId) {
-  const state = runState(store, runId);
+  const state2 = runState(store, runId);
   const outcomes = runOutcomes(store, runId);
-  const test = state.plan.tests.find((item) => item.id === testId);
-  const blocked = test.dependsOn.filter((dependency) => !dependency.includes(":") && state.request.selectedTestIds.includes(dependency)).map((dependency) => ({ dependency, outcome: outcomes.get(dependency)?.outcome ?? "not closed" })).find((item) => item.outcome !== "passed");
+  const test = state2.plan.tests.find((item) => item.id === testId);
+  const blocked = test.dependsOn.filter((dependency) => !dependency.includes(":") && state2.request.selectedTestIds.includes(dependency)).map((dependency) => ({ dependency, outcome: outcomes.get(dependency)?.outcome ?? "not closed" })).find((item) => item.outcome !== "passed");
   return {
     test,
     closed: outcomes.has(testId),
     blocker: blocked ?? null,
-    remaining: runClock(store, state.row).remainingSeconds,
-    reserveSeconds: Math.min(60, Math.round(state.row.deadline_seconds * (1 - deadlineShare)))
+    remaining: runClock(store, state2.row).remainingSeconds,
+    reserveSeconds: Math.min(60, Math.round(state2.row.deadline_seconds * (1 - deadlineShare)))
   };
 }
 function toolStatus(workspace2, request2, profile) {
@@ -49063,8 +48919,8 @@ async function runChild(workspace2, options3, execution, harness, env, model, pr
 function recordMissingDefects(workspace2, runId, testId, actor) {
   withStore(workspace2, (store) => {
     if (runOutcomes(store, runId).get(testId)?.outcome !== "failed") return;
-    const state = runState(store, runId);
-    const test = state.plan.tests.find((item) => item.id === testId);
+    const state2 = runState(store, runId);
+    const test = state2.plan.tests.find((item) => item.id === testId);
     const results = runAssertions(store, runId);
     const recorded2 = new Set(runFindings(store, runId).flatMap((finding) => finding.assertionIds));
     for (const assertion of test.assertions) {
@@ -49174,10 +49030,10 @@ async function delegateByTest(workspace2, subject, options3, harness, env, model
     }
   }
   const probeTime = withStore(workspace2, (store) => {
-    const state = runState(store, subject);
-    const clock2 = runClock(store, state.row);
+    const state2 = runState(store, subject);
+    const clock2 = runClock(store, state2.row);
     return {
-      permanent: Boolean(state.request.permanent),
+      permanent: Boolean(state2.request.permanent),
       remaining: Math.min(
         clock2.remainingSeconds,
         Math.floor(clock2.deadlineSeconds * 0.75) - clock2.elapsedSeconds

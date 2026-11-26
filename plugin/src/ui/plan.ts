@@ -60,7 +60,7 @@ function removeTest(context: Context, detail: Detail, test: Test) {
 				<input id="remove-actor-${test.id}" name="actor" required autocomplete="name" />
 			</div>`
 	return html`<details class="test-remove" data-open-key="remove:${test.id}">
-		<summary class="btn small">Remove ${test.id}</summary>
+		<summary class="sp-btn small">Remove ${test.id}</summary>
 		<form method="post" action="/plans/${subject}/edit" class="decision-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			<input type="hidden" name="sha" value="${detail.sha256}" />
@@ -72,7 +72,7 @@ function removeTest(context: Context, detail: Detail, test: Test) {
 			</div>
 			${actor}
 			<p class="help">Checkmate saves a new revision without ${test.id} and records who removed it and why.</p>
-			<div class="btns"><button class="btn" data-needs-rationale>Remove ${test.id}</button></div>
+			<div class="btns"><button class="sp-btn" data-needs-rationale>Remove ${test.id}</button></div>
 		</form>
 	</details>`
 }
@@ -164,7 +164,7 @@ function gapRow(detail: Detail, gap: Gap) {
 		${
 			answerable
 				? html`<p>
-						<a class="btn small" href="/plans/${detail.planId}@${detail.revision}/gaps/${gap.id}"
+						<a class="sp-btn small" href="/plans/${detail.planId}@${detail.revision}/gaps/${gap.id}"
 							>Answer ${gap.id}</a
 						>
 					</p>`
@@ -353,7 +353,7 @@ export function planHistoryList(store: Store, detail: Detail, all: boolean) {
 						class="history-more"
 						href="/plans/${subject}?history=all#history"
 						data-history-more="/plans/${subject}/history"
-						><span class="btn small">Show full history · ${plural(hidden, 'earlier revision')}</span></a
+						><span class="sp-btn small">Show full history · ${plural(hidden, 'earlier revision')}</span></a
 					>`
 				: ''
 		}
@@ -469,7 +469,7 @@ function nextLine(planId: string, found: PlanContext) {
 	const why = found.status.why[0]
 	const action =
 		mine > 0
-			? html`<a class="btn small primary" href="/plans/${planId}?view=needs&amp;focus=list"
+			? html`<a class="sp-btn small pri" href="/plans/${planId}?view=needs&amp;focus=list"
 					>Decide ${plural(mine, 'item')} in Needs you</a
 				>`
 			: found.status.next[0]
@@ -489,12 +489,12 @@ function chips(found: PlanContext, extra: Array<[string, string, number]>) {
 			'claims',
 			html`Claims
 				<b>${found.claims.length}</b
-				>${deciding ? html` <span class="st warn">${deciding} to decide</span>` : ''}`,
+				>${deciding ? html` <span class="sp-pill">${deciding} to decide</span>` : ''}`,
 		],
 		[
 			'questions',
 			html`Questions
-				<b>${open.length}</b> open${blocking ? html` <span class="st fail">${blocking} blocking</span>` : ''}`,
+				<b>${open.length}</b> open${blocking ? html` <span class="sp-pill">${blocking} blocking</span>` : ''}`,
 		],
 		['explorations', html`Explorations <b>${found.explorations.length}</b>`],
 		...extra.map(([id, label, count]): [string, Html] => [id, html`${label} <b>${count}</b>`]),
@@ -575,7 +575,7 @@ export function planPage(
 			>Total cost ${costText(cost.costUsd, cost.costPartial)}</span
 		>
 		<span class="head-actions">
-			${latest ? html`<a class="btn small" href="/plans/${subject}/edit">Edit plan</a>` : ''}
+			${latest ? html`<a class="sp-btn small" href="/plans/${subject}/edit">Edit plan</a>` : ''}
 			${downloads('Export', `/plans/${subject}/export`, 'The HTML export is print-ready. Open it and print to PDF.')}
 		</span>
 	</div>`
@@ -811,7 +811,7 @@ export function gapPage(
 			'Answer gap',
 			html`<p class="help">Answer this gap on the latest revision.</p>
 				<p>
-					<a class="btn" href="/plans/${planId}@${detail.latestRevision}/gaps/${gap.id}"
+					<a class="sp-btn" href="/plans/${planId}@${detail.latestRevision}/gaps/${gap.id}"
 						>Open ${planId}@${detail.latestRevision}</a
 					>
 				</p>`

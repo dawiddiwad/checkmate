@@ -95,9 +95,25 @@
 	--cols: 12;
 	--gutter: var(--sp-4);
 	--margin: var(--sp-4);
-	--col: calc((100% - 2 * var(--margin) - (var(--cols) - 1) * var(--gutter)) / var(--cols));
+	--app-col: round(down, calc((100% - (var(--cols) - 1) * var(--gutter)) / var(--cols)), 1px);
+	--col: round(down, calc((100% - 2 * var(--margin) - (var(--cols) - 1) * var(--gutter)) / var(--cols)), 1px);
 	--drawer-w: 560px;
-	--page-max: 1120px;
+	--w-col-s: 80px;
+	--w-col-m: 120px;
+	--w-col-l: 176px;
+	--w-col-xl: 240px;
+	--w-num: 88px;
+	--w-aside: 320px;
+	--w-panel: 400px;
+	--w-dialog-s: 560px;
+	--w-dialog-m: 656px;
+	--w-dialog-l: 944px;
+	--w-form: 720px;
+	--w-record: 880px;
+	--w-wide: 960px;
+	--h-tile: 200px;
+	--h-frame: 256px;
+	--h-list: 384px;
 	--measure: 72ch;
 
 	--radius: 2px;
@@ -110,6 +126,20 @@
 	--focus-inset: calc(-1 * var(--mark-w));
 	--mark-inset: inset var(--mark-w) 0 0;
 	--sep: inset 0 calc(-1 * var(--line-w)) var(--hair);
+	--sep-top: inset 0 var(--line-w) var(--hair);
+
+	--z-raised: 1;
+	--z-frame: 2;
+	--z-sticky: 20;
+	--z-menu: 40;
+	--z-drawer: 50;
+	--z-pane: 55;
+	--z-bar: 60;
+	--z-sheet: 80;
+	--z-viewer: 90;
+	--z-notice: 95;
+	--z-skip: 100;
+	--z-grid: 1000;
 
 	--motion-fade: 0.3s;
 	--motion-flash: 2s ease-out;
@@ -189,11 +219,17 @@ h3 {
 p {
 	margin: 0;
 }
+:where(ul, ol, dl, blockquote, figure, hr) {
+	margin-block: var(--sp-3);
+}
 code,
 .mono {
 	font-family: var(--font-mono);
 	font-size: var(--text-sm);
 	letter-spacing: 0;
+}
+:is(code, span.mono, a.mono):not(pre *) {
+	line-height: 1;
 }
 pre {
 	margin: 0;
@@ -234,7 +270,10 @@ small {
 }
 kbd {
 	display: inline-grid;
+	grid-auto-flow: column;
 	place-items: center;
+	vertical-align: top;
+	margin-block: calc((var(--size-pill) - var(--size-icon)) / 2);
 	min-width: var(--size-icon);
 	height: var(--size-icon);
 	padding: 0 var(--sp-1);
@@ -250,8 +289,11 @@ kbd {
 	position: absolute;
 	left: var(--sp-4);
 	top: calc(-1 * var(--size-top));
-	z-index: 100;
-	padding: var(--sp-1) var(--sp-2);
+	z-index: var(--z-skip);
+	display: inline-flex;
+	align-items: center;
+	height: var(--size-control);
+	padding: 0 var(--sp-2);
 	background: var(--surface);
 	border: var(--line-w) solid var(--edge);
 }
@@ -265,7 +307,6 @@ kbd {
 .sp-nhead,
 .statusbar,
 .sp-btn,
-.btn,
 .sp-pill,
 .sb-btn,
 th {
@@ -277,7 +318,7 @@ th {
 .top {
 	position: sticky;
 	top: 0;
-	z-index: 60;
+	z-index: var(--z-bar);
 	height: var(--top-h);
 	background: var(--ground);
 }
@@ -362,7 +403,7 @@ th {
 
 .app {
 	display: grid;
-	grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+	grid-template-columns: repeat(calc(var(--cols) - 1), var(--app-col)) minmax(0, 1fr);
 	column-gap: var(--gutter);
 	align-items: start;
 	padding: var(--sp-4) max(var(--margin), env(safe-area-inset-right, 0px))
@@ -444,7 +485,7 @@ details.fold,
 	content: '';
 	position: absolute;
 	inset: 0;
-	z-index: 2;
+	z-index: var(--z-frame);
 	border: var(--line);
 	pointer-events: none;
 }
@@ -452,11 +493,11 @@ details.fold,
 	position: relative;
 }
 :root[data-grid] body::after {
-	--pitch: calc((100% + var(--gutter)) / var(--cols));
+	--pitch: calc(var(--app-col) + var(--gutter));
 	content: '';
 	position: absolute;
 	inset: 0 max(var(--margin), env(safe-area-inset-right, 0px)) 0 max(var(--margin), env(safe-area-inset-left, 0px));
-	z-index: 1000;
+	z-index: var(--z-grid);
 	pointer-events: none;
 	background:
 		repeating-linear-gradient(
@@ -485,9 +526,6 @@ details.fold,
 .sp-main {
 	min-width: 0;
 	container: main / inline-size;
-}
-.page {
-	max-width: var(--page-max);
 }
 
 .sp-path {
@@ -568,8 +606,7 @@ details.fold,
 	margin-top: var(--sp-2);
 }
 
-.sp-btn,
-.btn {
+.sp-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -587,18 +624,15 @@ details.fold,
 	text-decoration: none;
 	white-space: nowrap;
 }
-.sp-btn > span,
-.btn > span {
+.sp-btn > span {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	min-width: 0;
 }
-.sp-btn:hover,
-.btn:hover {
+.sp-btn:hover {
 	background: var(--surface-2);
 }
 .sp-btn:active,
-.btn:active,
 .sb-btn:active {
 	background: var(--hair);
 	border-color: var(--ink);
@@ -610,28 +644,25 @@ details.fold,
 	color: var(--accent-hover);
 }
 .sp-btn:disabled,
-.btn:disabled,
-.btn[aria-disabled='true'] {
+.sp-btn[aria-disabled='true'] {
 	color: var(--muted);
 	border-color: var(--edge);
 	border-style: dashed;
 	background: transparent;
 	cursor: default;
 }
-.sp-btn.pri,
-.btn.primary {
+.sp-btn.pri {
 	background: var(--accent);
 	border-color: var(--accent);
 	color: var(--on-accent);
 }
-.sp-btn.pri:hover,
-.btn.primary:hover {
+.sp-btn.pri:hover {
 	background: var(--accent-hover);
 }
-.btn.link {
+.sp-btn.link {
 	border-color: transparent;
 }
-.btn.small {
+.sp-btn.small {
 	height: var(--size-mark);
 }
 .icon-btn {
@@ -664,9 +695,9 @@ details.fold,
 	gap: var(--sp-2);
 }
 
-.sp-pill,
-.st {
+.sp-pill {
 	display: inline-flex;
+	vertical-align: top;
 	align-items: center;
 	gap: var(--sp-1);
 	height: var(--size-pill);
@@ -721,14 +752,15 @@ select {
 	width: 100%;
 	min-width: 0;
 	min-height: var(--size-control);
-	padding: var(--sp-1) var(--sp-2);
+	vertical-align: top;
+	padding: calc((var(--size-control) - 1lh) / 2 - var(--line-w)) var(--sp-2);
 	border: var(--line-w) solid var(--edge);
 	background: var(--surface);
 	color: var(--ink);
 	font: var(--type-code);
 }
 textarea {
-	min-height: 64px;
+	min-height: calc(2 * var(--size-row));
 	resize: vertical;
 	field-sizing: content;
 }
@@ -956,8 +988,7 @@ tbody tr:hover {
 .facts,
 .sp-facts {
 	display: grid;
-	grid-template-columns: 136px minmax(0, 1fr);
-	align-items: baseline;
+	grid-template-columns: var(--w-col-m) minmax(0, 1fr);
 	gap: var(--sp-1) var(--sp-3);
 	margin: 0;
 	font: var(--type-body);
@@ -965,6 +996,7 @@ tbody tr:hover {
 .facts dt,
 .sp-facts dt {
 	font: var(--type-label);
+	line-height: inherit;
 	letter-spacing: var(--track);
 	text-transform: uppercase;
 	color: var(--muted);
@@ -985,6 +1017,7 @@ tbody tr:hover {
 }
 .tag {
 	display: inline-flex;
+	vertical-align: top;
 	align-items: center;
 	height: var(--size-pill);
 	padding: 0 var(--sp-1);
@@ -1034,12 +1067,12 @@ details.menu > summary::-webkit-details-marker {
 }
 .menu-list {
 	position: absolute;
-	z-index: 40;
+	z-index: var(--z-menu);
 	top: calc(100% + var(--sp-1));
-	min-width: 220px;
+	min-width: var(--w-col-xl);
 	max-width: calc(100vw - 2 * var(--margin));
 	overflow-y: auto;
-	padding: var(--sp-1);
+	padding: calc(var(--sp-1) - var(--line-w));
 	border: var(--line-w) solid var(--edge);
 	background: var(--surface);
 }
@@ -1066,7 +1099,7 @@ details.menu > summary::-webkit-details-marker {
 	top: calc(var(--top-h) + var(--sp-4));
 	max-height: calc(100vh - var(--top-h) - var(--bar-h) - var(--dock-h, 0px) - var(--sp-8));
 	overflow-y: auto;
-	padding: var(--sp-2) 0;
+	padding: calc(var(--sp-2) - var(--line-w)) 0;
 	border: var(--line);
 	background: var(--surface);
 }
@@ -1077,7 +1110,7 @@ details.menu > summary::-webkit-details-marker {
 .sp-npin {
 	position: sticky;
 	top: calc(-1 * var(--sp-2));
-	z-index: 1;
+	z-index: var(--z-raised);
 	display: flex;
 	flex-direction: column;
 	margin-top: calc(-1 * var(--sp-2));
@@ -1111,17 +1144,20 @@ details.menu > summary::-webkit-details-marker {
 .hl .sp-mk.chosen {
 	outline-color: var(--on-accent);
 }
+.sp-nav {
+	--marks-w: calc(2 * var(--size-mark) + var(--sp-2));
+}
 .sp-nav[data-builds='2'] {
-	--marks-w: 56px;
+	--marks-w: calc(2 * var(--size-mark) + var(--sp-2));
 }
 .sp-nav[data-builds='3'] {
-	--marks-w: 88px;
+	--marks-w: calc(3 * var(--size-mark) + 2 * var(--sp-2));
 }
 .sp-nrow,
 .sp-nhead {
 	position: relative;
 	display: grid;
-	grid-template-columns: 32px minmax(0, 1fr) var(--marks-w, 56px);
+	grid-template-columns: var(--size-row) minmax(0, 1fr) var(--marks-w);
 	column-gap: var(--sp-2);
 	align-items: center;
 	padding: 0 var(--sp-2);
@@ -1226,9 +1262,9 @@ details.menu > summary::-webkit-details-marker {
 .sp-mm {
 	display: grid;
 	grid-auto-flow: column;
-	grid-template-columns: 32px;
+	grid-template-columns: var(--size-row);
 	grid-auto-columns: var(--size-mark);
-	grid-template-rows: 16px repeat(var(--rows, 1), 24px);
+	grid-template-rows: var(--size-icon) repeat(var(--rows, 1), var(--size-mark));
 	gap: var(--sp-1);
 	align-items: center;
 	justify-content: start;
@@ -1256,7 +1292,9 @@ details.menu > summary::-webkit-details-marker {
 
 .sp-list {
 	display: grid;
-	grid-template-columns: var(--sp-1) 16px 120px 80px minmax(0, 1fr) 176px var(--sp-1);
+	grid-template-columns: var(--sp-1) var(--size-icon) var(--w-col-m) var(--w-col-s) minmax(0, 1fr) var(--w-col-l) var(
+			--sp-1
+		);
 	column-gap: var(--sp-3);
 }
 .sp-list > *,
@@ -1298,7 +1336,7 @@ details.menu > summary::-webkit-details-marker {
 	scroll-margin-bottom: var(--sp-2);
 }
 .sp-nrow {
-	scroll-margin-top: 112px;
+	scroll-margin-top: calc(var(--top-h) + 2 * var(--sp-8));
 	scroll-margin-bottom: var(--sp-2);
 }
 .sp-row {
@@ -1324,7 +1362,7 @@ details.menu > summary::-webkit-details-marker {
 	place-items: center;
 	width: var(--size-mark);
 	height: var(--size-mark);
-	margin-left: calc(-1 * var(--sp-1));
+	margin: 0 0 0 calc(-1 * var(--sp-1));
 	cursor: pointer;
 }
 .sp-row > .sp-c-tag {
@@ -1434,7 +1472,7 @@ a.sp-c-title {
 }
 .sp-list.mid,
 .with-drawer .sp-list {
-	grid-template-columns: var(--sp-1) 16px 120px 80px minmax(0, 1fr) var(--sp-1);
+	grid-template-columns: var(--sp-1) var(--size-icon) var(--w-col-m) var(--w-col-s) minmax(0, 1fr) var(--sp-1);
 }
 .with-drawer .sp-row > .sp-c-meta,
 .with-drawer .sp-row > .sp-c-opts,
@@ -1442,7 +1480,7 @@ a.sp-c-title {
 	display: none;
 }
 .sp-list.wide-title {
-	grid-template-columns: var(--sp-1) 0 120px 80px minmax(0, 1fr) 240px var(--sp-1);
+	grid-template-columns: var(--sp-1) 0 var(--w-col-m) var(--w-col-s) minmax(0, 1fr) var(--w-col-xl) var(--sp-1);
 }
 
 .sp-home {
@@ -1507,7 +1545,7 @@ a.sp-c-title {
 }
 .sp-nums {
 	display: grid;
-	grid-template-columns: repeat(4, 88px);
+	grid-template-columns: repeat(4, var(--w-num));
 	column-gap: var(--sp-2);
 }
 .sp-nums div {
@@ -1546,7 +1584,7 @@ a.sp-c-title {
 }
 .sp-tl-row {
 	display: grid;
-	grid-template-columns: 24px minmax(0, 1fr) 72px;
+	grid-template-columns: var(--size-mark) minmax(0, 1fr) var(--w-col-s);
 	column-gap: var(--sp-2);
 	align-items: center;
 	height: var(--size-pill);
@@ -1561,11 +1599,11 @@ a.sp-c-title {
 
 .sp-drawer {
 	position: fixed;
-	z-index: 50;
+	z-index: var(--z-drawer);
 	top: var(--top-h);
 	bottom: calc(var(--bar-h) + var(--dock-h, 0));
 	right: 0;
-	width: calc(5 * var(--col) + 4 * var(--gutter) + var(--margin));
+	left: calc(var(--margin) + 7 * (var(--col) + var(--gutter)));
 	max-width: 100%;
 	display: flex;
 	flex-direction: column;
@@ -1615,7 +1653,7 @@ a.sp-c-title {
 	display: flex;
 	flex-direction: column;
 	gap: var(--sp-2);
-	padding: var(--sp-3);
+	padding: calc(var(--sp-3) - var(--line-w));
 	border: var(--line);
 }
 .sp-dhead:focus-visible {
@@ -1682,7 +1720,7 @@ a.sp-c-title {
 }
 .sp-file {
 	display: grid;
-	grid-template-columns: 16px minmax(0, 1fr) auto;
+	grid-template-columns: var(--size-icon) minmax(0, 1fr) auto;
 	column-gap: var(--sp-3);
 	align-items: center;
 	height: var(--size-row);
@@ -1735,7 +1773,7 @@ a.sp-c-title {
 
 .sp-viewer {
 	position: fixed;
-	z-index: 55;
+	z-index: var(--z-pane);
 	top: var(--top-h);
 	bottom: calc(var(--bar-h) + var(--dock-h, 0));
 	left: 0;
@@ -1749,7 +1787,7 @@ a.sp-c-title {
 	flex: 1;
 	min-height: 0;
 	display: grid;
-	grid-template-columns: 240px minmax(0, 1fr);
+	grid-template-columns: var(--w-col-xl) minmax(0, 1fr);
 	gap: var(--sp-4);
 	padding: var(--sp-4);
 	overflow: auto;
@@ -1761,7 +1799,7 @@ a.sp-c-title {
 	margin: 0;
 	align-self: start;
 	min-width: 0;
-	max-width: 960px;
+	max-width: var(--w-wide);
 	background: var(--surface);
 }
 .sp-fig img {
@@ -1771,18 +1809,18 @@ a.sp-c-title {
 }
 .sp-fig pre {
 	padding: var(--sp-4);
-	max-height: calc(100vh - var(--top-h) - var(--bar-h) - 120px);
+	max-height: calc(100vh - var(--top-h) - var(--bar-h) - 4 * var(--sp-8));
 	overflow: auto;
 }
 .ev-frame {
 	display: block;
 	width: 100%;
-	height: 260px;
+	height: var(--h-frame);
 	border: 0;
 	background: var(--surface);
 }
 .sp-fig .ev-frame {
-	height: max(220px, calc(100dvh - var(--top-h) - var(--bar-h) - 120px));
+	height: max(var(--h-tile), calc(100dvh - var(--top-h) - var(--bar-h) - 4 * var(--sp-8)));
 }
 .sp-fig figcaption {
 	display: flex;
@@ -1797,7 +1835,7 @@ a.sp-c-title {
 
 .sp-bulk {
 	position: fixed;
-	z-index: 58;
+	z-index: var(--z-bar);
 	left: 0;
 	right: 0;
 	bottom: calc(var(--bar-h) + env(safe-area-inset-bottom, 0));
@@ -1809,14 +1847,14 @@ a.sp-c-title {
 	margin: 0;
 	padding: var(--sp-1) max(var(--margin), env(safe-area-inset-right, 0)) var(--sp-1)
 		max(var(--margin), env(safe-area-inset-left, 0));
-	border-top: var(--line);
+	box-shadow: var(--sep-top);
 	background: var(--ground);
 	font: var(--type-label);
 }
 .sp-confirm {
 	top: calc(var(--top-h) + var(--size-top));
 	margin: 0 auto;
-	width: min(560px, calc(100vw - 2 * var(--margin)));
+	width: min(var(--w-dialog-s), calc(100vw - 2 * var(--margin)));
 }
 .sp-confirm-b {
 	padding: var(--sp-4);
@@ -1834,7 +1872,7 @@ a.sp-c-title {
 
 .statusbar {
 	position: fixed;
-	z-index: 57;
+	z-index: var(--z-bar);
 	left: 0;
 	right: 0;
 	bottom: 0;
@@ -1858,7 +1896,7 @@ a.sp-c-title {
 	background: var(--hair);
 }
 .sb-where {
-	flex: 0 1 var(--path-w, 320px);
+	flex: 0 1 var(--path-w, var(--w-aside));
 	min-width: 0;
 	overflow: hidden;
 	color: var(--ink);
@@ -1921,7 +1959,7 @@ a.sp-c-title {
 }
 @media (max-width: 1240px) {
 	:root {
-		--path-w: 240px;
+		--path-w: var(--w-col-xl);
 	}
 	.sb-links [data-wide] {
 		display: none;
@@ -1961,14 +1999,14 @@ a.sp-c-title {
 }
 .sp-saystrip {
 	position: fixed;
-	z-index: 94;
+	z-index: var(--z-notice);
 	left: 0;
 	right: 0;
 	bottom: calc(var(--bar-h) + env(safe-area-inset-bottom, 0) + var(--bulk-h, 0));
 	min-height: var(--bar-h);
 	padding: var(--sp-2) max(var(--margin), env(safe-area-inset-right, 0)) var(--sp-2)
 		max(var(--margin), env(safe-area-inset-left, 0));
-	border-top: var(--line);
+	box-shadow: var(--sep-top);
 	background: var(--ground);
 	color: var(--attention);
 	font: var(--type-label);
@@ -1986,7 +2024,7 @@ a.sp-c-title {
 	overflow: hidden;
 }
 .sb-keys:has(> [data-cap='?']) {
-	min-width: 56px;
+	min-width: calc(2 * var(--size-control));
 }
 button.sb-k {
 	padding: 0;
@@ -2015,7 +2053,7 @@ button.sb-k:active {
 
 .toast {
 	position: fixed;
-	z-index: 95;
+	z-index: var(--z-notice);
 	left: 0;
 	right: 0;
 	bottom: calc(var(--bar-h) + env(safe-area-inset-bottom, 0) + var(--bulk-h, 0) + var(--say-h, 0));
@@ -2026,7 +2064,7 @@ button.sb-k:active {
 	min-height: var(--bar-h);
 	padding: var(--sp-1) max(var(--margin), env(safe-area-inset-right, 0)) var(--sp-1)
 		max(var(--margin), env(safe-area-inset-left, 0));
-	border-top: var(--line);
+	box-shadow: var(--sep-top);
 	background: var(--surface);
 	color: var(--ink);
 	font: var(--type-label);
@@ -2045,7 +2083,9 @@ button.sb-k:active {
 
 dialog {
 	padding: 0;
-	border: var(--line-w) solid var(--edge);
+	border: 0;
+	outline: var(--line-w) solid var(--edge);
+	outline-offset: calc(-1 * var(--line-w));
 	background: var(--surface);
 	color: var(--ink);
 }
@@ -2055,7 +2095,7 @@ dialog::backdrop {
 .sp-keys {
 	top: calc(var(--top-h) + var(--sp-4));
 	margin: 0 auto;
-	width: min(944px, calc(100vw - 2 * var(--margin)));
+	width: min(var(--w-dialog-l), calc(100vw - 2 * var(--margin)));
 	max-height: calc(100vh - var(--top-h) - var(--bar-h) - var(--sp-8));
 	overflow-y: auto;
 }
@@ -2071,14 +2111,14 @@ dialog::backdrop {
 	text-align: left;
 	vertical-align: top;
 	font: var(--type-body);
-	border-bottom: var(--line);
+	box-shadow: var(--sep);
 	background: transparent;
 	text-transform: none;
 	letter-spacing: 0;
 	color: var(--ink);
 }
 .sp-ktable th {
-	width: 176px;
+	width: var(--w-col-l);
 	white-space: nowrap;
 	font: var(--type-label);
 }
@@ -2106,7 +2146,7 @@ dialog::backdrop {
 .sp-find {
 	top: calc(var(--top-h) + var(--size-top));
 	margin: 0 auto;
-	width: min(660px, calc(100vw - 2 * var(--margin)));
+	width: min(var(--w-dialog-m), calc(100vw - 2 * var(--margin)));
 }
 .sp-find input[type='search'] {
 	height: var(--size-top);
@@ -2122,7 +2162,7 @@ dialog::backdrop {
 	margin: 0;
 	padding: var(--sp-2);
 	list-style: none;
-	max-height: min(420px, 60vh);
+	max-height: min(var(--h-list), 60vh);
 	overflow-y: auto;
 }
 .sp-find ul:empty {
@@ -2208,7 +2248,7 @@ dialog::backdrop {
 
 .split {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) 320px;
+	grid-template-columns: minmax(0, 1fr) var(--w-aside);
 	gap: var(--sp-4);
 	align-items: start;
 }
@@ -2306,7 +2346,7 @@ dialog::backdrop {
 }
 .queue {
 	display: grid;
-	grid-template-columns: minmax(280px, 400px) minmax(0, 1fr);
+	grid-template-columns: minmax(var(--w-col-xl), var(--w-panel)) minmax(0, 1fr);
 	gap: var(--sp-4);
 	align-items: start;
 }
@@ -2390,13 +2430,21 @@ dialog::backdrop {
 
 .settings-nav .nav,
 .jump {
+	position: relative;
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0;
 	margin: 0 0 var(--sp-4);
 	padding: 0;
 	list-style: none;
-	border-bottom: var(--line);
+}
+.settings-nav .nav::after,
+.jump::after {
+	content: '';
+	position: absolute;
+	inset: auto 0 0;
+	height: var(--line-w);
+	background: var(--hair);
 }
 .settings-nav .nav a,
 .jump a {
@@ -2502,7 +2550,7 @@ dialog::backdrop {
 	margin-bottom: var(--sp-3);
 }
 .filters input[type='search'] {
-	flex: 1 1 240px;
+	flex: 1 1 var(--w-col-xl);
 	width: auto;
 }
 .pager {
@@ -2560,13 +2608,14 @@ details.fold > summary:active {
 .menu-list button:hover {
 	background: var(--surface-2);
 }
-details:not(.menu, .sp-more) > summary,
-.record-h {
-	border: var(--line-w) solid var(--edge);
+details:not(.menu, .sp-more) > summary {
+	box-shadow: inset 0 0 0 var(--line-w) var(--edge);
+}
+.record-h::after {
+	border-color: var(--edge);
 }
 details.fold > summary {
-	border: 0;
-	border-bottom: var(--line-w) solid var(--edge);
+	box-shadow: inset 0 calc(-1 * var(--line-w)) var(--edge);
 }
 td code {
 	overflow-wrap: normal;
@@ -2578,7 +2627,7 @@ td code {
 
 .evidence {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(var(--h-tile), 1fr));
 	gap: var(--sp-3);
 	align-items: start;
 }
@@ -2599,9 +2648,10 @@ td code {
 .ev-none .ev-note {
 	display: block;
 	width: 100%;
-	height: 140px;
+	height: var(--w-col-m);
 	margin: 0;
-	border: var(--line);
+	outline: var(--line);
+	outline-offset: calc(-1 * var(--line-w));
 	background: var(--surface);
 }
 .ev-image > a {
@@ -2632,7 +2682,7 @@ td code {
 
 .viewer {
 	position: fixed;
-	z-index: 90;
+	z-index: var(--z-viewer);
 	inset: var(--top-h) 0 var(--bar-h) 0;
 	display: flex;
 	flex-direction: column;
@@ -2646,7 +2696,10 @@ td code {
 	gap: var(--sp-2);
 	min-height: var(--size-top);
 	padding: var(--sp-2) var(--sp-4);
-	border-bottom: var(--line);
+	box-shadow: var(--sep);
+}
+.viewer-bar label {
+	margin: 0;
 }
 .viewer-name {
 	flex: 1;
@@ -2690,7 +2743,7 @@ td code {
 .viewer-text {
 	align-self: start;
 	width: 100%;
-	max-width: 1080px;
+	max-width: var(--w-wide);
 	margin: 0;
 	padding: var(--sp-4);
 	border: var(--line);
@@ -2792,7 +2845,7 @@ details.fold[open] > summary::before {
 @container main (max-width: 976px) {
 	.sp-list,
 	.sp-list.wide-title {
-		grid-template-columns: var(--sp-1) 16px 120px 80px minmax(0, 1fr) var(--sp-1);
+		grid-template-columns: var(--sp-1) var(--size-icon) var(--w-col-m) var(--w-col-s) minmax(0, 1fr) var(--sp-1);
 	}
 	.sp-row > .sp-c-meta {
 		display: none;
@@ -2811,7 +2864,7 @@ details.fold[open] > summary::before {
 	.sp-list.mid,
 	.sp-list.wide-title,
 	.with-drawer .sp-list {
-		grid-template-columns: var(--sp-1) 16px 120px minmax(0, 1fr) var(--sp-1);
+		grid-template-columns: var(--sp-1) var(--size-icon) var(--w-col-m) minmax(0, 1fr) var(--sp-1);
 	}
 	.sp-row > .sp-c-id {
 		display: none;
@@ -2828,7 +2881,8 @@ details.fold[open] > summary::before {
 		grid-column-end: -1;
 	}
 	.sp-drawer {
-		z-index: 70;
+		z-index: var(--z-sheet);
+		left: auto;
 		width: var(--drawer-w);
 	}
 }
@@ -2857,7 +2911,7 @@ details.fold[open] > summary::before {
 }
 @media (max-width: 1100px) {
 	:root {
-		--path-w: 160px;
+		--path-w: var(--w-col-l);
 	}
 	.with-nav > .sp-nav,
 	.with-nav > .sp-main {
@@ -2866,7 +2920,7 @@ details.fold[open] > summary::before {
 	.sp-nav {
 		position: static;
 		max-height: none;
-		padding: var(--sp-2);
+		padding: calc(var(--sp-2) - var(--line-w));
 		overflow-x: auto;
 		overflow-y: hidden;
 		scrollbar-width: none;
@@ -2896,7 +2950,7 @@ details.fold[open] > summary::before {
 		border: var(--line);
 	}
 	.sp-nrow .sp-ntx {
-		max-width: 160px;
+		max-width: var(--w-col-l);
 		padding-left: 0;
 	}
 	.sp-nrow[aria-level='2'] .sp-ntx {
@@ -2919,10 +2973,10 @@ details.fold[open] > summary::before {
 	}
 
 	.sp-row {
-		grid-template-rows: var(--size-list-row) 48px;
+		grid-template-rows: var(--size-list-row) var(--size-top);
 	}
 	.sp-row.ext {
-		grid-template-rows: var(--size-list-row) 48px auto;
+		grid-template-rows: var(--size-list-row) var(--size-top) auto;
 	}
 	.sp-row > .sp-c-meta {
 		display: block;
@@ -2975,7 +3029,7 @@ details.fold[open] > summary::before {
 	:root {
 		--top-h: calc(var(--size-top) + var(--sp-2));
 		--cols: 4;
-		--path-w: 72px;
+		--path-w: var(--w-col-s);
 	}
 	.top,
 	.top-in {
@@ -2997,7 +3051,7 @@ details.fold[open] > summary::before {
 	.sp-drawer,
 	.sp-viewer {
 		top: 0;
-		z-index: 80;
+		z-index: var(--z-sheet);
 	}
 	.sp-drawer {
 		width: 100%;
@@ -3024,7 +3078,6 @@ details.fold[open] > summary::before {
 	.sp-nums {
 		grid-template-columns: repeat(4, minmax(0, 1fr));
 	}
-	.btn,
 	.sp-btn,
 	.sb-btn,
 	.icon-btn {
@@ -3172,7 +3225,7 @@ details.fold[open] > summary::before {
 		min-height: var(--size-touch);
 	}
 	.menu-list {
-		min-width: 160px;
+		min-width: var(--w-col-l);
 	}
 	.menu-list :is(a, button) {
 		width: 100%;
@@ -3181,7 +3234,6 @@ details.fold[open] > summary::before {
 		width: var(--size-touch);
 		height: var(--size-touch);
 	}
-	.btn,
 	.sp-btn {
 		min-width: var(--size-touch);
 		flex-shrink: 0;
@@ -3209,8 +3261,7 @@ details.fold[open] > summary::before {
 	}
 }
 
-.sp-btn.pri:active,
-.btn.primary:active {
+.sp-btn.pri:active {
 	background: var(--accent-hover);
 	border-color: var(--ink);
 }
@@ -3252,15 +3303,17 @@ main a:active {
 
 @media (max-width: 1100px) {
 	:root:has(.sp-nav) {
-		--strip-h: 58px;
+		--strip-h: calc(var(--size-touch) + 2 * var(--sp-2));
 		scroll-padding-top: calc(var(--top-h) + var(--strip-h) + var(--sp-2));
 	}
 	.with-nav > .sp-nav {
 		position: sticky;
 		top: var(--top-h);
-		z-index: 20;
+		z-index: var(--z-sticky);
 		margin: calc(-1 * var(--sp-4)) calc(-1 * var(--sp-4)) 0;
-		border-width: 0 0 var(--line-w);
+		padding: var(--sp-2);
+		border: 0;
+		box-shadow: var(--sep);
 		background: var(--ground);
 	}
 	.sp-nav .sp-mk[data-b] {
@@ -3277,16 +3330,18 @@ main a:active {
 }
 
 .sp-list.activity {
-	grid-template-columns: var(--sp-1) 16px 120px 80px minmax(0, 1fr) 280px var(--sp-1);
+	grid-template-columns:
+		var(--sp-1) var(--size-icon) var(--w-col-m) var(--w-col-s) minmax(0, 1fr) var(--w-col-xl)
+		var(--sp-1);
 }
 @container main (max-width: 976px) {
 	.sp-list.activity {
-		grid-template-columns: var(--sp-1) 16px 120px 80px minmax(0, 1fr) var(--sp-1);
+		grid-template-columns: var(--sp-1) var(--size-icon) var(--w-col-m) var(--w-col-s) minmax(0, 1fr) var(--sp-1);
 	}
 }
 @container main (max-width: 560px) {
 	.sp-list.activity {
-		grid-template-columns: var(--sp-1) 16px 120px minmax(0, 1fr) var(--sp-1);
+		grid-template-columns: var(--sp-1) var(--size-icon) var(--w-col-m) minmax(0, 1fr) var(--sp-1);
 	}
 }
 .sp-c-more {
@@ -3413,7 +3468,7 @@ main a:active {
 }
 
 .start-form {
-	max-width: 720px;
+	max-width: var(--w-form);
 }
 .start-form .btns {
 	display: flex;
@@ -3453,7 +3508,7 @@ main a:active {
 	display: flex;
 	flex-direction: column;
 	gap: var(--sp-4);
-	max-width: 880px;
+	max-width: var(--w-record);
 	padding-bottom: var(--sp-4);
 }
 .sp-record .sp-ask-title {
@@ -3465,8 +3520,8 @@ main a:active {
 }
 .sp-code {
 	margin: 0 0 var(--sp-3);
-	padding: var(--sp-2) var(--sp-3);
-	max-height: 360px;
+	padding: calc(var(--sp-2) - var(--line-w)) calc(var(--sp-3) - var(--line-w));
+	max-height: var(--h-list);
 	overflow: auto;
 	border: var(--line);
 	background: var(--surface-2);
@@ -3492,11 +3547,11 @@ main a:active {
 }
 @media (max-width: 760px) {
 	.sp-record .sp-btn,
-	.sp-record .pager .btn,
-	.fold-b .pager .btn {
+	.sp-record .pager .sp-btn,
+	.fold-b .pager .sp-btn {
 		min-height: var(--size-touch);
 	}
-	.fold-b .pager .btn,
+	.fold-b .pager .sp-btn,
 	.sp-asks a {
 		display: inline-flex;
 		align-items: center;
@@ -3508,7 +3563,7 @@ main a:active {
 .sp-find-note {
 	margin: 0;
 	padding: var(--sp-2) var(--sp-4) var(--sp-3);
-	border-top: var(--line);
+	box-shadow: var(--sep-top);
 	font: var(--type-small);
 	color: var(--muted);
 }
@@ -3565,7 +3620,7 @@ main a:active {
 
 .chat-workspace {
 	display: grid;
-	grid-template-columns: clamp(216px, 24%, 272px) minmax(0, 1fr);
+	grid-template-columns: clamp(var(--w-col-xl), 24%, var(--w-aside)) minmax(0, 1fr);
 	align-items: stretch;
 }
 .chat-sidebar {
@@ -3585,7 +3640,7 @@ main a:active {
 .chat-sidebar-header,
 .chat-thread-header {
 	padding: var(--sp-3) var(--sp-4);
-	border-bottom: var(--line);
+	box-shadow: var(--sep);
 }
 .chat-thread-header {
 	display: flex;
@@ -3609,7 +3664,7 @@ main a:active {
 .chat-workspace-empty {
 	display: grid;
 	place-items: center;
-	min-height: 288px;
+	min-height: var(--h-list);
 	padding: var(--sp-4);
 }
 .chat-sidebar [data-region='chat-list'] > .help {
@@ -3637,7 +3692,7 @@ main a:active {
 	box-shadow: var(--mark-inset) var(--accent);
 }
 .chat-list-item.hl,
-.chat-sidebar-header .btn.hl {
+.chat-sidebar-header .sp-btn.hl {
 	background: var(--accent);
 	color: var(--on-accent);
 }
@@ -3657,7 +3712,7 @@ main a:active {
 	display: grid;
 	align-content: start;
 	gap: var(--sp-3);
-	max-height: clamp(160px, 48dvh, 608px);
+	max-height: clamp(var(--w-col-l), 48dvh, var(--w-dialog-s));
 	overflow-y: auto;
 	overscroll-behavior: contain;
 	padding: var(--sp-3) var(--sp-4);
@@ -3713,7 +3768,7 @@ main a:active {
 	color: var(--muted);
 }
 .chat-markdown pre {
-	padding: var(--sp-2) var(--sp-3);
+	padding: calc(var(--sp-2) - var(--line-w)) calc(var(--sp-3) - var(--line-w));
 	overflow-x: auto;
 	border: var(--line);
 	background: var(--surface-2);
@@ -3738,7 +3793,7 @@ main a:active {
 .chat-markdown img {
 	display: block;
 	max-width: 100%;
-	max-height: 384px;
+	max-height: var(--h-list);
 	object-fit: contain;
 }
 .chat-user {
@@ -3776,13 +3831,13 @@ main a:active {
 	margin: 0;
 }
 .chat-controls label:nth-child(1) {
-	flex: 0 1 128px;
+	flex: 0 1 var(--w-col-m);
 }
 .chat-controls label:nth-child(2) {
-	flex: 1 1 116px;
+	flex: 1 1 var(--w-col-m);
 }
 .chat-controls label:nth-child(3) {
-	flex: 0 1 120px;
+	flex: 0 1 var(--w-col-m);
 }
 .chat-controls select {
 	width: 100%;
@@ -3828,15 +3883,19 @@ main a:active {
 }
 @media (max-width: 400px) {
 	.chat-history {
-		max-height: clamp(144px, 36dvh, 384px);
+		max-height: clamp(var(--w-col-m), 36dvh, var(--h-list));
 	}
 	.chat-controls label:nth-child(1),
 	.chat-controls label:nth-child(3) {
-		flex-basis: 84px;
+		flex-basis: var(--w-col-s);
 	}
 	.chat-controls label:nth-child(2) {
-		flex-basis: 92px;
+		flex-basis: var(--w-num);
 	}
+}
+
+li:has(> label:first-child)::marker {
+	font: var(--type-label);
 }
 
 .ds {
@@ -3844,7 +3903,8 @@ main a:active {
 	flex-direction: column;
 	gap: var(--sp-8);
 }
-.ds .jump {
+.ds .jump,
+.ds .sp-h {
 	margin: 0;
 }
 .ds-sec {
@@ -3854,9 +3914,6 @@ main a:active {
 }
 .ds-sec > .sp-sec {
 	margin: 0;
-}
-.ds-h {
-	margin-top: var(--sp-4);
 }
 .ds-swatch {
 	display: block;
@@ -3869,6 +3926,9 @@ main a:active {
 	height: var(--sp-4);
 	background: var(--accent);
 }
+.ds-bar-soft {
+	background: var(--blue-soft);
+}
 .ds-box {
 	display: block;
 	border: var(--line-w) solid var(--edge);
@@ -3879,9 +3939,13 @@ main a:active {
 	height: var(--size-mark);
 	background: var(--surface);
 }
+.ds-type {
+	display: block;
+	white-space: nowrap;
+}
 .ds-cols {
 	display: grid;
-	grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+	grid-template-columns: repeat(calc(var(--cols) - 1), var(--app-col)) minmax(0, 1fr);
 	column-gap: var(--gutter);
 	font: var(--type-label);
 	color: var(--muted);
@@ -3892,48 +3956,138 @@ main a:active {
 	line-height: var(--size-row);
 	background: var(--blue-soft);
 }
-@media (max-width: 1100px) {
-	.ds-cols span:nth-child(n + 9) {
-		display: none;
-	}
-}
-@media (max-width: 760px) {
-	.ds-cols span:nth-child(n + 5) {
-		display: none;
-	}
-}
-.ds-parts {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
-	gap: var(--gutter);
-	align-items: start;
-}
-.ds-parts .panel + .panel {
-	margin: 0;
-}
-.ds-part {
+.ds-spec {
 	display: flex;
 	flex-direction: column;
-	gap: var(--sp-3);
+	gap: var(--sp-2);
 }
-.ds-part > h2 {
+.ds-spec > .sp-sec {
 	margin: 0;
+}
+.ds-stage {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--sp-4);
+	padding: calc(var(--sp-4) - var(--line-w));
+	border: var(--line);
+	background: var(--ground);
+	overflow-x: auto;
+}
+.ds-stage > * {
+	max-width: 100%;
+}
+.ds-stage
+	> :is(
+		.sp-list,
+		.sp-home,
+		.statusbar,
+		.top,
+		.sp-drawer,
+		.viewer,
+		.chat-workspace,
+		.scroll,
+		table,
+		.toast,
+		.sp-bulk,
+		.sp-saystrip,
+		.evidence,
+		.ds-stack,
+		.split,
+		.sp-ch,
+		.sp-h,
+		.q-items,
+		.page-head,
+		.strip,
+		details,
+		.sp-facts,
+		.jump,
+		.test,
+		.gap,
+		.found,
+		dialog,
+		.filters
+	) {
+	align-self: stretch;
 }
 .ds-states {
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--sp-3) var(--sp-4);
-	align-items: end;
+	align-items: flex-end;
+	gap: var(--sp-4);
 }
-.ds-states > div {
+.ds-state {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	align-content: flex-end;
+	gap: var(--sp-1) var(--sp-2);
+}
+.ds-state > .ds-cap {
+	flex: 1 0 100%;
+}
+.ds-cap {
+	font: var(--type-label);
+	letter-spacing: var(--track);
+	text-transform: uppercase;
+	color: var(--muted);
+}
+.ds-row-inline {
+	display: inline-flex;
+	gap: var(--sp-2);
+	align-items: center;
+}
+.ds-field {
+	width: var(--w-aside);
+	max-width: 100%;
+}
+.ds-wide {
+	width: calc(2 * var(--w-aside));
+}
+.ds-stack {
 	display: flex;
 	flex-direction: column;
-	align-items: flex-start;
+	gap: var(--sp-2);
 }
-.ds-nav {
+.ds-narrow {
+	width: var(--w-aside);
+}
+.ds-menu {
+	min-height: calc(2 * var(--w-col-m));
+}
+.ds-stage :is(.top, .statusbar, .sp-drawer, .viewer, .toast, .sp-bulk, .sp-saystrip, .sp-nav) {
+	position: relative;
+	inset: auto;
+	top: auto;
+	z-index: auto;
+	transform: none;
+	max-height: none;
+}
+.ds-stage .sp-drawer {
+	left: auto;
+	width: auto;
+	max-width: none;
+}
+.ds-stage .sp-drawer::before {
+	display: none;
+}
+.ds-stage .viewer {
+	display: flex;
+	height: var(--h-list);
+}
+.ds-stage :is(.toast, .sp-bulk, .sp-saystrip, .statusbar, .top, .sp-drawer, .viewer) {
+	outline: var(--line);
+	outline-offset: calc(-1 * var(--line-w));
+}
+.ds-stage dialog {
 	position: static;
-	max-width: 400px;
+	margin: 0;
+	width: auto;
+	max-width: var(--w-dialog-l);
+	max-height: none;
 }
-.ds-type {
-	white-space: nowrap;
+@media (max-width: 760px) {
+	.ds-wide {
+		width: 100%;
+	}
 }

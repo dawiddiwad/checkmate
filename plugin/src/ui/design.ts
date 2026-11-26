@@ -1,9 +1,25 @@
 import type { Html } from './html.ts'
 import type { Page } from './layout.ts'
 import { glyph, html, icon, pill } from './html.ts'
-import { banner, crumbBar, downloads, emptyNotice, heading } from './layout.ts'
+import { viewer } from './evidence.ts'
 
 export type Token = { name: string; value: string }
+
+const keptData = [
+	'act-error',
+	'b',
+	'block',
+	'builds',
+	'cap',
+	'chat-view',
+	'kind',
+	'mark',
+	'panel',
+	'stale-slot',
+	'wide',
+	'zoomed',
+]
+const keptRegions = ['exploration-head', 'chat-list']
 
 export function tokensOf(css: string): Token[] {
 	const start = css.indexOf(':root {')
@@ -11,34 +27,35 @@ export function tokensOf(css: string): Token[] {
 	return [...block.matchAll(/^\t(--[a-z0-9-]+): (.+);$/gm)].map(([, name, value]) => ({ name, value }))
 }
 
+export function inert(markup: string) {
+	return markup
+		.replace(/\sdata-([a-z-]+)(="[^"]*"|='[^']*')?/g, (attribute, name: string, value = '') => {
+			if (name === 'region') return keptRegions.some((region) => value.includes(region)) ? attribute : ''
+			return keptData.includes(name) ? attribute : ''
+		})
+		.replace(/\s(id|for|aria-labelledby|aria-describedby|aria-controls)="([^"]+)"/g, ' $1="ds-$2"')
+		.replace(/\s(method|action)="[^"]*"/g, '')
+		.replace(/<dialog(?![^>]*\sopen)([^>]*)>/g, '<dialog$1 open>')
+}
+
 function modes(value: string) {
 	const both = /^light-dark\((.+), (.+)\)$/.exec(value)
 	return both ? [both[1], both[2]] : [value, value]
 }
 
-function section(id: string, title: string, intro: Html | string, body: Html) {
-	return html`<section class="ds-sec" id="${id}" aria-labelledby="${id}-h">
-		<h2 class="sp-sec" id="${id}-h">${title}</h2>
-		<p class="sp-sub">${intro}</p>
-		${body}
-	</section>`
-}
-
-function tokenTable(tokens: Token[], sample: (token: Token) => Html, columns = ['Token', 'Sample', 'Value']) {
+function table(head: string[], rows: Array<Array<Html | string>>) {
 	return html`<div class="scroll">
 		<table>
 			<thead>
 				<tr>
-					${columns.map((column) => html`<th scope="col">${column}</th>`)}
+					${head.map((cell) => html`<th scope="col">${cell}</th>`)}
 				</tr>
 			</thead>
 			<tbody>
-				${tokens.map(
-					(token) =>
+				${rows.map(
+					(row) =>
 						html`<tr>
-							<td><code>${token.name}</code></td>
-							<td>${sample(token)}</td>
-							<td><code>${token.value}</code></td>
+							${row.map((cell) => html`<td>${cell}</td>`)}
 						</tr>`
 				)}
 			</tbody>
@@ -46,67 +63,61 @@ function tokenTable(tokens: Token[], sample: (token: Token) => Html, columns = [
 	</div>`
 }
 
-function colors(tokens: Token[]) {
-	const list = tokens.filter((token) => token.value.startsWith('light-dark('))
-	return html`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Token</th>
-					<th scope="col">Sample</th>
-					<th scope="col">Light</th>
-					<th scope="col">Dark</th>
-				</tr>
-			</thead>
-			<tbody>
-				${list.map((token) => {
-					const [light, dark] = modes(token.value)
-					return html`<tr>
-						<td><code>${token.name}</code></td>
-						<td><span class="ds-swatch" data-style="background: var(${token.name})"></span></td>
-						<td><code>${light}</code></td>
-						<td><code>${dark}</code></td>
-					</tr>`
-				})}
-			</tbody>
-		</table>
-	</div>`
+function section(id: string, title: string, intro: string, body: Html) {
+	return html`<section class="ds-sec" id="${id}" aria-labelledby="${id}-h">
+		<h2 class="sp-sec" id="${id}-h">${title}</h2>
+		<p class="sp-sub">${intro}</p>
+		${body}
+	</section>`
 }
 
-function pick(tokens: Token[], prefix: string) {
-	return tokens.filter((token) => token.name.startsWith(prefix))
+function tokenRows(tokens: Token[], sample: (token: Token) => Html) {
+	return table(
+		['Token', 'Sample', 'Value'],
+		tokens.map((token) => [html`<code>${token.name}</code>`, sample(token), html`<code>${token.value}</code>`])
+	)
+}
+
+function pick(tokens: Token[], test: (name: string) => boolean) {
+	return tokens.filter((token) => test(token.name))
 }
 
 function foundations(tokens: Token[]) {
-	const type = pick(tokens, '--type-')
-	const space = pick(tokens, '--sp-')
-	const size = pick(tokens, '--size-')
-	const shape = tokens.filter((token) =>
-		[
-			'--radius',
-			'--radius-round',
-			'--line-w',
-			'--mark-w',
-			'--line',
-			'--focus-ring',
-			'--sep',
-			'--mark-inset',
-		].includes(token.name)
-	)
-	const motion = pick(tokens, '--motion-')
+	const colors = tokens.filter((token) => token.value.startsWith('light-dark('))
+	const shape = [
+		'--radius',
+		'--radius-round',
+		'--line-w',
+		'--mark-w',
+		'--line',
+		'--focus-ring',
+		'--sep',
+		'--mark-inset',
+	]
 	return html`
 		${section(
 			'color',
 			'Color',
 			'One value per mode. The browser picks light or dark from the color scheme. The theme button in the top bar switches it.',
-			colors(tokens)
+			table(
+				['Token', 'Sample', 'Light', 'Dark'],
+				colors.map((token) => {
+					const [light, dark] = modes(token.value)
+					return [
+						html`<code>${token.name}</code>`,
+						html`<span class="ds-swatch" data-style="background: var(${token.name})"></span>`,
+						html`<code>${light}</code>`,
+						html`<code>${dark}</code>`,
+					]
+				})
+			)
 		)}
 		${section(
 			'type',
 			'Type',
-			'Each style is a full font shorthand. Line heights are multiples of 4px. Labels are uppercase with the track token.',
-			tokenTable(
-				type,
+			'Each style is a full font shorthand. Line heights are multiples of 4px.',
+			tokenRows(
+				pick(tokens, (name) => name.startsWith('--type-')),
 				(token) => html`<span class="ds-type" data-style="font: var(${token.name})">Verify checkout 0123</span>`
 			)
 		)}
@@ -114,14 +125,17 @@ function foundations(tokens: Token[]) {
 			'space',
 			'Spacing',
 			'The unit is 4px. Padding, margin and gap use only these steps.',
-			tokenTable(space, (token) => html`<span class="ds-bar" data-style="width: var(${token.name})"></span>`)
+			tokenRows(
+				pick(tokens, (name) => name.startsWith('--sp-')),
+				(token) => html`<span class="ds-bar" data-style="width: var(${token.name})"></span>`
+			)
 		)}
 		${section(
 			'size',
 			'Sizes',
 			'Fixed heights of controls and rows. Each is a multiple of 4px and includes its own border.',
-			tokenTable(
-				size,
+			tokenRows(
+				pick(tokens, (name) => name.startsWith('--size-')),
 				(token) =>
 					html`<span
 						class="ds-box"
@@ -130,16 +144,41 @@ function foundations(tokens: Token[]) {
 			)
 		)}
 		${section(
+			'width',
+			'Widths',
+			'Fixed widths of columns, panels and dialogs. Each is a multiple of 8px.',
+			tokenRows(
+				pick(tokens, (name) => name.startsWith('--w-') || name.startsWith('--h-')),
+				(token) =>
+					html`<span class="ds-bar ds-bar-soft" data-style="width: min(100%, var(${token.name}))"></span>`
+			)
+		)}
+		${section(
 			'shape',
 			'Radius, lines and focus',
 			'Corners are nearly square. A line never adds to the size of a box: frames and separators draw inside it.',
-			tokenTable(shape, (token) => html`<span class="ds-shape" data-token="${token.name}"></span>`)
+			tokenRows(
+				pick(tokens, (name) => shape.includes(name)),
+				(token) => html`<span class="ds-shape" data-token="${token.name}"></span>`
+			)
+		)}
+		${section(
+			'layer',
+			'Layers',
+			'The stack from bottom to top. A layer is above every layer before it in this list.',
+			tokenRows(
+				pick(tokens, (name) => name.startsWith('--z-')),
+				() => html`<span class="muted">—</span>`
+			)
 		)}
 		${section(
 			'motion',
 			'Motion',
 			'Motion is short and stops when the system asks for reduced motion.',
-			tokenTable(motion, () => html`<span class="muted">—</span>`)
+			tokenRows(
+				pick(tokens, (name) => name.startsWith('--motion-')),
+				() => html`<span class="muted">—</span>`
+			)
 		)}
 	`
 }
@@ -149,7 +188,7 @@ function grid() {
 	return section(
 		'grid',
 		'Grid',
-		'Turn on the overlay to see the columns and the 4px rows on every page of this UI.',
+		'Turn on the overlay to see the columns and the 4px rows on any page of this UI.',
 		html`<dl class="sp-facts">
 				<dt>Unit</dt>
 				<dd>
@@ -157,7 +196,10 @@ function grid() {
 					smaller.
 				</dd>
 				<dt>Columns</dt>
-				<dd>12 above 1100px, 8 from 761px to 1100px, 4 at 760px and below.</dd>
+				<dd>
+					12 above 1100px, 8 from 761px to 1100px, 4 at 760px and below. Columns are whole pixels. The last
+					column takes the rest.
+				</dd>
 				<dt>Gutter</dt>
 				<dd>16px between columns.</dd>
 				<dt>Margin</dt>
@@ -165,271 +207,77 @@ function grid() {
 				<dt>Plan nav</dt>
 				<dd>Columns 1 to 3. The page content takes columns 4 to 12.</dd>
 				<dt>Drawer</dt>
-				<dd>
-					Columns 8 to 12 and the right margin. The page content stops at column 7. At 1100px and below the
-					drawer covers the page.
-				</dd>
+				<dd>Columns 8 to 12 and the right margin. At 1100px and below the drawer covers the page.</dd>
 				<dt>Rows</dt>
+				<dd>Every box top and height is on the 4px rows. Lines draw inside boxes.</dd>
+				<dt>Small parts</dt>
 				<dd>
-					Boxes stack on the 4px rows. Lines draw inside boxes, so a 1px frame does not move the next box.
+					Key caps, pills, tags, marks and icon buttons have a fixed height. Their content is centred in it.
 				</dd>
 				<dt>Inset</dt>
-				<dd>
-					Text in a framed box starts 16px from the frame. Rows have 12px vertical padding, or a fixed height.
-				</dd>
+				<dd>Text in a framed box starts 16px from the frame.</dd>
 				<dt>Breakpoints</dt>
-				<dd>
-					400px small phone, 760px phone, 1100px tablet, 1240px narrow desktop. Content width: 560px, 976px,
-					1100px.
-				</dd>
+				<dd>400px, 760px, 1100px and 1240px. Content width: 560px, 976px and 1100px.</dd>
 			</dl>
 			<div class="ds-cols" aria-hidden="true">${cells}</div>`
 	)
 }
 
-function states(items: Array<[string, Html]>) {
+function block(title: string, body: Html | string) {
+	const id = title
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-|-$/g, '')
+	return html`<section class="ds-spec" data-block="${id}">
+		<h3 class="sp-sec">${title}</h3>
+		<div class="ds-stage">${typeof body === 'string' ? { html: body } : body}</div>
+	</section>`
+}
+
+function state(label: string, sample: Html) {
+	return html`<div class="ds-state"><span class="ds-cap">${label}</span>${sample}</div>`
+}
+
+function keyCaps() {
 	return html`<div class="ds-states">
-		${items.map(([label, sample]) => html`<div><span class="lab">${label}</span>${sample}</div>`)}
+		${state('alone', html`<kbd>1</kbd> <kbd>Esc</kbd> <kbd>Enter</kbd>`)}
+		${state('glyphs', html`<kbd>${glyph('↑')}${glyph('↓')}</kbd> <kbd>${glyph('→')}</kbd> <kbd>${glyph('←')}</kbd>`)}
+		${state('in a button', html`<button type="button" class="sp-btn"><kbd>1</kbd><span>Right</span></button>`)}
+		${state('in a primary button', html`<button type="button" class="sp-btn pri"><kbd>Enter</kbd><span>Start</span></button>`)}
+		${state(
+			'in a status hint',
+			html`<span class="sb-keys"
+				><span class="sb-k"><kbd>${glyph('↑')}${glyph('↓')}</kbd>rows</span
+				><span class="sb-k"><kbd>/</kbd>find</span></span
+			>`
+		)}
+		${state('in text', html`<p class="sp-sub">Press <kbd>?</kbd> to see every key.</p>`)}
 	</div>`
 }
 
-function part(title: string, body: Html) {
-	return html`<div class="panel ds-part">
-		<h2>${title}</h2>
-		${body}
+function liveStates() {
+	return html`<div class="ds-states">
+		${state('loading', html`<span class="who"><span class="live">Connecting</span></span>`)}
+		${state('live', html`<span class="who"><span class="live">${glyph('●')} Live</span></span>`)}
+		${state('lost', html`<span class="who"><span class="live down">Reconnecting</span></span>`)}
+		${state('result marks', html`<span class="ds-row-inline">${icon('passed')}${icon('failed')}${icon('inconclusive')}${icon('running')}${icon(null)}</span>`)}
+		${state('status pills', html`<span class="ds-row-inline">${pill('passed')}${pill('failed')}${pill('needs_answers')}</span>`)}
 	</div>`
 }
 
-function button(look: string, label: string, extra: Html | string = '') {
-	return html`<button type="button" class="sp-btn ${look}" ${extra}>${label}</button>`
+function components(parts: string) {
+	return html`<section class="ds-sec" id="components" aria-labelledby="components-h">
+		<h2 class="sp-sec" id="components-h">Components</h2>
+		<p class="sp-sub">
+			Each block is the markup of the real page and the real style sheet. Forced states copy the real :hover,
+			:focus-visible and :active rules.
+		</p>
+		${block('Key caps', keyCaps())} ${block('Live, loading and lost', liveStates())} ${{ html: inert(parts) }}
+		${block('Viewer', inert(viewer.html).replace(/\shidden(?=[\s>])/, ''))}
+	</section>`
 }
 
-function listRows() {
-	const row = (look: string, tag: Html, id: string, title: string, meta: string) =>
-		html`<div class="sp-row ${look}" role="listitem">
-			<label class="sp-c-cb"><input type="checkbox" tabindex="-1" aria-label="Select ${id}" /></label>
-			<span class="sp-c-tag">${tag}</span>
-			<span class="sp-c-id">${id}</span>
-			<a class="sp-c-title ell" tabindex="-1" href="#components">${title}</a>
-			<span class="sp-c-meta ell">${meta}</span>
-		</div>`
-	return html`<div class="sp-list" role="list" aria-label="Example items">
-		<div class="sp-gh" role="presentation">Tests <span>3</span></div>
-		${row('', pill('passed'), 'T1', 'Standard order total', 'default')}
-		${row('is-hover', pill('failed'), 'T2', 'Promotion replaces loyalty', 'hover')}
-		${row('sel', pill('inconclusive'), 'T4', 'Promotion banner', 'selected')}
-		${row('hl', pill('high'), 'F1', 'The promotion stacks with the loyalty credit', 'highlighted (keyboard)')}
-		${row('cur', pill('open'), 'G4', 'Must the banner text wrap?', 'current')}
-		${row('dim', pill('answered'), 'Q2', 'Answered question', 'dim')}
-	</div>`
-}
-
-function tile(look: string) {
-	return html`<div class="sp-ct ${look}" role="listitem">
-		<div class="sp-ct-main">
-			<div class="sp-ct-head">
-				<span class="sp-c-id">checkout</span>${pill('needs_answers')}
-				<span class="sp-ct-when ell">shop-local@1 · waits on oracle</span>
-			</div>
-			<h2 class="sp-ct-title ell">Verify checkout totals and refund eligibility.</h2>
-			<p class="sp-ct-verdict"><b>Build fixture-build-2: 1 failed.</b> 2 questions open.</p>
-			<p class="sp-ct-cost">Total cost Unknown</p>
-		</div>
-		<div class="sp-nums">
-			<div><b>1</b><span>defects</span></div>
-			<div><b>0</b><span>to look at</span></div>
-			<div><b class="att">2</b><span>questions</span></div>
-			<div><b>0</b><span>handed over</span></div>
-		</div>
-		<div class="sp-ct-opts">
-			<a class="sp-btn" href="#components"><kbd>1</kbd><span>Answer 1 blocking question</span></a>
-		</div>
-	</div>`
-}
-
-function nav() {
-	const row = (look: string, id: string, text: string, end: Html | string) =>
-		html`<a class="sp-nrow ${look}" role="treeitem" href="#components"
-			><span class="sp-nid">${id}</span><span class="sp-ntx ell">${text}</span>${end}</a
-		>`
-	return html`<nav class="sp-nav ds-nav" aria-label="Example plan nav">
-		<div class="sp-nlist" role="tree">
-			${row('', '', 'Needs you', html`<span class="sp-ncount att">3</span>`)}
-			${row('on', '', 'All items', html`<span class="sp-ncount">3</span>`)}
-			${row('is-hover', '', 'Plan chats', '')}
-			<div class="sp-sep" aria-hidden="true"></div>
-			${row('hl', 'Out', 'Outside the rules', html`<span class="sp-nmarks">${icon('passed')}${icon('failed')}</span>`)}
-			${row('', 'R1', 'Rule one', html`<span class="sp-nmarks">${icon('inconclusive')}${icon(null)}</span>`)}
-		</div>
-	</nav>`
-}
-
-function components() {
-	const statuses = ['passed', 'failed', 'inconclusive', 'needs_approval', 'running', 'blocked', 'critical']
-	return section(
-		'components',
-		'Components',
-		'Each sample is the real markup and the real style sheet. Forced states copy the real :hover, :focus-visible and :active rules.',
-		html`<div class="ds-parts">
-				${part(
-					'Button',
-					html`${states([
-						['Default', button('', 'Open the plan')],
-						['Hover', button('is-hover', 'Open the plan')],
-						['Focus', button('is-focus', 'Open the plan')],
-						['Active', button('is-active', 'Open the plan')],
-						['Disabled', button('', 'Open the plan', 'disabled')],
-					])}
-					${states([
-						['Primary', button('pri', 'Accept run-7')],
-						['Hover', button('pri is-hover', 'Accept run-7')],
-						['Focus', button('pri is-focus', 'Accept run-7')],
-						['Active', button('pri is-active', 'Accept run-7')],
-						[
-							'With key',
-							html`<a class="sp-btn" href="#components"><kbd>1</kbd><span>New change</span></a>`,
-						],
-					])}`
-				)}
-				${part(
-					'Status pill',
-					states(statuses.map((status) => [status.replace('_', ' '), pill(status)] as [string, Html]))
-				)}
-				${part(
-					'Result mark',
-					states([
-						['Pass', icon('passed')],
-						['Fail', icon('failed')],
-						['Question', icon('inconclusive')],
-						['Running', icon('running')],
-						['None', icon(null)],
-					])
-				)}
-				${part(
-					'Key and tag',
-					states([
-						['Key', html`<kbd>?</kbd>`],
-						['Tag', html`<span class="tag">shop-local@1</span>`],
-						[
-							'Glyphs',
-							html`<span>${glyph('✓')} ${glyph('✗')} ${glyph('●')} ${glyph('○')} ${glyph('◐')}</span>`,
-						],
-					])
-				)}
-				${part(
-					'Field',
-					html`<div class="field-group">
-							<label for="ds-text">Name <span class="req">*</span></label>
-							<input id="ds-text" type="text" placeholder="qa-lead" />
-							<p class="help">Checkmate records it with each decision.</p>
-						</div>
-						<div class="field-group">
-							<label for="ds-focus">Focus</label>
-							<input id="ds-focus" class="is-focus" type="text" value="Focused field" />
-						</div>
-						<div class="field-group">
-							<label for="ds-read">Read only</label>
-							<input id="ds-read" type="text" value="sha256 c388…a71b" readonly />
-						</div>
-						<div class="field-group">
-							<label for="ds-area">Rationale</label>
-							<textarea id="ds-area" placeholder="Why do you decide this?"></textarea>
-							<p class="form-error" role="alert">Enter a rationale.</p>
-						</div>
-						<div class="field-group">
-							<label for="ds-select">Model</label>
-							<select id="ds-select">
-								<option>Default</option>
-								<option>Other</option>
-							</select>
-						</div>
-						<fieldset>
-							<legend>Choice</legend>
-							<div class="seg">
-								<label><input type="radio" name="ds-seg" checked /> Clarify</label>
-								<label><input type="radio" name="ds-seg" /> Accept</label>
-								<label><input type="radio" name="ds-seg" disabled /> Defer</label>
-							</div>
-						</fieldset>
-						<label class="check"><input type="checkbox" checked /> Block release</label>`
-				)}
-				${part(
-					'Banner',
-					html`${banner('info', 'Checkmate made a new plan revision.')}
-					${banner('warn', 'One question blocks testing.')}
-					${banner('fail', 'The run stopped with an error.')}`
-				)}
-				${part(
-					'Empty, loading and error',
-					html`${emptyNotice('No chats yet.', 'Start a new chat to ask Checkmate.')}
-					${states([
-						['Loading', html`<span class="who"><span class="live">Connecting</span></span>`],
-						['Live', html`<span class="who"><span class="live">● Live</span></span>`],
-						['Lost', html`<span class="who"><span class="live down">Reconnecting</span></span>`],
-					])}`
-				)}
-				${part(
-					'Facts',
-					html`<dl class="sp-facts">
-						<dt>Completion</dt>
-						<dd>completed</dd>
-						<dt>Coverage</dt>
-						<dd>partial</dd>
-					</dl>`
-				)}
-				${part(
-					'Fold and menu',
-					html`<details class="fold" open>
-							<summary><h2>Rules of the plan</h2></summary>
-							<div class="fold-b">Four rules. Each rule has checks.</div>
-						</details>
-						${downloads('Download report', '#', 'Pick a format.')}`
-				)}
-				${part(
-					'Path',
-					crumbBar([
-						['Runs', '#'],
-						['checkout@2', '#'],
-						['run-7', null],
-					])
-				)}
-			</div>
-			<h3 class="ds-h">List</h3>
-			${listRows()}
-			<h3 class="ds-h">Plan tile</h3>
-			<div class="sp-home" role="list" aria-label="Example plans">
-				${tile('')} ${tile('is-hover')} ${tile('hl')}
-			</div>
-			<h3 class="ds-h">Plan nav</h3>
-			${nav()}
-			<h3 class="ds-h">Table</h3>
-			<div class="scroll">
-				<table>
-					<thead>
-						<tr>
-							<th scope="col">Run</th>
-							<th scope="col">State</th>
-							<th scope="col">Cost</th>
-						</tr>
-					</thead>
-					<tbody>
-						<tr>
-							<td>run-7</td>
-							<td>${pill('pending', 'awaiting acceptance')}</td>
-							<td>Unknown</td>
-						</tr>
-						<tr>
-							<td>run-6</td>
-							<td>${pill('approved', 'accepted')}</td>
-							<td>$0.42</td>
-						</tr>
-					</tbody>
-				</table>
-			</div>`
-	)
-}
-
-export function designPage(css: string): Page {
+export function designPage(css: string, parts: string): Page {
 	const tokens = tokensOf(css)
 	return {
 		title: 'Design system',
@@ -437,13 +285,18 @@ export function designPage(css: string): Page {
 		subjects: [],
 		script: '/assets/design.js',
 		body: html`<div class="ds" data-design>
-			${heading(
-				'Design system',
-				'The reference for this UI. It reads the tokens from the style sheet and shows the real components.',
-				html`<div class="btns">
+			<div class="sp-h">
+				<div>
+					<h1>Design system</h1>
+					<p class="sp-sub">
+						The reference for this UI. It reads the tokens from the style sheet and shows the real
+						components.
+					</p>
+				</div>
+				<div class="btns">
 					<button type="button" class="sp-btn" data-grid-toggle aria-pressed="false">Grid overlay</button>
-				</div>`
-			)}
+				</div>
+			</div>
 			<nav class="jump" aria-label="Sections">
 				${[
 					['grid', 'Grid'],
@@ -451,12 +304,14 @@ export function designPage(css: string): Page {
 					['type', 'Type'],
 					['space', 'Spacing'],
 					['size', 'Sizes'],
+					['width', 'Widths'],
 					['shape', 'Lines'],
+					['layer', 'Layers'],
 					['motion', 'Motion'],
 					['components', 'Components'],
 				].map(([id, label]) => html`<a href="#${id}">${label}</a>`)}
 			</nav>
-			${grid()} ${foundations(tokens)} ${components()}
+			${grid()} ${foundations(tokens)} ${components(parts)}
 		</div>`,
 	}
 }

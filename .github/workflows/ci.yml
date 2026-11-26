@@ -27,8 +27,16 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npx playwright-core install --with-deps chromium-headless-shell
       - run: npm install -g @earendil-works/pi-coding-agent@1.5.2
       - run: npm run phase:verify
+      - name: Keep the screenshots that differ
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: design-screens
+          path: test/e2e/screens/actual/
+          if-no-files-found: ignore
   release-source:
     if: >-
       (github.event_name == 'push' ||
@@ -155,6 +163,7 @@ jobs:
           NODE
       - name: Verify the release candidate
         run: |
+          npx playwright-core install --with-deps chromium-headless-shell
           npm install -g @earendil-works/pi-coding-agent@1.5.2
           npm run phase:verify
       - name: Commit and tag the verified version

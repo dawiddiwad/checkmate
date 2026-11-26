@@ -465,7 +465,10 @@ export function permissionHistory(store: Store, explorationId: string, params: U
 		else next.set('requests', String(target))
 		next.set('at', `request:${requestName(all[(target - 1) * historySize])}`)
 		const query = next.toString()
-		return html`<a class="btn small" href="/explorations/${explorationId}${query ? `?${query}` : ''}" rel="${rel}"
+		return html`<a
+			class="sp-btn small"
+			href="/explorations/${explorationId}${query ? `?${query}` : ''}"
+			rel="${rel}"
 			>${label}</a
 		>`
 	}
@@ -540,6 +543,6 @@ export function emptyRecord(explorationId: string, requestId: string): Page {
 		status: 404,
 		back: '/activity',
 		body: html`${heading('No such request', `Run ${explorationId} has no permission request ${requestId}.`)}
-			<p class="actions"><a class="btn primary" href="/activity">Activity</a></p>`,
+			<p class="actions"><a class="sp-btn pri" href="/activity">Activity</a></p>`,
 	}
 }

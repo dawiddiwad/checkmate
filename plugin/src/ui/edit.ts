@@ -351,8 +351,8 @@ export function editPage(
 	${shown.error ? html`<p class="form-error" role="alert" data-field="${shown.field ?? ''}">${shown.error}</p>` : ''}`
 	const buttons = (mode: string) =>
 		html`<div class="btns">
-				<button class="btn primary">${save}</button>
-				<a class="btn" href="/plans/${subject}">Cancel</a>
+				<button class="sp-btn pri">${save}</button>
+				<a class="sp-btn" href="/plans/${subject}">Cancel</a>
 			</div>
 			${actorLine(context, shown, path, mode)}`
 	const body = html`${heading(

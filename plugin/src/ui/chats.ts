@@ -45,7 +45,7 @@ function composer(context: Context, action: string, selection: RequestSelection,
 					<option value="">Host default</option>
 				</select></label
 			>
-			<button class="btn primary" type="submit">Send</button>
+			<button class="sp-btn pri" type="submit">Send</button>
 		</div>
 		<p class="help" data-chat-model-status aria-live="polite"></p>
 		<p class="form-error" data-chat-error role="alert" hidden></p>
@@ -175,7 +175,7 @@ function turn(store: Store, request: RequestRecord, context: Context, number: nu
 						</details>`
 					: ''
 			}
-			${request.state === 'running' || request.state === 'waiting' ? html`<form method="post" action="/requests/${request.id}/stop"><input type="hidden" name="csrf" value="${context.csrf}" /><input type="hidden" name="return" value="${back}" /><button class="btn" type="submit">Stop</button></form>` : ''}
+			${request.state === 'running' || request.state === 'waiting' ? html`<form method="post" action="/requests/${request.id}/stop"><input type="hidden" name="csrf" value="${context.csrf}" /><input type="hidden" name="return" value="${back}" /><button class="sp-btn" type="submit">Stop</button></form>` : ''}
 		</div>
 	</article>`
 }
@@ -219,7 +219,7 @@ function workspace(view: 'thread' | 'new' | 'list', newHref: string, list: Html,
 		<aside class="chat-sidebar" aria-label="Conversations" data-chat-lane="list">
 			<div class="chat-sidebar-header">
 				<h2>Conversations</h2>
-				<a class="btn" href="${newHref}" ${chatRow('chat:new', newHref, 'New chat')}>New chat</a>
+				<a class="sp-btn" href="${newHref}" ${chatRow('chat:new', newHref, 'New chat')}>New chat</a>
 			</div>
 			${list}
 		</aside>

@@ -257,7 +257,7 @@ function retireControl(context: Context, targetId: string, instance: InstanceRec
 	if (instance.retired) return html`<span class="muted small">retired by ${instance.retired.actor}</span>`
 	const failed = retire?.instanceId === instance.instanceId ? retire.error : null
 	return html`<details class="retire" ${failed ? html`open` : ''} data-open-key="retire:${instance.instanceId}">
-		<summary class="btn small" aria-label="Retire ${instance.instanceId}">Retire</summary>
+		<summary class="sp-btn small" aria-label="Retire ${instance.instanceId}">Retire</summary>
 		<form
 			method="post"
 			action="/settings/targets/${targetId}/instances/${instance.instanceId}/retire"
@@ -268,7 +268,7 @@ function retireControl(context: Context, targetId: string, instance: InstanceRec
 			<p>Retire <code>${instance.instanceId}</code>? No new run can start on it. Its runs stay as they are.</p>
 			${failed ? html`<p class="form-error" role="alert">${failed}</p>` : ''}
 			${actorInput(context, `retire-actor-${instance.instanceId}`)}
-			<div class="btns"><button class="btn primary">Confirm retire</button></div>
+			<div class="btns"><button class="sp-btn pri">Confirm retire</button></div>
 		</form>
 	</details>`
 }
@@ -366,7 +366,7 @@ ${value('references')}</textarea>
 				<p class="help" id="references-help">One per line, for example an authentication alias. No secrets.</p>
 			</div>
 			${actorInput(context, 'instance-actor')}
-			<div class="btns"><button class="btn primary">Add instance</button></div>
+			<div class="btns"><button class="sp-btn pri">Add instance</button></div>
 		</form>
 	</section>`
 }
@@ -502,7 +502,7 @@ export function harnessPage(
 					</select>
 					<p class="help">Applies to new tests and chats in this workspace.</p>
 				</div>
-				<div class="btns"><button class="btn primary">Save the program</button></div>
+				<div class="btns"><button class="sp-btn pri">Save the program</button></div>
 			</form>
 			<p id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
 		</div>
@@ -537,7 +537,7 @@ export function harnessPage(
 					</p>
 					${form ? html`<p class="form-error" role="alert" data-field="rules">${form.error}</p>` : ''}
 				</div>
-				<div class="btns"><button class="btn primary">Save the rules</button></div>
+				<div class="btns"><button class="sp-btn pri">Save the rules</button></div>
 			</form>
 		</section>
 		<section
@@ -553,7 +553,7 @@ export function harnessPage(
 				says so.
 			</p>
 			<p class="help" role="status" data-model-status>Loading models from ${pi ? 'Pi' : 'Claude Code'}…</p>
-			<button class="btn" type="button" data-model-refresh>Refresh models</button>
+			<button class="sp-btn" type="button" data-model-refresh>Refresh models</button>
 			<div class="field-group">
 				<label class="lab" for="model-filter">Filter models</label>
 				<input id="model-filter" type="search" autocomplete="off" placeholder="Search available models" />
@@ -613,7 +613,7 @@ export function harnessPage(
 					</div>
 					${model?.error ? html`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ''}
 				</div>
-				<div class="btns"><button class="btn primary">Save models</button></div>
+				<div class="btns"><button class="sp-btn pri">Save models</button></div>
 			</form>
 		</section>
 		<section class="panel" aria-labelledby="chat-settings">
@@ -623,7 +623,7 @@ export function harnessPage(
 				New chats use ${pi ? 'Pi' : 'Claude Code'} and your chat model by default. Change the harness, model, or
 				effort for the next message in the chat.
 			</p>
-			<div class="btns"><a class="btn" href="/chats">Open Chats</a></div>
+			<div class="btns"><a class="sp-btn" href="/chats">Open Chats</a></div>
 		</section>`
 	return settingsPage('/settings/harness', 'Coding harness', ['*'], body)
 }

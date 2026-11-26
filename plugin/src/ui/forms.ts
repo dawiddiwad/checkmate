@@ -98,8 +98,8 @@ function confirmStep(context: Context, verdict: Verdict, state: FormState) {
 			<blockquote>${state.values.rationale ?? ''}</blockquote>
 		</div>
 		<div class="btns">
-			<button class="btn primary" name="confirmed" value="1">${choice.confirm}</button>
-			<button class="btn" name="back" value="1" formnovalidate>Back</button>
+			<button class="sp-btn pri" name="confirmed" value="1">${choice.confirm}</button>
+			<button class="sp-btn" name="back" value="1" formnovalidate>Back</button>
 		</div>
 	</form>`
 }
@@ -107,7 +107,7 @@ function confirmStep(context: Context, verdict: Verdict, state: FormState) {
 function chooseStep(context: Context, verdict: Verdict, state: FormState) {
 	const button = (choice: Verdict['approve'], primary: boolean) =>
 		html`<button
-			class="btn${primary ? ' primary' : ''}"
+			class="sp-btn${primary ? ' pri' : ''}"
 			name="verdict"
 			value="${choice.value}"
 			data-needs-rationale
@@ -125,8 +125,8 @@ function chooseStep(context: Context, verdict: Verdict, state: FormState) {
 		</div>
 		<div class="btns" data-choose>${button(verdict.approve, true)} ${button(verdict.reject, false)}</div>
 		<div class="btns" data-confirm-buttons hidden>
-			<button class="btn primary" name="confirmed" value="1" data-confirm-submit>Confirm</button>
-			<button class="btn" type="button" data-confirm-back>Back</button>
+			<button class="sp-btn pri" name="confirmed" value="1" data-confirm-submit>Confirm</button>
+			<button class="sp-btn" type="button" data-confirm-back>Back</button>
 		</div>
 	</form>`
 }
@@ -232,8 +232,8 @@ ${state.values.value ?? ''}</textarea>
 			${rationaleField(state, 'Why is this the right answer?', 'Write a rationale. Checkmate records it with your answer.')}
 			${actorField(context, state)}
 			<div class="btns">
-				<button class="btn primary" data-needs-rationale>Record answer</button>
-				<a class="btn" href="${form.cancel}">Cancel</a>
+				<button class="sp-btn pri" data-needs-rationale>Record answer</button>
+				<a class="sp-btn" href="${form.cancel}">Cancel</a>
 			</div>
 		</form>
 	</section>`

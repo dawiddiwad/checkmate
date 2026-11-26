@@ -1030,8 +1030,8 @@ export function claimPage(
 					${hidden(context, '')} ${actorField(context, shown)}
 					${rationaleField(shown, 'Why do you decide this?')}
 					<div class="btns">
-						<button class="btn primary" name="verdict" value="approved">Accept as a defect</button>
-						<button class="btn" name="verdict" value="rejected">Reject</button>
+						<button class="sp-btn pri" name="verdict" value="approved">Accept as a defect</button>
+						<button class="sp-btn" name="verdict" value="rejected">Reject</button>
 					</div>
 				</form>
 			</section>`

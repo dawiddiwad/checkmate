@@ -108,7 +108,7 @@ export function testerModels(context: Context) {
 		<p class="help">Choose a model for a tester, or use the workspace tester model.</p>
 		<p class="help" role="status" data-tester-count-status></p>
 		<p class="help" role="status" data-tester-model-status>Open to load models.</p>
-		<button class="btn" type="button" data-stop data-tester-model-refresh>Refresh models</button>
+		<button class="sp-btn" type="button" data-stop data-tester-model-refresh>Refresh models</button>
 		<label for="tester-model-filter">Filter models</label>
 		<input id="tester-model-filter" type="search" autocomplete="off" data-stop data-tester-model-filter />
 		${Array.from(

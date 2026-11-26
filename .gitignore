@@ -31,3 +31,4 @@ app-docs
 cli/plugin/
 cli/README.md
 cli/LICENSE
+test/e2e/screens/actual/

@@ -123,25 +123,27 @@ export const viewer = html`<div
 	<div class="viewer-bar">
 		<span class="viewer-name" data-viewer-name></span>
 		<span class="viewer-tools" data-viewer-tools="image">
-			<button class="btn small" type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (-)">
+			<button class="sp-btn small" type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (-)">
 				-
 			</button>
 			<span class="viewer-scale" data-viewer-scale>Fit</span>
-			<button class="btn small" type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (+)">+</button>
-			<button class="btn small" type="button" data-zoom="fit" title="Fit to the window (0)">Fit</button>
+			<button class="sp-btn small" type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (+)">
+				+
+			</button>
+			<button class="sp-btn small" type="button" data-zoom="fit" title="Fit to the window (0)">Fit</button>
 		</span>
 		<label class="viewer-tools viewer-wrap" data-viewer-tools="text"
 			><input type="checkbox" data-viewer-wrap checked /> Wrap lines <kbd>w</kbd></label
 		>
-		<a class="btn small" data-viewer-download href="#" download>Download</a>
-		<button class="btn small" type="button" data-viewer-close>Close <kbd>Esc</kbd></button>
+		<a class="sp-btn small" data-viewer-download href="#" download>Download</a>
+		<button class="sp-btn small" type="button" data-viewer-close>Close <kbd>Esc</kbd></button>
 	</div>
 	<div class="viewer-body" data-viewer-body>
 		<img data-viewer-image alt="" hidden />
 		<pre class="viewer-text" data-viewer-text tabindex="0" hidden></pre>
 		<div class="viewer-note" data-viewer-note hidden>
 			<p data-viewer-message></p>
-			<a class="btn small" data-viewer-note-download href="#" download>Download</a>
+			<a class="sp-btn small" data-viewer-note-download href="#" download>Download</a>
 		</div>
 	</div>
 </div>`

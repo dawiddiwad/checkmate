@@ -220,6 +220,7 @@ function assets() {
 		'/assets/client.js': { type: 'text/javascript; charset=utf-8', body: read('client.js') },
 		'/assets/design.js': { type: 'text/javascript; charset=utf-8', body: read('design.js') },
 		'/assets/favicon.svg': { type: 'image/svg+xml', body: read('favicon.svg') },
+		designParts: read('design-parts.html').toString(),
 		font: (name: string) => readFileSync(`${fonts}${name}.woff2`),
 	}
 }
@@ -469,8 +470,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			back: '/',
 			body: html`${heading(title, message)}
 				<p class="actions">
-					<a class="btn primary" href="/">Needs you</a> <a class="btn" href="/plans">Plans</a>
-					<a class="btn" href="/runs">Runs</a>
+					<a class="sp-btn pri" href="/">Needs you</a> <a class="sp-btn" href="/plans">Plans</a>
+					<a class="sp-btn" href="/runs">Runs</a>
 				</p>`,
 		})
 	}
@@ -612,7 +613,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/claims') return redirect(request.res, oldItem(searchParams, 'all'))
 		if (pathname === '/runs') return render(request, runsPage(store, searchParams))
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
-		if (pathname === '/design') return render(request, designPage(files['/assets/style.css'].body.toString()))
+		if (pathname === '/design')
+			return render(request, designPage(files['/assets/style.css'].body.toString(), files.designParts))
 		if (pathname === '/activity')
 			return render(request, activityPage(store, shown, searchParams, { build: defaultBuild(store.workspace) }))
 		if (pathname === '/permissions') return firstRequest(request)
@@ -804,7 +806,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 						value="${shown.actor ?? ''}"
 					/>
 					<div class="btns">
-						<button class="btn primary">Save name</button> <a class="btn" href="${back}">Cancel</a>
+						<button class="sp-btn pri">Save name</button> <a class="sp-btn" href="${back}">Cancel</a>
 					</div>
 				</form>`,
 		}
@@ -1144,7 +1146,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			back,
 			body: html`${heading('Nothing was done')}
 				<p class="form-error" role="alert" ${field ? html`data-field="${field}"` : ''}>${message}</p>
-				<p class="actions"><a class="btn primary" href="${back}">Go back</a></p>`,
+				<p class="actions"><a class="sp-btn pri" href="${back}">Go back</a></p>`,
 		})
 	}
 

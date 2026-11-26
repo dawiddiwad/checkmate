@@ -216,7 +216,7 @@ function adoptForm(context: Context, detail: Detail, gapId: string, sha256: stri
 						aria-label="Your name"
 					/>`
 		}
-		<button class="btn small">Bring into plan</button>
+		<button class="sp-btn small">Bring into plan</button>
 	</form>`
 }
 
@@ -245,7 +245,7 @@ function gapCard(
 			${
 				adopted
 					? html`${pill('resolved', 'in plan')} <a href="/plans/${latest}#${gap.id}">${latest}</a>`
-					: html`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
+					: html`<a class="sp-btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
 							${adoptForm(context, detail, gap.id, revision.sha256)}`
 			}
 		</div>

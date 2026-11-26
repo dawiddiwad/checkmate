@@ -3027,7 +3027,6 @@ if (!CSS.supports('field-sizing', 'content')) {
 	window.addEventListener('resize', () => areas.forEach(fitHeight))
 }
 
-document.querySelector('[data-keys-open]').hidden = false
 const docked = new window.ResizeObserver(() => dockRoom())
 for (const element of document.querySelectorAll('[data-bulk], [data-say-strip]')) docked.observe(element)
 dockRoom()

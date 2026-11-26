@@ -127,7 +127,6 @@ function statusBar(context: Context, page: Page) {
 		<span class="sb-say" aria-live="polite" data-say></span>
 		<span class="sb-keys" data-hints></span>
 		<button class="sb-btn" type="button" data-find-open hidden>Find</button>
-		<button class="sb-btn" type="button" data-keys-open hidden>Keys</button>
 		<span class="sb-div" aria-hidden="true"></span>
 		<a
 			class="sb-btn"

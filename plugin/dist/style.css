@@ -2977,7 +2977,7 @@ details.menu > summary::-webkit-details-marker {
 	border-color: var(--edge);
 	color: var(--muted);
 }
-@media (max-width: 1280px) {
+@media (max-width: 1279px) {
 	.sc-plan {
 		grid-template-columns: minmax(0, 1fr) 240px 240px;
 	}

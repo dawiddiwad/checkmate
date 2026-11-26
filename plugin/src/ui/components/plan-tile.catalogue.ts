@@ -17,13 +17,10 @@ const tile: PlanTile = {
 	verdict: { head: 'Build build-2: 2 open defects.', tail: '3 questions open, 1 blocks testing.' },
 	cost: '$0.42',
 	board: board({
+		label: 'Rules against the last 2 builds',
 		builds: [
-			{ build: 'build-1', label: 'B1' },
-			{ build: 'build-2', label: 'B2' },
-		],
-		columns: [
-			{ label: 'R1', title: 'Coupon', cells: ['passed', 'failed'] },
-			{ label: 'Out', title: 'Outside the rules', cells: ['not_checked', 'question'] },
+			{ build: 'build-1', label: 'B1', cells: ['passed', 'not_checked'] },
+			{ build: 'build-2', label: 'B2', cells: ['failed', 'question'] },
 		],
 	}),
 	metrics: metrics({
@@ -49,7 +46,7 @@ export const examples: Array<[string, Html | string]> = [
 				...tile,
 				index: 1,
 				planId: 'login',
-				status: wordMark({ state: 'testing', label: 'Testing', live: true }),
+				status: wordMark({ state: 'testing', label: 'Testing' }),
 				cost: null,
 				next: { label: 'Watch the testers', href: '#', unblocks: false },
 			})

@@ -7,7 +7,6 @@ export const examples: Array<[string, Html | string]> = [
 	['statusMark with label', statusMark({ state: 'approved', label: 'accepted' })],
 	...wordStates.map((state): [string, Html | string] => [`wordMark ${state}`, wordMark({ state, label: state })]),
 	['wordMark neutral', wordMark({ state: 'question', label: 'Question' })],
-	['wordMark live', wordMark({ state: 'testing', label: 'Testing', live: true })],
 	['wordMark with title', wordMark({ state: 'cost', label: 'Total cost $0.42', title: 'Reported cost' })],
 	['statusWord passed', statusWord({ state: 'completed', label: 'record' })],
 	['statusWord not run', statusWord({ state: 'not_run', label: 'merge' })],

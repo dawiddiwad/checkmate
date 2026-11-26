@@ -478,7 +478,7 @@ test(
 		await claim.click()
 		await page.waitForURL((address) => address.searchParams.has('item'))
 		const key = new URL(page.url()).searchParams.get('item')!
-		await page.locator('[data-drawer] .sp-dhead [data-option]', { hasText: 'No' }).click()
+		await page.locator('[data-drawer] .sc-drawer-top [data-option]', { hasText: 'No' }).click()
 		const reason = page.locator('[data-drawer] #reject-text')
 		await reason.waitFor()
 		await page.locator('[data-drawer]').getByRole('button', { name: 'Reject' }).click()
@@ -607,9 +607,9 @@ test(
 		await page.locator('[data-drawer]').waitFor()
 		// A running test with no tester shows its empty state as one line across the list.
 		await page.goto(new URL('/explorations/no-tester-yet', ui.url).href)
-		const empty = page.locator('.sp-list > .sp-empty')
+		const empty = page.locator('.sc-list > .sp-empty')
 		await empty.waitFor()
-		const list = await page.locator('.sp-list').first().boundingBox()
+		const list = await page.locator('.sc-list').first().boundingBox()
 		const line = await empty.boundingBox()
 		assert(list && line)
 		assert(line.width > list.width - 4, `The empty state is ${line.width}px wide in a list ${list.width}px wide.`)
@@ -980,7 +980,7 @@ test(
 			['acme', 'custom'],
 			['bad.json', 'invalid'],
 		])
-		assert.equal(await page.locator('.banner').count(), 0)
+		assert.equal(await page.locator('.sc-notice').count(), 0)
 		assert.match((await bad.textContent()) ?? '', /bad\.json is not valid: Cannot read JSON: .*<img src=x/)
 		await bad.click()
 		await page.waitForURL(/\/settings\/invalid-recipes\?file=bad\.json$/)

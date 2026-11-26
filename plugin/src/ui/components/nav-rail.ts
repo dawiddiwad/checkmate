@@ -22,7 +22,7 @@ export type RailRow = {
 export function railRow(row: RailRow) {
 	return html`<a
 		${row.hidden ? html`hidden` : ''}
-		class="sp-nrow${row.kind ? ` ${row.kind}` : ''}${row.current ? ' on' : ''}"
+		class="sc-rail-row${row.kind ? ` is-${row.kind}` : ''}"
 		role="treeitem"
 		aria-level="${row.level ?? 1}"
 		aria-selected="${row.current ? 'true' : 'false'}"
@@ -33,8 +33,8 @@ export function railRow(row: RailRow) {
 		data-nav
 		data-target="${row.target}"
 		data-label="${row.text}"
-		><span class="sp-nid">${row.id}</span
-		><span class="sp-ntx ell" title="${row.text}">${row.text}</span>${row.end}</a
+		><span class="sc-rail-id">${row.id}</span
+		><span class="sc-rail-text" title="${row.text}">${row.text}</span>${row.end}</a
 	>`
 }
 
@@ -48,44 +48,54 @@ export function railCount({
 	title?: string
 }) {
 	return title === undefined
-		? html`<span class="sp-ncount${waitsOnYou ? ' att' : ''}">${value}</span>`
-		: html`<span class="sp-ncount${waitsOnYou ? ' att' : ''}" title="${title}">${value}</span>`
+		? html`<b class="sc-rail-count${waitsOnYou ? ' is-hot' : ''}">${value}</b>`
+		: html`<b class="sc-rail-count${waitsOnYou ? ' is-hot' : ''}" title="${title}">${value}</b>`
 }
 
 export function railCells({ cells }: { cells: BoardCell[] }) {
-	return html`<span class="sp-nmarks">${cells.map(boardCell)}</span>`
+	return html`<span class="sc-rail-cells">${cells.map(boardCell)}</span>`
 }
 
-export const railSeparator = html`<div class="sp-sep" aria-hidden="true"></div>`
-
 export function railBuilds({ builds }: { builds: Array<{ build: string; label: string }> }) {
-	return html`<div class="sp-nhead" aria-hidden="true">
-		<span></span><span>Rule</span
-		><span class="sp-nmarks"
+	return html`<div class="sc-rail-board-h" aria-hidden="true">
+		<span>Rule</span
+		><span class="sc-rail-cells"
 			>${builds.map(
 				(item, index) =>
-					html`<span title="${item.build}"
-						>${key({ name: index + 1 })}<span class="sp-blab">${item.label}</span></span
+					html`<span class="sc-board-col" title="${item.build}"
+						>${key({ name: index + 1 })}${item.label}</span
 					>`
 			)}</span
 		>
 	</div>`
 }
 
-export type Rail = { planId: string; builds: number; pinned: Html; rows: Html }
+export type Rail = { planId: string; buildCount: number; pinned: Html; board: Html; builds: Html; links: Html }
 
-export function navRail({ planId, builds, pinned, rows }: Rail) {
+export function navRail({ planId, buildCount, pinned, board, builds, links }: Rail) {
 	return html`<nav
-		class="sp-nav"
+		class="sc-rail"
 		aria-label="Plan ${planId}"
 		data-navigator
-		data-builds="${builds}"
+		data-builds="${buildCount}"
 		data-region="navigator"
 	>
-		<h2 class="sr-only">Plan ${planId}</h2>
-		<div class="sp-nlist" role="tree" aria-label="Views of ${planId}">
-			<div class="sp-npin" role="none">${pinned} ${railSeparator}</div>
-			${rows}
+		<h2 class="sc-sr">Plan ${planId}</h2>
+		<div class="sc-rail-tree" role="tree" aria-label="Views of ${planId}">
+			<div class="sc-rail-nav" role="none">${pinned}</div>
+			<div class="sc-rail-sec" role="none">
+				<p class="sc-rail-h" aria-hidden="true">Board</p>
+				${board}
+			</div>
+			${
+				buildCount
+					? html`<div class="sc-rail-sec" role="none">
+							<p class="sc-rail-h" aria-hidden="true">Builds</p>
+							${builds}
+						</div>`
+					: ''
+			}
+			<div class="sc-rail-nav" role="none">${links}</div>
 		</div>
 	</nav>`
 }

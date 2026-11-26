@@ -25,7 +25,7 @@ const options = optionsBox([
 ])
 
 function list(row: Html) {
-	return html`<div class="sp-list" role="list" aria-label="Example">${row}</div>`
+	return html`<div class="sc-list" role="list" aria-label="Example">${row}</div>`
 }
 
 export const examples: Array<[string, Html | string]> = [
@@ -37,8 +37,9 @@ export const examples: Array<[string, Html | string]> = [
 			listRow({
 				...base,
 				id: 'catalogue-row-needs',
-				tag: wordMark({ state: 'blocks', label: 'Blocks', live: true }),
+				tag: wordMark({ state: 'blocks', label: 'Blocks' }),
 				attrs: { 'data-needs': true },
+				blocking: true,
 				pickLabel: 'k1/Q1',
 			})
 		),
@@ -58,7 +59,7 @@ export const examples: Array<[string, Html | string]> = [
 	['listRow with title link', list(listRow({ ...base, id: 'catalogue-row-link', titleHref: '#' }))],
 	[
 		'listRow in a listbox',
-		html`<div class="sp-list" role="listbox" aria-label="Example">
+		html`<div class="sc-list" role="listbox" aria-label="Example">
 			${listRow({ ...base, id: 'catalogue-row-option', inListbox: true, tag: statusMark({ state: 'running' }) })}
 		</div>`,
 	],

@@ -17,7 +17,7 @@ export function facts({ rows }: { rows: Array<[string, Html | string | false]> }
 export function recordFacts({ rows }: { rows: Array<[string, Html | string | null]> }) {
 	const shown = rows.filter(([, value]) => value)
 	if (!shown.length) return ''
-	return html`<dl class="sp-facts">
+	return html`<dl class="sc-facts">
 		${shown.map(
 			([label, value]) =>
 				html`<dt>${label}</dt>

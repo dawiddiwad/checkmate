@@ -3,10 +3,10 @@ import { frozenRevision, jsonPatch, planCandidate } from '../../plans.ts'
 import { planDetail } from '../../views.ts'
 import type { Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
-import { banner } from '../components/banner.ts'
 import { formButton } from '../components/button.ts'
 import { dataTable } from '../components/data-table.ts'
 import { field, textArea, textInput } from '../components/field.ts'
+import { notice } from '../components/notice.ts'
 import { heading } from '../components/page-heading.ts'
 import { actorLimit, html, short } from '../html.ts'
 import { navigator, reviewOf } from '../review.ts'
@@ -282,7 +282,7 @@ export function editPage(
 			section: 'home',
 			subjects: [`plan:${planId}`],
 			body: html`${heading({ title, sub: detail.plan.objective })}
-			${banner({
+			${notice({
 				kind: 'info',
 				content: html`Only the latest revision can change.
 					<a href="/plans/${planId}@${detail.latestRevision}/edit"
@@ -300,15 +300,15 @@ export function editPage(
 			: frozen === 'promotion'
 				? `${subject} was promoted.`
 				: `${subject} is approved.`
-	const notice = frozen
-		? banner({
+	const status = frozen
+		? notice({
 				kind: 'warn',
 				content: html`<strong
 						>${why} Saving creates revision ${next}${needsApproval ? ', which needs approval' : ''}.</strong
 					>
 					${subject} stays as it is.`,
 			})
-		: banner({
+		: notice({
 				kind: 'info',
 				content: html`<strong>Edits change this revision in place.</strong> ${subject} is not approved and no
 					run uses it.`,
@@ -325,7 +325,7 @@ export function editPage(
 		removed: [],
 		rationale: '',
 	}
-	const messages = html`${shown.stale ? banner({ kind: 'warn', content: shown.stale }) : ''}
+	const messages = html`${shown.stale ? notice({ kind: 'warn', content: shown.stale }) : ''}
 	${shown.error ? html`<p class="form-error" role="alert" data-field="${shown.field ?? ''}">${shown.error}</p>` : ''}`
 	const buttons = (mode: string) =>
 		html`<div class="btns">
@@ -345,7 +345,7 @@ export function editPage(
 		})}
 		${shown.unsaved === null ? '' : unsavedPanel(shown.unsaved)}
 		<div data-region="edit" data-stale-message="${planId} changed. Review it before you save.">
-			<div data-stale-slot>${notice} ${messages}</div>
+			<div data-stale-slot>${status} ${messages}</div>
 			<form method="post" action="${path}" class="edit-form" data-edit-form>
 				${hidden(context, detail.sha256, 'form', shown.orig)}
 				<section aria-labelledby="edit-requirements">

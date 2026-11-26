@@ -25,7 +25,7 @@ export function tell(text) {
 }
 
 function fitPath() {
-	const list = document.querySelector('.sb-where ol')
+	const list = document.querySelector('[data-where] ol')
 	if (!list) return
 	for (const item of list.children) item.hidden = false
 	list.querySelector('[data-more-path]')?.remove()
@@ -44,7 +44,7 @@ function fitPath() {
 }
 
 export function showPath() {
-	const list = document.querySelector('.sb-where ol')
+	const list = document.querySelector('[data-where] ol')
 	if (!review || !list || state.drawer || viewerPane) return fitPath()
 	const fixed = [...list.querySelectorAll('li')].slice(0, 2)
 	const tail = [panel()?.dataset.title ?? '']
@@ -105,11 +105,16 @@ export function showHints() {
 			if (!hint) continue
 			list.push(Array.isArray(hint) ? hint : [entry.cap, hint])
 		}
-	const source = list
+	const keys = list.find(([cap]) => cap === '?')
+	const shown =
+		list.length > 3
+			? [...list.filter(([cap]) => cap !== '?').slice(0, keys ? 2 : 3), ...(keys ? [keys] : [])]
+			: list
+	const source = shown
 		.map(([cap, text]) =>
 			cap === '?'
-				? `<button type="button" class="sb-k" data-cap="?" data-keys-open><kbd>?</kbd><span class="sb-kt">${text}</span></button>`
-				: `<span class="sb-k" data-cap="${cap}"><kbd>${glyphHtml(cap)}</kbd>${text}</span>`
+				? `<button type="button" class="sc-key-hint" data-cap="?" data-keys-open><kbd class="sc-key">?</kbd><span class="sc-key-text">${text}</span></button>`
+				: `<span class="sc-key-hint" data-cap="${cap}"><kbd class="sc-key">${glyphHtml(cap)}</kbd>${text}</span>`
 		)
 		.join('')
 	if (hints.dataset.source !== source) {
@@ -132,7 +137,7 @@ export function attachStatusBar() {
 	window.addEventListener('resize', () => {
 		dockRoom()
 		showHints()
-		const row = document.querySelector('.hl[data-row]')
+		const row = document.querySelector('.is-sel[data-row]')
 		if (row) {
 			fitOptions(row)
 			padTitle(row)

@@ -1,22 +1,112 @@
-.app {
-	padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(var(--sp-bar) + 32px + var(--dock-h, 0px))
-		max(16px, env(safe-area-inset-left, 0px));
+.sc-shell {
+	min-height: 100vh;
+	padding-bottom: calc(var(--bar-h) + var(--dock-h, 0px));
+	background: var(--ground);
+	color: var(--ink);
 }
-.app:focus {
+.sc-shell.has-drawer {
+	padding-right: var(--drawer-w);
+}
+.sc-body {
+	display: flex;
+	min-height: calc(100vh - var(--bar-h) - var(--dock-h, 0px));
+}
+.sc-main {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	padding: var(--space-6) var(--space-6) var(--space-6) 40px;
+	container: main / inline-size;
+}
+.sc-main > [data-region] {
+	display: flex;
+	flex-direction: column;
+	gap: inherit;
+}
+.sc-main:focus {
 	outline: none;
 }
-.with-nav {
-	display: grid;
-	grid-template-columns: var(--sp-nav) minmax(0, 1fr);
-	gap: 16px;
-	align-items: start;
+.sc-main.is-wide {
+	gap: 28px;
+	padding: var(--space-7) var(--space-6) var(--space-6);
 }
-.with-drawer.app {
-	padding-right: calc(var(--sp-drawer) + 16px);
+.sc-h {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: var(--space-5);
+	padding-bottom: var(--space-4);
+	border-bottom: var(--rule) solid var(--ink);
 }
-.sp-main {
+.sc-h-text {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
 	min-width: 0;
-	container: main / inline-size;
+}
+.sc-h h1 {
+	font: 600 40px/44px var(--font-sans);
+	letter-spacing: -0.025em;
+}
+.sc-h p {
+	max-width: 80ch;
+	font: 400 15px/22px var(--font-sans);
+	color: var(--muted);
+}
+.sc-h h2[data-view-title] {
+	font: 600 40px/44px var(--font-sans);
+	letter-spacing: -0.025em;
+}
+.sc-h-marks {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2) var(--space-3);
+}
+.sc-h-marks:empty {
+	display: none;
+}
+.sc-h-tools {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+.sc-h-tools:empty {
+	display: none;
+}
+.sc-panel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+}
+.sc-crumb,
+.sc-h .sc-crumb {
+	font: 500 13px/20px var(--font-mono);
+	color: var(--muted);
+}
+.sc-crumb a {
+	color: var(--muted);
+	text-decoration: none;
+}
+.sc-crumb a:hover {
+	color: var(--ink);
+	text-decoration: underline;
+}
+@media (max-width: 1100px) {
+	.sc-shell.has-drawer {
+		padding-right: 0;
+	}
+}
+@media (max-width: 900px) {
+	.sc-body {
+		flex-direction: column;
+	}
+	.sc-main,
+	.sc-main.is-wide {
+		padding: var(--space-5) var(--space-4);
+	}
 }
 .page {
 	max-width: 1120px;
@@ -36,7 +126,7 @@
 	text-decoration: underline;
 }
 .sp-sub {
-	font: 400 14px/20px var(--font-body);
+	font: 400 14px/20px var(--font-sans);
 	color: var(--muted);
 	max-width: 80ch;
 }
@@ -93,7 +183,7 @@
 }
 .sp-sec {
 	margin: 24px 0 8px;
-	font: 600 13px/16px var(--font-body);
+	font: 600 13px/16px var(--font-sans);
 	letter-spacing: 0;
 	color: var(--muted);
 }
@@ -129,14 +219,6 @@
 	}
 }
 @media (max-width: 1100px) {
-	.with-drawer.app {
-		padding-right: max(16px, env(safe-area-inset-right, 0px));
-	}
-}
-@media (max-width: 900px) {
-	.with-nav {
-		grid-template-columns: minmax(0, 1fr);
-	}
 }
 @media (max-width: 760px) {
 	.sp-path a {

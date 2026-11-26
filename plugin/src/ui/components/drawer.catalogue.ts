@@ -4,7 +4,7 @@ import { optionButton } from './button.ts'
 import { closeButton, drawer, drawerHead } from './drawer.ts'
 import { wordMark } from './status-mark.ts'
 
-const tags = html`${wordMark({ state: 'finding', label: 'Finding' })} <span class="sp-c-id">k1/C2</span>`
+const tags = html`${wordMark({ state: 'finding', label: 'Finding' })} <span class="sc-c-id">k1/C2</span>`
 
 export const examples: Array<[string, Html | string]> = [
 	[

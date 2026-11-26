@@ -30,11 +30,13 @@ function columns(review: Review) {
 function planBoard(review: Review) {
 	const builds = review.map.builds.slice(-2)
 	const from = review.map.builds.length - builds.length
+	const cols = columns(review)
 	return board({
-		builds: builds.map((build) => ({ build: build.build, label: buildLabel(review, build.build) })),
-		columns: columns(review).map((column) => ({
-			...column,
-			cells: column.cells.slice(from, from + builds.length),
+		label: `Rules against the last ${plural(builds.length, 'build')}`,
+		builds: builds.map((build, index) => ({
+			build: build.build,
+			label: buildLabel(review, build.build),
+			cells: cols.map((column) => column.cells[from + index]),
 		})),
 	})
 }
@@ -70,7 +72,7 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 	const last = review.explorations.at(-1)
 	const ended = !review.running && last && ['stopped', 'interrupted'].includes(last.state) ? last : null
 	const status = review.running
-		? wordMark({ state: 'testing', label: 'Testing', live: true })
+		? wordMark({ state: 'testing', label: 'Testing' })
 		: ended
 			? statusMark({ state: ended.state })
 			: loop
@@ -128,12 +130,12 @@ export function homePage(store: Store): Page {
 	now${
 		blocking > 0
 			? html` ·
-					<span class="att"
-						>${plural(blocking, 'question')} ${blocking === 1 ? 'blocks' : 'block'} testing</span
+					<b class="sc-hot"
+						>${plural(blocking, 'question')} ${blocking === 1 ? 'blocks' : 'block'} testing</b
 					>`
 			: ''
 	}`
-	const body = html`<div class="sp-home" role="list" aria-label="Plans" data-list>
+	const body = html`<div class="sc-plans" role="list" aria-label="Plans" data-list>
 		${listed.map(({ plan, review }, index) => tile(review, plan, runDefects.get(plan.planId) ?? 0, index))}${newChangeTile(
 			{ index: reviews.length }
 		)}

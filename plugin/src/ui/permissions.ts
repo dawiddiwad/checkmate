@@ -196,7 +196,7 @@ export function hidden(name: string, value: string) {
 
 export function rowOptions(context: Context, item: Permission, returnTo: string) {
 	return html`<div
-		class="sp-c-opts asks"
+		class="sc-c-opts asks"
 		aria-label="Options"
 		title="${plural(optionCount(item), 'option')}. Open the request to see them."
 	>
@@ -204,7 +204,7 @@ export function rowOptions(context: Context, item: Permission, returnTo: string)
 			${hidden('csrf', context.csrf)}${hidden('return', returnTo)}${hidden('decision', 'allow')}
 			${optionButton({ n: 1, label: 'Allow once' })}
 		</form>
-		<span class="sp-c-more" aria-hidden="true">${glyph('→')} more</span>
+		<span class="sc-c-more" aria-hidden="true">${glyph('→')} more</span>
 	</div>`
 }
 
@@ -213,7 +213,7 @@ export function askBadge() {
 }
 
 export function askingPill() {
-	return wordMark({ state: 'asks', label: 'Asks', live: true })
+	return wordMark({ state: 'asks', label: 'Asks' })
 }
 
 export function optionOf(context: Context, item: Permission, from: string | null, choice: Choice, n: number) {
@@ -341,7 +341,7 @@ export function permissionHistory(store: Store, explorationId: string, params: U
 		count: all.length,
 		open: params.has('requests') || all.some((item) => !item.decision),
 		listRegion: true,
-		body: html`<div class="sp-list" role="listbox" aria-label="Permission requests of ${explorationId}" data-list>
+		body: html`<div class="sc-list" role="listbox" aria-label="Permission requests of ${explorationId}" data-list>
 				${rows}
 			</div>
 			${

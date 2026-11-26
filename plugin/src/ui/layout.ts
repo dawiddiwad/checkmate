@@ -59,7 +59,7 @@ function cut(text: string) {
 export function layout(context: Context, page: Page) {
 	const theme = context.theme === 'system' ? '' : html` data-theme="${context.theme}"`
 	const back = parentOf(page)
-	const main = html`<main id="main" class="sp-main" tabindex="-1">${page.body}</main>`
+	const main = html`<main id="main" class="sc-main${page.nav ? '' : ' is-wide'}" tabindex="-1">${page.body}</main>`
 	return html`<!doctype html>
 		<html lang="en" ${theme}>
 			<head>
@@ -68,25 +68,19 @@ export function layout(context: Context, page: Page) {
 				<meta name="color-scheme" content="light dark" />
 				<title>${page.title} · Checkmate</title>
 				<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
-				<link
-					rel="preload"
-					href="/assets/fonts/ibm-plex-mono-500.woff2"
-					as="font"
-					type="font/woff2"
-					crossorigin
-				/>
 				<link rel="stylesheet" href="/assets/style.css" />
 				<script src="/assets/client.js" defer></script>
 			</head>
 			<body
+				class="sc-app"
 				data-subjects="${page.subjects.join(',')}"
 				data-cursor="${context.cursor}"
 				${back ? html`data-back="${back}"` : ''}
 				${page.address ? html`data-address="${page.address}"` : ''}
 			>
 				<a class="skip" href="#main">Skip to content</a>
-				<div class="app${page.drawer ? ' with-drawer' : ''}">
-					${page.nav ? html`<div class="with-nav">${page.nav}${main}</div>` : main}
+				<div class="sc-shell${page.drawer ? ' has-drawer' : ''}">
+					${page.nav ? html`<div class="sc-body">${page.nav}${main}</div>` : main}
 				</div>
 				${statusBar({ context, page })}
 				<div class="sp-saystrip" role="status" data-say-strip hidden></div>

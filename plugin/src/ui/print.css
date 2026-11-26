@@ -2,47 +2,47 @@
 	:root {
 		color-scheme: light;
 	}
-	.statusbar,
-	.sp-nav,
+	.sc-bar,
+	.sc-rail,
 	.toast,
 	.sp-bulk,
 	.sp-saystrip,
 	.skip,
-	.sp-dopts,
+	.sc-opts,
 	[data-close],
 	.sp-file-k:last-child,
 	.sp-form,
 	.sp-opt,
-	.sp-c-opts,
-	.sp-c-cb {
+	.sc-c-opts,
+	.sc-c-cb {
 		display: none !important;
 	}
 	body,
-	.app,
+	.sc-shell,
 	main,
-	.sp-drawer,
-	.sp-drawer * {
-		background: #ffffff !important;
-		color: #000000 !important;
+	.sc-drawer,
+	.sc-drawer * {
+		background: Canvas !important;
+		color: CanvasText !important;
 		box-shadow: none !important;
 	}
-	.with-drawer.app {
+	.sc-shell.has-drawer {
 		padding: 0;
 	}
-	.with-drawer :is(.sp-nav, [data-panel]) {
+	.has-drawer :is(.sc-rail, [data-panel]) {
 		display: none !important;
 	}
-	.with-drawer .with-nav {
+	.has-drawer .sc-body {
 		display: block;
 	}
-	.sp-drawer {
+	.sc-drawer {
 		position: static;
 		width: auto;
 		max-width: none;
 		overflow: visible;
 		border: 0;
 	}
-	.sp-drawer * {
+	.sc-drawer * {
 		overflow: visible !important;
 		max-height: none !important;
 		white-space: normal !important;

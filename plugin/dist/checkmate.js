@@ -13556,11 +13556,11 @@ function instanceCheck(entryPoints2, value2) {
   const instance = validate("instance", value2);
   const names = Object.keys(instance.entries);
   const missing = entryPoints2.filter((entry2) => !names.includes(entry2.name)).map((entry2) => entry2.name);
-  const unknown2 = names.filter((name2) => !entryPoints2.some((entry2) => entry2.name === name2));
+  const unknown = names.filter((name2) => !entryPoints2.some((entry2) => entry2.name === name2));
   requireCondition(!missing.length, `Missing value for entry point: ${missing.join(", ")}`);
   requireCondition(
-    !unknown2.length,
-    `Unknown entry point: ${unknown2.join(", ")}. The target has: ${entryPoints2.map((entry2) => entry2.name).join(", ")}.`
+    !unknown.length,
+    `Unknown entry point: ${unknown.join(", ")}. The target has: ${entryPoints2.map((entry2) => entry2.name).join(", ")}.`
   );
   const entries2 = {};
   for (const entry2 of entryPoints2) {
@@ -13992,10 +13992,10 @@ function listText(words5) {
 function fitEntries(workspace2, catalog2, entries2, detected, invalid) {
   const names = Object.keys(entries2);
   const declared = declaredEntryPoints(catalog2);
-  const unknown2 = names.filter((name2) => !declared.has(name2));
+  const unknown = names.filter((name2) => !declared.has(name2));
   requireWellFormed(
-    !unknown2.length,
-    `Unknown entry ${unknown2.join(", ")}. Entry names come from recipes. Recipe folder: ${projectRecipeFolder(workspace2)}. Entries of existing recipes: ${[...declared.keys()].join(", ")}. ${invalid.map(recipeProblem).join(" ")}`.trim(),
+    !unknown.length,
+    `Unknown entry ${unknown.join(", ")}. Entry names come from recipes. Recipe folder: ${projectRecipeFolder(workspace2)}. Entries of existing recipes: ${[...declared.keys()].join(", ")}. ${invalid.map(recipeProblem).join(" ")}`.trim(),
     [
       `If the tool you need has no recipe, write one JSON file in ${projectRecipeFolder(workspace2)}. Use a built-in example from checkmate recipe list --json. Include ${requiredRecipeFields.join(", ")}. Optional usage holds tester notes as Markdown lines.`,
       "Give a new tool its own entry names. Declare each needed entry in entryPoints with name, kind and purpose. If Checkmate refuses the recipe, edit that file to fix the listed problems. Tell the person you added a recipe for the tool. The target sets what testers may do."
@@ -15440,12 +15440,12 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, rules, missing
   const idsOf = (kinds3) => state.entries.filter((item) => kinds3.includes(item.kind)).map((item) => item.id).slice(-6).join("|") || `<${kinds3.join(" or ")} ID>`;
   const defectOrIssue = ["defect", "issue"];
   if (recorded2) {
-    const unknown2 = (id2) => !known.has(id2) && !recorded2.replyIds.has(id2);
-    const links = entry2.links?.filter((id2) => !unknown2(id2));
-    recorded2.dropped.push(...(entry2.links ?? []).filter(unknown2));
+    const unknown = (id2) => !known.has(id2) && !recorded2.replyIds.has(id2);
+    const links = entry2.links?.filter((id2) => !unknown(id2));
+    recorded2.dropped.push(...(entry2.links ?? []).filter(unknown));
     if (links?.length) entry2.links = links;
     else delete entry2.links;
-    if (entry2.repeats !== void 0 && unknown2(entry2.repeats)) {
+    if (entry2.repeats !== void 0 && unknown(entry2.repeats)) {
       recorded2.dropped.push(entry2.repeats);
       delete entry2.repeats;
     }
@@ -28887,18 +28887,18 @@ function bulkProblem(what, values, actor) {
 
 // plugin/src/ui/components/key.ts
 function key({ name: name2, spoken = true }) {
-  return spoken ? html2`<kbd>${name2}</kbd>` : html2`<kbd aria-hidden="true">${name2}</kbd>`;
+  return spoken ? html2`<kbd class="sc-key">${name2}</kbd>` : html2`<kbd class="sc-key" aria-hidden="true">${name2}</kbd>`;
 }
 
 // plugin/src/ui/components/button.ts
 var emphasisClass = {
-  primary: " pri",
-  unblocks: " you"
+  primary: " is-primary",
+  unblocks: " is-you"
 };
-function button({ label, href, keyName, keySpoken = true, emphasis, attrs }) {
-  const look = `sp-btn${emphasis ? emphasisClass[emphasis] : ""}`;
+function button({ label, href, keyName, keySpoken = true, emphasis, mainAction, quiet, attrs }) {
+  const look2 = `sc-btn${emphasis ? emphasisClass[emphasis] : ""}${mainAction ? " is-lg" : ""}${quiet ? " is-quiet" : ""}${keyName === void 0 ? "" : " has-key"}`;
   const inner = html2`${keyName === void 0 ? "" : key({ name: keyName, spoken: keySpoken })}<span>${label}</span>`;
-  return href === void 0 ? html2`<button class="${look}" ${attributes(attrs)}>${inner}</button>` : html2`<a class="${look}" href="${href}" ${attributes(attrs)}>${inner}</a>`;
+  return href === void 0 ? html2`<button class="${look2}" ${attributes(attrs)}>${inner}</button>` : html2`<a class="${look2}" href="${href}" ${attributes(attrs)}>${inner}</a>`;
 }
 function optionButton({ n, label, name: name2 = label, href, attrs }) {
   return button({
@@ -28910,17 +28910,17 @@ function optionButton({ n, label, name: name2 = label, href, attrs }) {
   });
 }
 function formButton({ label, href, element, emphasis, inline: inline2 = false, quiet = false, attrs }) {
-  const look = `btn${inline2 ? " small" : ""}${emphasis ? " primary" : ""}${quiet ? " ghost" : ""}`;
-  if (href !== void 0) return html2`<a class="${look}" href="${href}" ${attributes(attrs)}>${label}</a>`;
-  if (element === "summary") return html2`<summary class="${look}" ${attributes(attrs)}>${label}</summary>`;
-  if (element === "span") return html2`<span class="${look}" ${attributes(attrs)}>${label}</span>`;
-  return html2`<button class="${look}" ${attributes(attrs)}>${label}</button>`;
+  const look2 = `sc-btn${emphasis ? " is-primary" : ""}${quiet ? " is-quiet" : ""}${inline2 ? " is-inline" : ""}`;
+  if (href !== void 0) return html2`<a class="${look2}" href="${href}" ${attributes(attrs)}>${label}</a>`;
+  if (element === "summary") return html2`<summary class="${look2}" ${attributes(attrs)}>${label}</summary>`;
+  if (element === "span") return html2`<span class="${look2}" ${attributes(attrs)}>${label}</span>`;
+  return html2`<button class="${look2}" ${attributes(attrs)}>${label}</button>`;
 }
 
 // plugin/src/ui/components/page-heading.ts
 function crumbBar({ crumbs }) {
   if (!crumbs?.length) return html2``;
-  return html2`<p class="sp-path">
+  return html2`<p class="sc-crumb">
 		${crumbs.map(([label, href], index2) => [
     index2 ? html2` › ` : "",
     href ? html2`<a href="${href}">${label}</a>` : html2`<span aria-current="page">${label}</span>`
@@ -28928,13 +28928,13 @@ function crumbBar({ crumbs }) {
 	</p>`;
 }
 function heading({ title: title2, sub = null, extra = "" }) {
-  return html2`<div class="sp-h">
-		<div>
+  return html2`<header class="sc-h">
+		<div class="sc-h-text">
 			<h1>${title2}</h1>
-			${sub ? html2`<p class="sp-sub">${sub}</p>` : ""}
+			${sub ? html2`<p>${sub}</p>` : ""}
 		</div>
 		${extra}
-	</div>`;
+	</header>`;
 }
 
 // plugin/src/ui/evidence.ts
@@ -28951,19 +28951,10 @@ function shownAsText(mediaType, bytes) {
   return textTypes.includes(mediaType) && bytes <= inlineLimit;
 }
 
-// plugin/src/ui/components/banner.ts
-function banner({ kind, content }) {
-  return html2`<div class="banner ${kind}" role="${kind === "info" ? "status" : "alert"}">${content}</div>`;
-}
-function blockingBanner({ count: count2, href }) {
-  return html2`<div class="sp-banner">
-		<b class="sp-banner-n">${count2}</b>
-		<div class="sp-banner-t">
-			<b>${count2 === 1 ? "question blocks" : "questions block"} testing</b>
-			<span>Testers wait on these answers. Everything else can wait.</span>
-		</div>
-		<a class="sp-btn pri you big" href="${href}">Answer the first</a>
-	</div>`;
+// plugin/src/ui/components/notice.ts
+var look = { info: "sc-notice", warn: "sc-notice is-warn", fail: "sc-notice is-error" };
+function notice({ kind, content }) {
+  return html2`<div class="${look[kind]}" role="${kind === "info" ? "status" : "alert"}">${content}</div>`;
 }
 
 // plugin/src/ui/components/field.ts
@@ -28995,7 +28986,7 @@ function actorField(context2, state) {
   return html2`${field({ id: "actor", label: "Your name", control: textInput({ id: "actor", name: "actor", value: state.values.actor ?? "", attrs: { required: true, maxlength: actorLimit, autocomplete: "name", "data-missing": "Enter your name. Checkmate records it with your decision." } }), help: "Checkmate asks once, keeps it in a cookie, and records it with each decision." })}`;
 }
 function messages(state) {
-  return html2`${state.stale ? banner({ kind: "warn", content: state.stale }) : ""}
+  return html2`${state.stale ? notice({ kind: "warn", content: state.stale }) : ""}
 	${state.error ? html2`<p class="form-error" role="alert">${state.error}</p>` : ""}`;
 }
 function keptText(state) {
@@ -29540,10 +29531,10 @@ var evidenceOverlay = html2`<div
 			${formButton({ label: "Fit", inline: true, attrs: { type: "button", "data-zoom": "fit", title: "Fit to the window (0)" } })}
 		</span>
 		<label class="viewer-tools viewer-wrap" data-viewer-tools="text"
-			><input type="checkbox" data-viewer-wrap checked /> Wrap lines <kbd>w</kbd></label
+			><input type="checkbox" data-viewer-wrap checked /> Wrap lines ${key({ name: "w" })}</label
 		>
 		${formButton({ label: "Download", href: "#", inline: true, attrs: { "data-viewer-download": true, download: true } })}
-		${formButton({ label: html2`Close <kbd>Esc</kbd>`, inline: true, attrs: { type: "button", "data-viewer-close": true } })}
+		${formButton({ label: html2`Close ${key({ name: "Esc" })}`, inline: true, attrs: { type: "button", "data-viewer-close": true } })}
 	</div>
 	<div class="viewer-body" data-viewer-body>
 		<img data-viewer-image alt="" hidden />
@@ -29599,9 +29590,9 @@ function findPalette({ harness }) {
 		<p class="sp-find-none" data-find-asking role="status" hidden></p>
 		<p class="sp-find-none" data-find-error role="alert" hidden></p>
 		<div class="sp-foot">
-			<span><kbd>${glyph("\u2191")}</kbd><kbd>${glyph("\u2193")}</kbd>Choose</span
-			><span><kbd>Enter</kbd><span data-find-enter>Go</span></span
-			><span><kbd>Esc</kbd>Close</span>
+			<span>${key({ name: glyph("\u2191") })}${key({ name: glyph("\u2193") })}Choose</span
+			><span>${key({ name: "Enter" })}<span data-find-enter>Go</span></span
+			><span>${key({ name: "Esc" })}Close</span>
 		</div>
 		<p class="sp-find-note" data-find-note>
 			Ask Checkmate starts ${harness === "pi" ? "Pi" : "Claude Code"} on this computer. It can read this workspace
@@ -29622,25 +29613,29 @@ function keysHelp() {
 }
 
 // plugin/src/ui/components/brand.ts
-function mark() {
-  return html2`<span class="mark" aria-hidden="true"><i></i><i></i><i class="on"></i><i></i></span>`;
-}
 function brand() {
-  return html2`<a class="brand" href="/" aria-label="Checkmate, home">${mark()}<span>Checkmate</span></a>`;
+  return html2`<a class="sc-brand" href="/" aria-label="Checkmate, home"
+		><svg class="sc-brand-mark" viewBox="0 0 40 10" aria-hidden="true">
+			<rect class="o" x="0.5" y="0.5" width="9" height="9" />
+			<rect class="o" x="10.5" y="0.5" width="9" height="9" />
+			<rect class="f" x="20" y="0" width="10" height="10" />
+			<rect class="o" x="30.5" y="0.5" width="9" height="9" /></svg
+		><span class="sc-brand-word">Checkmate</span></a
+	>`;
 }
 
 // plugin/src/ui/components/status-bar.ts
-var themeIcon = html2`<svg viewBox="0 0 16 16" aria-hidden="true">
-	<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5" />
-	<path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor" />
+var themeIcon = html2`<svg viewBox="0 0 14 14" aria-hidden="true">
+	<circle class="s" cx="7" cy="7" r="6" />
+	<path class="d" d="M7 1a6 6 0 0 1 0 12z" />
 </svg>`;
 function themeForm(context2) {
   const next = context2.theme === "dark" ? "light" : "dark";
-  return html2`<form method="post" action="/theme" class="theme-form" data-theme-form>
+  return html2`<form method="post" action="/theme" class="sc-bar-form" data-theme-form>
 		<input type="hidden" name="csrf" value="${context2.csrf}" />
 		<input type="hidden" name="back" value="${context2.path}" />
 		<button
-			class="sp-btn icon-btn"
+			class="sc-bar-theme"
 			name="theme"
 			value="${next}"
 			data-current="${context2.theme}"
@@ -29653,69 +29648,69 @@ function themeForm(context2) {
 }
 function statusWho(context2) {
   const back = encodeURIComponent(context2.path);
-  const actor = context2.actor ? html2`<a class="actor" href="/actor?back=${back}" title="${context2.actor}. Change your name"
+  const actor = context2.actor ? html2`<a class="sc-bar-actor" href="/actor?back=${back}" title="${context2.actor}. Change your name"
 				>${context2.actor}</a
-			>` : html2`<a class="actor att" href="/actor?back=${back}">Set your name</a>`;
-  return html2`<div class="who">
-		<span class="live" data-live hidden>Connecting</span>
+			>` : html2`<a class="sc-bar-actor sc-hot" href="/actor?back=${back}">Set your name</a>`;
+  return html2`<div class="sc-bar-who">
+		<span class="sc-bar-live" data-live hidden>Connecting</span>
 		${actor} ${themeForm(context2)}
 	</div>`;
 }
 function statusLink(page2, section, href, label) {
   const current2 = page2.section === section ? html2` aria-current="page"` : "";
-  return html2`<a class="sb-btn" href="${href}" ${current2}>${label}</a>`;
+  return html2`<a href="${href}" ${current2}>${label}</a>`;
 }
 function statusBar({ context: context2, page: page2 }) {
   const path = page2.crumbs?.length ? page2.crumbs : [[page2.title, null]];
   const waiting = context2.queueCount;
-  return html2`<footer class="statusbar" aria-label="Status bar">
+  return html2`<footer class="sc-bar is-fixed" aria-label="Status bar">
 		${brand()}
-		<nav class="sb-where" aria-label="Where you are">
+		<nav class="sc-sr" aria-label="Where you are" data-where>
 			<ol>
 				${path.map(
     ([label, href]) => href ? html2`<li><a href="${href}">${label}</a></li>` : html2`<li aria-current="page">${label}</li>`
   )}
 			</ol>
 		</nav>
-		<nav class="sb-nav" aria-label="Main">
-			<a class="sb-btn" href="/" ${page2.section === "home" ? html2`aria-current="page"` : ""}>Plans</a>
-			<span class="sb-btn-set" data-wide
-				><a
-					class="sb-btn"
+		<nav class="sc-bar-nav" aria-label="Main">
+			<a href="/" ${page2.section === "home" ? html2`aria-current="page"` : ""}>Plans</a>
+			<span class="sc-bar-set" data-wide
+				>${statusLink(page2, "runs", "/runs", "Runs")} ${statusLink(page2, "chats", "/chats", "Chats")}
+				<a
 					href="/activity"
 					data-region="activity-link"
 					${page2.section === "activity" ? html2`aria-current="page"` : ""}
-					>${html2`<span>Activity${context2.running ? html2`<span class="sb-long"> · ${context2.running} running</span>` : ""}</span>`}</a
+					>${html2`<span
+						>Activity${context2.running ? html2`<b>${context2.running}</b><span class="sc-sr"> running</span>` : ""}</span
+					>`}</a
 				>
-				${statusLink(page2, "chats", "/chats", "Chats")} ${statusLink(page2, "runs", "/runs", "Runs")}
 				${statusLink(page2, "log", "/log", "Log")} ${statusLink(page2, "settings", "/settings", "Settings")}</span
 			>
-			<details class="sb-more menu" data-menu>
-				<summary class="sb-btn">More</summary>
+			<details class="sc-bar-more menu" data-menu>
+				<summary>More</summary>
 				<div class="menu-list">
-					<button type="button" data-find-open>Find</button
+					<button type="button" data-find-open>Find</button><a href="/runs">Runs</a><a href="/chats">Chats</a
 					><a href="/activity" data-region="activity-menu"
 						>Activity${context2.running ? ` \xB7 ${context2.running} running` : ""}</a
-					><a href="/chats">Chats</a><a href="/runs">Runs</a><a href="/log">Log</a
-					><a href="/settings">Settings</a>
+					><a href="/log">Log</a><a href="/settings">Settings</a>
 				</div>
 			</details>
 		</nav>
-		<span class="sb-fill"></span>
-		<span class="sb-say" aria-live="polite" data-say></span>
-		<span class="sb-keys" data-hints></span>
-		<button class="sb-btn" type="button" data-find-open hidden>Find</button>
-		<span class="sb-div" aria-hidden="true"></span>
+		<span class="sc-bar-fill"></span>
+		<span class="sc-bar-say" aria-live="polite" data-say></span>
+		<span class="sc-bar-keys" data-hints></span>
+		<button class="sc-bar-link" type="button" data-find-open hidden>Find</button>
+		<span class="sc-bar-div" aria-hidden="true"></span>
 		<a
-			class="sb-btn"
+			class="sc-bar-link"
 			href="${context2.requests.runningChat ? `/chats/${context2.requests.runningChat}` : "/chats"}"
 			title="The chat that is active now"
 			data-region="request-link"
 			${context2.requests.running ? "" : html2`hidden`}
-			>${context2.requests.running ? html2`<span>Chat<span class="sb-long sb-running"> · working</span></span>` : ""}</a
+			>${context2.requests.running ? html2`<span>Chat<span class="sc-bar-long"> · working</span></span>` : ""}</a
 		>
 		<a
-			class="sb-btn att"
+			class="sc-bar-need"
 			href="/permissions"
 			title="Permission requests of testers that wait for you"
 			data-region="permissions-link"
@@ -29723,23 +29718,23 @@ function statusBar({ context: context2, page: page2 }) {
 			>${context2.permissions} ${context2.permissions === 1 ? "permission" : "permissions"}</a
 		>
 		<a
-			class="sb-btn att"
+			class="sc-bar-need"
 			href="${context2.requests.unread === 1 && context2.requests.firstUnreadChat ? `/chats/${context2.requests.firstUnreadChat}` : "/chats"}"
 			title="Unread updates in your chats"
 			aria-label="${context2.requests.unread} unread chat updates"
 			data-region="replies-link"
 			${context2.requests.unread ? "" : html2`hidden`}
-			>${context2.requests.unread ? html2`<span>${context2.requests.unread}<span class="sb-long"> unread</span></span>` : ""}</a
+			>${context2.requests.unread ? html2`<span>${context2.requests.unread}<span class="sc-bar-long"> unread</span></span>` : ""}</a
 		>
 		<a
-			class="sb-btn att"
+			class="sc-bar-need"
 			href="/"
 			title="Items that wait for you in all plans"
 			data-region="nav-count"
 			${waiting ? "" : html2`hidden`}
 			><span
-				>${waiting}<span class="sb-long"> ${waiting === 1 ? "needs" : "need"} you</span
-				><span class="sb-all"> · all plans</span></span
+				>${waiting}<span class="sc-bar-long"> ${waiting === 1 ? "needs" : "need"} you</span
+				><span class="sc-bar-all"> · all plans</span></span
 			></a
 		>
 		${statusWho(context2)}
@@ -29758,7 +29753,7 @@ function cut(text2) {
 function layout(context2, page2) {
   const theme = context2.theme === "system" ? "" : html2` data-theme="${context2.theme}"`;
   const back = parentOf(page2);
-  const main2 = html2`<main id="main" class="sp-main" tabindex="-1">${page2.body}</main>`;
+  const main2 = html2`<main id="main" class="sc-main${page2.nav ? "" : " is-wide"}" tabindex="-1">${page2.body}</main>`;
   return html2`<!doctype html>
 		<html lang="en" ${theme}>
 			<head>
@@ -29767,25 +29762,19 @@ function layout(context2, page2) {
 				<meta name="color-scheme" content="light dark" />
 				<title>${page2.title} · Checkmate</title>
 				<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
-				<link
-					rel="preload"
-					href="/assets/fonts/ibm-plex-mono-500.woff2"
-					as="font"
-					type="font/woff2"
-					crossorigin
-				/>
 				<link rel="stylesheet" href="/assets/style.css" />
 				<script src="/assets/client.js" defer></script>
 			</head>
 			<body
+				class="sc-app"
 				data-subjects="${page2.subjects.join(",")}"
 				data-cursor="${context2.cursor}"
 				${back ? html2`data-back="${back}"` : ""}
 				${page2.address ? html2`data-address="${page2.address}"` : ""}
 			>
 				<a class="skip" href="#main">Skip to content</a>
-				<div class="app${page2.drawer ? " with-drawer" : ""}">
-					${page2.nav ? html2`<div class="with-nav">${page2.nav}${main2}</div>` : main2}
+				<div class="sc-shell${page2.drawer ? " has-drawer" : ""}">
+					${page2.nav ? html2`<div class="sc-body">${page2.nav}${main2}</div>` : main2}
 				</div>
 				${statusBar({ context: context2, page: page2 })}
 				<div class="sp-saystrip" role="status" data-say-strip hidden></div>
@@ -29929,14 +29918,14 @@ function fold({
 }
 
 // plugin/src/ui/components/list-row.ts
-function rowClass({ settled, current: current2 }) {
-  return `sp-row${settled ? " dim" : ""}${current2 ? " cur" : ""}`;
+function rowClass({ settled, current: current2, blocking }) {
+  return `sc-row${settled ? " is-dim" : ""}${current2 ? " is-open" : ""}${blocking ? " is-block" : ""}`;
 }
 function listRow(row2) {
   const role = row2.inListbox ? html2`role="option" aria-selected="false"` : html2`role="listitem"`;
-  const title2 = row2.titleHref ? html2`<a class="sp-c-title ell" title="${row2.titleText}" tabindex="-1" href="${row2.titleHref}"
+  const title2 = row2.titleHref ? html2`<a class="sc-c-title ell" title="${row2.titleText}" tabindex="-1" href="${row2.titleHref}"
 				>${row2.title}</a
-			>` : html2`<span class="sp-c-title ell" title="${row2.titleText}">${row2.title}</span>`;
+			>` : html2`<span class="sc-c-title ell" title="${row2.titleText}">${row2.title}</span>`;
   return html2`<div
 		class="${rowClass(row2)}"
 		${role}
@@ -29948,18 +29937,18 @@ function listRow(row2) {
 		data-label="${row2.label}"
 		${attributes(row2.attrs)}
 	>
-		${row2.pickLabel === void 0 ? html2`<span class="sp-c-cb"></span>` : html2`<label class="sp-c-cb"
+		${row2.pickLabel === void 0 ? html2`<span class="sc-c-cb"></span>` : html2`<label class="sc-c-cb"
 						><input type="checkbox" tabindex="-1" aria-label="Select ${row2.pickLabel}" data-pick-box
 					/></label>`}
-		<span class="sp-c-tag">${row2.tag}</span>
-		${row2.idTitle === void 0 ? html2`<span class="sp-c-id">${row2.shownId}</span>` : html2`<span class="sp-c-id" title="${row2.idTitle}">${row2.shownId}</span>`}
+		<span class="sc-c-tag">${row2.tag}</span>
+		${row2.idTitle === void 0 ? html2`<span class="sc-c-id">${row2.shownId}</span>` : html2`<span class="sc-c-id" title="${row2.idTitle}">${row2.shownId}</span>`}
 		${title2}
-		${row2.metaText === void 0 ? html2`<span class="sp-c-meta ell">${row2.meta}</span>` : html2`<span class="sp-c-meta ell" title="${row2.metaText}">${row2.meta}</span>`}
+		${row2.metaText === void 0 ? html2`<span class="sc-c-meta ell">${row2.meta}</span>` : html2`<span class="sc-c-meta ell" title="${row2.metaText}">${row2.meta}</span>`}
 		${row2.options ?? ""} ${row2.extra ?? ""}
 	</div>`;
 }
 function groupHeader({ label, count: count2 }) {
-  return html2`<div class="sp-gh" role="presentation">${label} <span>${count2}</span></div>`;
+  return html2`<div class="sc-group-h" role="presentation">${label}<b>${count2}</b></div>`;
 }
 function listPageRow({ key: key2, href, top, tags: tags3, lines: lines2 }) {
   const inner = html2`<span class="q-top"><span class="q-id">${top}</span> <span class="q-tags">${tags3}</span></span>
@@ -29971,134 +29960,124 @@ function listPageRow({ key: key2, href, top, tags: tags3, lines: lines2 }) {
 }
 function optionsBox(items) {
   if (!items.length) return "";
-  return html2`<div class="sp-c-opts" aria-label="Options" data-fit>
-		${items}<span class="sp-c-more" aria-hidden="true">${glyph("\u2192")} ${plural(items.length, "option")}</span>
+  return html2`<div class="sc-c-opts" aria-label="Options" data-fit>
+		${items}<span class="sc-c-more" aria-hidden="true">${glyph("\u2192")} ${plural(items.length, "option")}</span>
 	</div>`;
 }
 
 // plugin/src/ui/components/status-mark.ts
-var statusLook = {
-  passed: ["\u2713", "pass"],
-  failed: ["\u2717", "fail"],
-  inconclusive: ["?", "unsure"],
-  not_checked: ["!", "warn"],
-  blocked: ["\u2013", "block"],
-  not_run: ["\u2013", "block"],
-  error: ["!", "warn"],
-  ready: ["\u2713", "pass"],
-  deferred: ["\u2013", "block"],
-  planned: ["\u2713", "pass"],
-  tested: ["\u2713", "pass"],
-  uncovered: ["\u2013", "block"],
-  complete: ["\u2713", "pass"],
-  partial: ["\u25D0", "warn"],
-  not_executed: ["\u2013", "block"],
-  completed: ["\u2713", "pass"],
-  interrupted: ["!", "warn"],
-  operational_error: ["!", "fail"],
-  not_applicable: ["\u2013", "block"],
-  approved: ["\u2713", "pass"],
-  rejected: ["\u2717", "fail"],
-  pending: ["\u25CB", "acc"],
-  not_required: ["\u2013", "block"],
-  started: ["\u25CF", "acc"],
-  given: ["\u25CB", "acc"],
-  not_needed: ["\u2013", "block"],
-  ended: ["\u2713", "pass"],
-  active: ["\u25CF", "pass"],
-  retired: ["\u2013", "block"],
-  finalized: ["\u2713", "pass"],
-  open: ["\u25CB", "warn"],
-  resolved: ["\u2713", "pass"],
-  blocking: ["\u25CF", "fail"],
-  non_blocking: ["\u25CB", "warn"],
-  clarify: ["\u2713", "acc"],
-  accept_assumption: ["\u2248", "acc"],
-  defer: ["\u2013", "block"],
-  defect: ["\u2717", "fail"],
-  potential_issue: ["?", "warn"],
-  low: ["\xB7", "block"],
-  medium: ["!", "warn"],
-  high: ["!", "fail"],
-  critical: ["!!", "fail"],
-  rejected_operation: ["\u2717", "fail"],
-  needs_decision: ["?", "warn"],
-  invalid_request: ["\u2717", "fail"],
-  needs_plan: ["\u25CB", "acc"],
-  ready_to_test: ["\u25CB", "acc"],
-  exploring: ["\u25CF", "acc"],
-  needs_triage: ["?", "warn"],
-  run_in_progress: ["\u25CF", "acc"],
-  needs_revision: ["\u25CB", "acc"],
-  plan_rejected: ["\u2717", "fail"],
-  needs_answers: ["?", "warn"],
-  needs_approval: ["\u25CB", "acc"],
-  ready_to_run: ["\u25CB", "acc"],
-  nothing_to_run: ["\u2013", "block"],
-  defects_open: ["\u2717", "fail"],
-  needs_retest: ["!", "warn"],
-  awaits_acceptance: ["\u25CB", "acc"],
-  accepted: ["\u2713", "pass"],
-  running: ["\u25CF", "acc"],
-  starting: ["\u25CF", "acc"],
-  testing: ["\u25CF", "acc"],
-  recording: ["\u25CF", "acc"],
-  verifying: ["\u25CF", "acc"],
-  following: ["\u25CF", "acc"],
-  stopped: ["!", "fail"],
-  skipped: ["\u2013", "block"],
-  not_in_level: ["\u2013", "block"],
-  confirmed: ["\u2717", "fail"],
-  observed: ["\u2717", "fail"],
-  suspected: ["?", "warn"],
-  unresolved: ["?", "warn"],
-  answered: ["\u2713", "pass"],
-  requested: ["\u25CB", "acc"],
-  paused: ["\u2016", "warn"],
-  waiting: ["\u25CB", "acc"]
+var statusKinds = {
+  running: "run",
+  starting: "run",
+  testing: "run",
+  recording: "run",
+  verifying: "run",
+  following: "run",
+  exploring: "run",
+  run_in_progress: "run",
+  started: "run",
+  passed: "pass",
+  ready: "pass",
+  planned: "pass",
+  tested: "pass",
+  complete: "pass",
+  completed: "pass",
+  approved: "pass",
+  ended: "pass",
+  active: "pass",
+  finalized: "pass",
+  resolved: "pass",
+  answered: "pass",
+  accepted: "pass",
+  failed: "fail",
+  rejected: "fail",
+  defect: "fail",
+  high: "fail",
+  rejected_operation: "fail",
+  invalid_request: "fail",
+  plan_rejected: "fail",
+  defects_open: "fail",
+  confirmed: "fail",
+  observed: "fail",
+  operational_error: "fail",
+  error: "fail",
+  critical: "crit",
+  blocking: "you",
+  needs_decision: "you",
+  needs_answers: "you",
+  needs_approval: "you",
+  awaits_acceptance: "you",
+  paused: "you",
+  needs_triage: "triage",
+  potential_issue: "triage",
+  suspected: "triage",
+  unresolved: "triage",
+  inconclusive: "triage",
+  open: "question",
+  non_blocking: "question",
+  pending: "question",
+  given: "question",
+  requested: "question",
+  waiting: "question",
+  needs_plan: "question",
+  ready_to_test: "question",
+  needs_revision: "question",
+  ready_to_run: "question",
+  clarify: "question",
+  accept_assumption: "question",
+  medium: "question",
+  partial: "question",
+  needs_retest: "question",
+  stopped: "stop",
+  interrupted: "stop",
+  not_run: "none",
+  blocked: "none",
+  deferred: "none",
+  uncovered: "none",
+  not_executed: "none",
+  not_required: "none",
+  retired: "none",
+  not_needed: "none",
+  low: "none",
+  skipped: "none",
+  not_in_level: "none",
+  nothing_to_run: "none",
+  not_applicable: "none",
+  not_checked: "none",
+  defer: "none"
 };
 var labels = {
-  given: "given to the session"
+  given: "Given to the session"
 };
-var toneClass = {
-  pass: "pass",
-  fail: "fail",
-  warn: "you",
-  unsure: "you",
-  acc: "run",
-  block: "",
-  muted: ""
-};
-var unknown = ["\xB7", "muted"];
-function statusLookOf(state) {
-  return state ? statusLook[state] ?? unknown : unknown;
+function sentence(state) {
+  const text2 = words2(state);
+  return text2.charAt(0).toUpperCase() + text2.slice(1);
 }
-function markClass(state) {
-  return `sp-pill ${toneClass[statusLookOf(state)[1]]}`.trim();
+function markKindOf(state) {
+  return state && statusKinds[state] || "none";
 }
-function statusMark({ state, label = labels[state] ?? words2(state) }) {
-  return html2`<span class="${markClass(state)}" data-status="${state}"
-		><span aria-hidden="true">${glyph(statusLookOf(state)[0])}</span> ${label}</span
-	>`;
+function mark(kind) {
+  return `sc-mark is-${kind}`;
+}
+function statusMark({ state, label = labels[state] ?? sentence(state) }) {
+  return html2`<span class="${mark(markKindOf(state))}" data-status="${state}">${label}</span>`;
 }
 function statusWord({ state, label }) {
-  return html2`<span class="${markClass(state)}" title="${words2(state)}">${label}</span>`;
+  return html2`<span class="${mark(markKindOf(state))}" title="${words2(state)}">${label}</span>`;
 }
 var countOrder = ["passed", "failed", "inconclusive", "error", "blocked", "not_run"];
 function statusCounts({ counts }) {
   const shown2 = countOrder.filter((key2) => counts[key2]);
-  if (!shown2.length) return html2`<span class="muted">no outcomes yet</span>`;
-  return html2`<span class="counts"
+  if (!shown2.length) return html2`<span class="sc-muted">no outcomes yet</span>`;
+  return html2`<span class="sc-counts"
 		>${shown2.map(
-    (key2) => html2`<span class="${markClass(key2)}" title="${counts[key2]} ${words2(key2)}"
-					><span aria-hidden="true">${glyph(statusLook[key2][0])}</span> ${counts[key2]}<span class="sr-only">
-						${words2(key2)}</span
-					></span
+    (key2) => html2`<span class="${mark(markKindOf(key2))}" title="${counts[key2]} ${words2(key2)}"
+					>${counts[key2]}<span class="sc-sr"> ${words2(key2)}</span></span
 				>`
   )}</span
 	>`;
 }
-var wordTones = {
+var wordKinds = {
   testing: "run",
   running: "run",
   given: "run",
@@ -30106,9 +30085,9 @@ var wordTones = {
   blocks: "you",
   asks: "you",
   paused: "you",
-  approval: "you",
   uncertain: "you",
-  finding: "you triage",
+  approval: "approve",
+  finding: "triage",
   passed: "pass",
   answered: "pass",
   finished: "pass",
@@ -30118,18 +30097,27 @@ var wordTones = {
   invalid: "fail",
   high: "fail",
   denied: "fail",
-  critical: "crit"
+  critical: "crit",
+  question: "question",
+  gap: "question",
+  medium: "question",
+  not_started: "none",
+  not_tested: "none",
+  low: "none",
+  deferred: "stop",
+  rejected: "stop",
+  closed: "stop",
+  not_running: "stop"
 };
-function wordMark({ state, label, live = false, title: title2, attrs }) {
-  return html2`<span
-		class="sp-pill ${wordTones[state] ?? ""}"
-		${title2 === void 0 ? "" : html2`title="${title2}"`}
-		${attributes(attrs)}
-		>${live ? html2`<span class="dot" aria-hidden="true"></span>` : ""}${label}</span
+var plainWords = ["cost", "elapsed", "phase", "rule", "stored", "build_state", "built-in"];
+function wordMark({ state, label, title: title2, attrs }) {
+  const look2 = plainWords.includes(state) ? "sc-word" : mark(wordKinds[state] ?? "question");
+  return html2`<span class="${look2}" ${title2 === void 0 ? "" : html2`title="${title2}"`} ${attributes(attrs)}
+		>${label}</span
 	>`;
 }
-var statusStates = Object.keys(statusLook);
-var wordStates = Object.keys(wordTones);
+var statusStates = Object.keys(statusKinds);
+var wordStates = [...Object.keys(wordKinds), ...plainWords];
 
 // plugin/src/ui/permissions.ts
 var verbs = {
@@ -30281,7 +30269,7 @@ function hidden2(name2, value2) {
 }
 function rowOptions(context2, item, returnTo) {
   return html2`<div
-		class="sp-c-opts asks"
+		class="sc-c-opts asks"
 		aria-label="Options"
 		title="${plural(optionCount(item), "option")}. Open the request to see them."
 	>
@@ -30289,14 +30277,14 @@ function rowOptions(context2, item, returnTo) {
 			${hidden2("csrf", context2.csrf)}${hidden2("return", returnTo)}${hidden2("decision", "allow")}
 			${optionButton({ n: 1, label: "Allow once" })}
 		</form>
-		<span class="sp-c-more" aria-hidden="true">${glyph("\u2192")} more</span>
+		<span class="sc-c-more" aria-hidden="true">${glyph("\u2192")} more</span>
 	</div>`;
 }
 function askBadge() {
   return wordMark({ state: "asks", label: "Asks" });
 }
 function askingPill() {
-  return wordMark({ state: "asks", label: "Asks", live: true });
+  return wordMark({ state: "asks", label: "Asks" });
 }
 function optionOf(context2, item, from, choice2, n) {
   if (choice2.reveal)
@@ -30399,7 +30387,7 @@ function permissionHistory(store, explorationId, params, from) {
     count: all2.length,
     open: params.has("requests") || all2.some((item) => !item.decision),
     listRegion: true,
-    body: html2`<div class="sp-list" role="listbox" aria-label="Permission requests of ${explorationId}" data-list>
+    body: html2`<div class="sc-list" role="listbox" aria-label="Permission requests of ${explorationId}" data-list>
 				${rows3}
 			</div>
 			${last > 1 ? html2`<nav class="pager" aria-label="Pages of permission requests">
@@ -30411,7 +30399,7 @@ function permissionHistory(store, explorationId, params, from) {
 }
 function decisionPill(item) {
   const kind = item.decision.kind;
-  const look = {
+  const look2 = {
     allow: ["Allowed", "allowed"],
     "allow-kind": ["Allowed", "allowed"],
     "allow-tool": ["Allowed", "allowed"],
@@ -30421,7 +30409,7 @@ function decisionPill(item) {
     stop: ["Stopped", "denied"],
     closed: ["Closed", "closed"]
   };
-  const [label, state] = look[kind];
+  const [label, state] = look2[kind];
   return wordMark({ state, label });
 }
 
@@ -31035,9 +31023,9 @@ function failureText(request3) {
     const authentication = request3.hint === piAuthenticationHint || authenticationFailed({ failure: ["operational_error", cause2] });
     return { cause: cause2, lines: [], detail: authentication ? "Check the provider login in Pi. Then ask again." : null };
   }
-  const [sentence2, ...lines2] = (request3.reason ?? "").split("\n");
+  const [sentence3, ...lines2] = (request3.reason ?? "").split("\n");
   const known = failureOf(request3.reason, request3.hint, []);
-  const cause = /No (?:claude|pi) executable|Host authentication/.test(request3.reason ?? "") || request3.hint ? `${known.cause} ${known.next}` : sentence2 || "The message failed. No reason is recorded.";
+  const cause = /No (?:claude|pi) executable|Host authentication/.test(request3.reason ?? "") || request3.hint ? `${known.cause} ${known.next}` : sentence3 || "The message failed. No reason is recorded.";
   return { cause, lines: lines2, detail: request3.hint ? known.detail : null };
 }
 function requestModelLabel(request3) {
@@ -31046,64 +31034,63 @@ function requestModelLabel(request3) {
 
 // plugin/src/ui/components/board.ts
 var cellLook = {
-  failed: ["\u2717", "k-fail"],
-  question: ["?", "k-q"],
-  passed: ["\u2713", "k-pass"],
-  not_checked: ["", "k-none"],
-  running: ["\u25CF", "k-run"]
+  failed: ["\xD7", "k-fail", "failed"],
+  question: ["?", "k-q", "needs you"],
+  passed: ["", "k-pass", "passed"],
+  not_checked: ["", "k-none", "not run"],
+  running: ["", "k-run", "running"]
 };
-function boardCell({ state, label, build, buildLabel: buildLabel2 }) {
-  const [symbol, look] = cellLook[state];
-  if (label === void 0) return html2`<span class="sp-mk ${look}">${glyph(symbol)}</span>`;
+function boardCell({ state, label, build, buildLabel: buildLabel2, decorative = false }) {
+  const [symbol, look2, name2] = cellLook[state];
+  if (decorative) return html2`<span class="sc-cell ${look2}" aria-hidden="true">${symbol}</span>`;
+  if (label === void 0) return html2`<span class="sc-cell ${look2}" role="img" aria-label="${name2}">${symbol}</span>`;
   return html2`<span
-		class="sp-mk ${look}"
+		class="sc-cell ${look2}"
 		role="img"
 		aria-label="${label}"
 		title="${label}"
 		data-mark="${build}"
 		data-b="${buildLabel2}"
-		>${glyph(symbol)}</span
+		>${symbol}</span
 	>`;
 }
-var resultLook = { pass: "k-pass", fail: "k-fail", warn: "k-q", unsure: "k-q", acc: "k-run" };
+var resultCells = {
+  pass: "passed",
+  fail: "failed",
+  crit: "failed",
+  you: "question",
+  triage: "question",
+  run: "running"
+};
 function resultCell({ result }) {
-  const [symbol, tone2] = statusLookOf(result);
-  return html2`<span
-		class="sp-mk ${resultLook[tone2] ?? "k-none"}"
-		role="img"
-		aria-label="${result ? words2(result) : "no result yet"}"
-		>${glyph(symbol)}</span
+  const [symbol, look2] = cellLook[resultCells[markKindOf(result)] ?? "not_checked"];
+  return html2`<span class="sc-cell ${look2}" role="img" aria-label="${result ? words2(result) : "no result yet"}"
+		>${symbol}</span
 	>`;
 }
-function board({ builds, columns: columns2 }) {
+function board({ builds, label }) {
   if (!builds.length) return html2`<span></span>`;
-  return html2`<div
-		class="sp-mm"
-		data-builds="${builds.length}"
-		role="img"
-		aria-label="Rules against the last ${plural(builds.length, "build")}"
-	>
-		<span></span>${builds.map((build) => html2`<span class="sp-mm-b" title="${build.build}">${build.label}</span>`)}
-		${columns2.map(
-    (column2) => html2`<span class="sp-mm-l" title="${column2.title}">${column2.label}</span>${column2.cells.map(
-      (state) => boardCell({ state })
-    )}`
+  return html2`<div class="sc-plan-board" role="img" aria-label="${label}">
+		${builds.map(
+    (build) => html2`<div title="${build.build}">
+					<span>${build.label}</span>${build.cells.map((state) => boardCell({ state }))}
+				</div>`
   )}
 	</div>`;
 }
-var boardKey = html2`<ul class="sp-legend" aria-label="Board key">
-	<li><span class="sp-mk k-pass" aria-hidden="true"></span>passed</li>
-	<li><span class="sp-mk k-fail" aria-hidden="true">${glyph("\u2717")}</span>failed</li>
-	<li><span class="sp-mk k-run" aria-hidden="true"></span>running</li>
-	<li><span class="sp-mk k-q" aria-hidden="true">?</span>needs you</li>
-	<li><span class="sp-mk k-none" aria-hidden="true"></span>not run</li>
+var boardKey = html2`<ul class="sc-legend" aria-label="Board key">
+	<li>${boardCell({ state: "passed", decorative: true })}passed</li>
+	<li>${boardCell({ state: "failed", decorative: true })}failed</li>
+	<li>${boardCell({ state: "running", decorative: true })}running</li>
+	<li>${boardCell({ state: "question", decorative: true })}needs you</li>
+	<li>${boardCell({ state: "not_checked", decorative: true })}not run</li>
 </ul>`;
 
 // plugin/src/ui/components/nav-rail.ts
 function railRow(row2) {
   return html2`<a
 		${row2.hidden ? html2`hidden` : ""}
-		class="sp-nrow${row2.kind ? ` ${row2.kind}` : ""}${row2.current ? " on" : ""}"
+		class="sc-rail-row${row2.kind ? ` is-${row2.kind}` : ""}"
 		role="treeitem"
 		aria-level="${row2.level ?? 1}"
 		aria-selected="${row2.current ? "true" : "false"}"
@@ -31114,8 +31101,8 @@ function railRow(row2) {
 		data-nav
 		data-target="${row2.target}"
 		data-label="${row2.text}"
-		><span class="sp-nid">${row2.id}</span
-		><span class="sp-ntx ell" title="${row2.text}">${row2.text}</span>${row2.end}</a
+		><span class="sc-rail-id">${row2.id}</span
+		><span class="sc-rail-text" title="${row2.text}">${row2.text}</span>${row2.end}</a
 	>`;
 }
 function railCount({
@@ -31123,36 +31110,43 @@ function railCount({
   waitsOnYou = false,
   title: title2
 }) {
-  return title2 === void 0 ? html2`<span class="sp-ncount${waitsOnYou ? " att" : ""}">${value2}</span>` : html2`<span class="sp-ncount${waitsOnYou ? " att" : ""}" title="${title2}">${value2}</span>`;
+  return title2 === void 0 ? html2`<b class="sc-rail-count${waitsOnYou ? " is-hot" : ""}">${value2}</b>` : html2`<b class="sc-rail-count${waitsOnYou ? " is-hot" : ""}" title="${title2}">${value2}</b>`;
 }
 function railCells({ cells: cells2 }) {
-  return html2`<span class="sp-nmarks">${cells2.map(boardCell)}</span>`;
+  return html2`<span class="sc-rail-cells">${cells2.map(boardCell)}</span>`;
 }
-var railSeparator = html2`<div class="sp-sep" aria-hidden="true"></div>`;
 function railBuilds({ builds }) {
-  return html2`<div class="sp-nhead" aria-hidden="true">
-		<span></span><span>Rule</span
-		><span class="sp-nmarks"
+  return html2`<div class="sc-rail-board-h" aria-hidden="true">
+		<span>Rule</span
+		><span class="sc-rail-cells"
 			>${builds.map(
-    (item, index2) => html2`<span title="${item.build}"
-						>${key({ name: index2 + 1 })}<span class="sp-blab">${item.label}</span></span
+    (item, index2) => html2`<span class="sc-board-col" title="${item.build}"
+						>${key({ name: index2 + 1 })}${item.label}</span
 					>`
   )}</span
 		>
 	</div>`;
 }
-function navRail({ planId, builds, pinned: pinned2, rows: rows3 }) {
+function navRail({ planId, buildCount, pinned: pinned2, board: board2, builds, links }) {
   return html2`<nav
-		class="sp-nav"
+		class="sc-rail"
 		aria-label="Plan ${planId}"
 		data-navigator
-		data-builds="${builds}"
+		data-builds="${buildCount}"
 		data-region="navigator"
 	>
-		<h2 class="sr-only">Plan ${planId}</h2>
-		<div class="sp-nlist" role="tree" aria-label="Views of ${planId}">
-			<div class="sp-npin" role="none">${pinned2} ${railSeparator}</div>
-			${rows3}
+		<h2 class="sc-sr">Plan ${planId}</h2>
+		<div class="sc-rail-tree" role="tree" aria-label="Views of ${planId}">
+			<div class="sc-rail-nav" role="none">${pinned2}</div>
+			<div class="sc-rail-sec" role="none">
+				<p class="sc-rail-h" aria-hidden="true">Board</p>
+				${board2}
+			</div>
+			${buildCount ? html2`<div class="sc-rail-sec" role="none">
+							<p class="sc-rail-h" aria-hidden="true">Builds</p>
+							${builds}
+						</div>` : ""}
+			<div class="sc-rail-nav" role="none">${links}</div>
 		</div>
 	</nav>`;
 }
@@ -31373,7 +31367,7 @@ var tags = {
 };
 function itemTag(item) {
   if (item.permission) return askBadge();
-  if (item.blocking) return wordMark({ state: "blocks", label: "Blocks", live: true });
+  if (item.blocking) return wordMark({ state: "blocks", label: "Blocks" });
   const state = item.kind === "defect" ? item.severity ?? "low" : item.kind;
   return tags[state] ? wordMark({ state, label: tags[state] }) : wordMark({ state: "low", label: tags.low });
 }
@@ -31449,7 +31443,7 @@ function optionsOf(context2, review, item) {
   return [];
 }
 function extraOf(context2, review, item) {
-  const form = (field2, label, name2, fields, url = action(item)) => html2`<div class="sp-c-extra" data-extra="${field2}" hidden>
+  const form = (field2, label, name2, fields, url = action(item)) => html2`<div class="sc-c-extra" data-extra="${field2}" hidden>
 			<form method="post" action="${url}" class="sp-form" data-field-form>
 				${hiddenFields(context2, item, fields)} ${item.kind === "gap" ? html2`<div data-stale-slot></div>` : ""}
 				<label for="${field2}-${item.key}">${label}</label>
@@ -31494,6 +31488,7 @@ function itemRow(context2, review, item, id2, view) {
     href: opened,
     label: item.id,
     settled: dim,
+    blocking: item.blocking,
     attrs: {
       "data-builds": JSON.stringify(item.builds),
       "data-needs": item.needs,
@@ -31642,7 +31637,7 @@ function navigator(review, current2, exploration2 = null, chat = { href: reviewH
   });
   return navRail({
     planId,
-    builds: builds.length,
+    buildCount: builds.length,
     pinned: html2`${review.running ? testersRow : ""}
 		${navRow(
       review,
@@ -31658,7 +31653,7 @@ function navigator(review, current2, exploration2 = null, chat = { href: reviewH
     )}
 		${navRow(review, active, "all", href("all"), "", "All items", count(review.items.length))}
 		${navRow(review, active, "chats", chat.href, "", "Plan chats", html2``, { look: "link" })}`,
-    rows: html2`${railBuilds({ builds: builds.map((item) => ({ build: item.build, label: buildLabel(review, item.build) })) })}
+    board: html2`${railBuilds({ builds: builds.map((item) => ({ build: item.build, label: buildLabel(review, item.build) })) })}
 		${ruleRows}
 		${navRow(
       review,
@@ -31674,9 +31669,8 @@ function navigator(review, current2, exploration2 = null, chat = { href: reviewH
       {
         look: "rule"
       }
-    )}
-		${railSeparator}
-		${review.map.builds.map(
+    )}`,
+    builds: html2`${review.map.builds.map(
       (item) => navRow(
         review,
         active,
@@ -31686,11 +31680,10 @@ function navigator(review, current2, exploration2 = null, chat = { href: reviewH
         item.build,
         count(itemsOf(review, `build:${item.build}`).length)
       )
-    )}
-		${review.map.builds.length ? railSeparator : ""}
-		${navRow(review, active, "rules", href("rules"), "", "Rules of the plan", count(review.map.rows.length - 1))}
+    )}`,
+    links: html2`${navRow(review, active, "rules", href("rules"), "", "Rules of the plan", count(review.map.rows.length - 1))}
 		${review.running ? "" : testersRow}
-		${navRow(review, active, "plan", review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, "", review.revision ? `Plan @${review.revision}` : "Plan request", html2`<span></span>`, { look: "link" })}`
+		${navRow(review, active, "plan", review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, "", review.revision ? `Plan @${review.revision}` : "Plan request", html2``, { look: "link" })}`
   });
 }
 function viewTitle(review, view) {
@@ -32376,7 +32369,7 @@ var spec = {
   filters: [],
   none: ["No run or chat message yet.", "Start a test with Test build\u2026 in a plan, or press / and ask Checkmate."]
 };
-function sentence(run2) {
+function sentence2(run2) {
   return run2.outcome;
 }
 function meta(run2, now) {
@@ -32406,7 +32399,7 @@ function options2(run2) {
 }
 function row(run2, n, now) {
   const items = options2(run2);
-  const title2 = `${run2.planId} \xB7 ${run2.follow ? "Follow-up" : "Test"} ${run2.build}${run2.level && !run2.follow ? ` \xB7 ${run2.level}` : ""}${sentence(run2) ? ` \xB7 ${sentence(run2)}` : ""}`;
+  const title2 = `${run2.planId} \xB7 ${run2.follow ? "Follow-up" : "Test"} ${run2.build}${run2.level && !run2.follow ? ` \xB7 ${run2.level}` : ""}${sentence2(run2) ? ` \xB7 ${sentence2(run2)}` : ""}`;
   const label = run2.follow ? `${run2.explorationId} follow-up` : run2.explorationId;
   return listRow({
     id: `run-${n}`,
@@ -32496,7 +32489,7 @@ function activityPage(store, context2, params, defaults) {
 				<p class="list-count" data-list-count role="status">
 					${total ? `Showing ${first}\u2013${last} of ${plural(total, "entry", "entries")}` : ""}
 				</p>
-				${total ? html2`<div class="sp-list activity" role="list" aria-label="Runs and chat messages" data-list>
+				${total ? html2`<div class="sc-list activity" role="list" aria-label="Runs and chat messages" data-list>
 									${group("Running now", running3)}${group("Earlier", earlier)}
 								</div>
 								${pager(spec, shown2, total)}` : emptyNotice({ what: spec.none[0], next: spec.none[1] })}
@@ -32507,29 +32500,35 @@ function activityPage(store, context2, params, defaults) {
 
 // plugin/src/ui/components/drawer.ts
 function closeButton({ href }) {
-  return button({ label: "Close", href, keyName: "Esc", attrs: { "data-close": true } });
+  return button({ label: "Close", href, keyName: "Esc", quiet: true, attrs: { "data-close": true } });
 }
 function drawer({ back, key: key2, path, slot, head, body }) {
   return html2`<aside
-		class="sp-drawer"
+		class="sc-drawer"
 		aria-labelledby="record-title"
 		data-drawer
 		data-back="${back}"
 		data-region="record"
 		data-key="${key2}"
 	>
-		<div class="sp-dh">
-			<p class="sp-path">${path}</p>
+		<div class="sc-drawer-head">
+			<p class="sc-crumb">${path}</p>
 			${closeButton({ href: back })}
 		</div>
-		<div class="sp-db">${slot} ${head} ${body}</div>
+		<div class="sc-drawer-body">${slot} ${head} ${body}</div>
 	</aside>`;
 }
-function drawerHead({ label, tags: tags3, title: title2, titleText, options: options4 = [], onOwnPage = false }) {
-  const heading3 = onOwnPage ? titleText === void 0 ? html2`<h1 id="record-title" class="sp-ask-title">${title2}</h1>` : html2`<h1 id="record-title" class="sp-ask-title" title="${titleText}">${title2}</h1>` : html2`<h2 id="record-title">${title2}</h2>`;
-  return html2`<section class="sp-dhead" tabindex="-1" data-sub data-label="${label}">
-		<div class="sp-pills">${tags3}</div>
-		${heading3} ${options4.length ? html2`<div class="sp-dopts" aria-label="Options">${options4}</div>` : ""}
+function drawerHead({ label, tags: tags3, title: title2, titleText, facts: facts2 = "", options: options4 = [], onOwnPage = false }) {
+  const heading3 = onOwnPage ? html2`<h1
+				id="record-title"
+				class="sc-drawer-title"
+				${titleText === void 0 ? "" : html2`title="${titleText}"`}
+			>
+				${title2}
+			</h1>` : html2`<h2 id="record-title" class="sc-drawer-title">${title2}</h2>`;
+  return html2`<section class="sc-drawer-top" tabindex="-1" data-sub data-label="${label}">
+		<div class="sc-drawer-id">${tags3}</div>
+		${heading3} ${facts2} ${options4.length ? html2`<div class="sc-opts" aria-label="Options">${options4}</div>` : ""}
 	</section>`;
 }
 
@@ -37704,10 +37703,10 @@ function chatMessagePage(store, context2, request3) {
 			${drawerHead({
       label: "Message details",
       tags: html2`${stateLabel(request3)}
-					<span class="sp-c-id">${request3.harness === "pi" ? "Pi" : "Claude Code"}</span>
-					${model ? html2`<span class="sp-c-id">${model}</span>` : ""}
-					<span class="sp-c-id">${request3.asker}</span>
-					<span class="sp-c-id">${ago(request3.askedAt)}</span>`,
+					<span class="sc-c-id">${request3.harness === "pi" ? "Pi" : "Claude Code"}</span>
+					${model ? html2`<span class="sc-c-id">${model}</span>` : ""}
+					<span class="sc-c-id">${request3.asker}</span>
+					<span class="sc-c-id">${ago(request3.askedAt)}</span>`,
       title: "Message details",
       onOwnPage: true
     })}
@@ -38243,7 +38242,7 @@ function explorationBanners(explorations) {
   const running3 = explorations.filter((item) => item.running);
   const last = explorations.at(-1);
   return html2`${running3.map(
-    (item) => banner({
+    (item) => notice({
       kind: item.paused ? "warn" : "info",
       content: html2`<span data-key="running:${item.explorationId}"
 				>${item.paused ? html2`<strong>Exploration ${item.explorationId} is paused: ${item.paused}</strong> It waits on the oracle in the Claude Code session.` : html2`Exploration ${item.explorationId} is running.`}
@@ -38252,7 +38251,7 @@ function explorationBanners(explorations) {
 			>`
     })
   )}
-	${last && (last.state === "failed" || last.state === "stopped" || last.state === "interrupted") ? banner({
+	${last && (last.state === "failed" || last.state === "stopped" || last.state === "interrupted") ? notice({
     kind: "fail",
     content: html2`<span data-key="failed:${last.explorationId}"
 						>${endedLine(last)} ${dataLine("", last.data)}
@@ -38333,7 +38332,7 @@ function strayLines(live) {
 }
 function stateLine(store, live, run2) {
   if (live.stuck.length)
-    return banner({
+    return notice({
       kind: "fail",
       content: html2`<span data-key="stop-stuck"
 				><strong
@@ -38344,7 +38343,7 @@ function stateLine(store, live, run2) {
 			>`
     });
   if (live.stopping)
-    return banner({
+    return notice({
       kind: "info",
       content: html2`<span data-key="stopping"
 				><strong>Stopping ${live.explorationId}…</strong> The testers end now. This page shows the result when
@@ -38352,27 +38351,27 @@ function stateLine(store, live, run2) {
 			>`
     });
   if (live.running && live.paused)
-    return banner({
+    return notice({
       kind: "warn",
       content: html2`<span data-key="paused"
 				><strong>Paused: ${live.paused}</strong> It waits for you in the Claude Code session.</span
 			>`
     });
   if (live.running)
-    return banner({
+    return notice({
       kind: "info",
       content: html2`Exploration ${live.explorationId} is running. Phase: ${run2.phase ?? live.phase}. This page
 			updates by itself.`
     });
   if (live.state === "failed")
-    return banner({ kind: "fail", content: html2`<span data-key="run-ended">${failedLine(run2, live)}</span>` });
+    return notice({ kind: "fail", content: html2`<span data-key="run-ended">${failedLine(run2, live)}</span>` });
   if (live.state === "stopped")
-    return banner({
+    return notice({
       kind: "fail",
       content: html2`<span data-key="run-ended">${stoppedLine(store, live)}.${workNote(live)}</span>`
     });
   if (live.state === "interrupted")
-    return banner({
+    return notice({
       kind: "fail",
       content: html2`<span data-key="run-ended"
 				><strong>The run was interrupted: the supervisor stopped before the end.</strong>${workNote(live)}
@@ -38383,7 +38382,7 @@ function stateLine(store, live, run2) {
 			>`
     });
   if (live.follow === "failed" || live.follow === "stopped" || live.follow === "interrupted")
-    return banner({
+    return notice({
       kind: "fail",
       content: html2`<span data-key="follow-failed"
 				><strong
@@ -38394,7 +38393,7 @@ function stateLine(store, live, run2) {
 			>`
     });
   if (live.state === "open")
-    return banner({
+    return notice({
       kind: "info",
       content: html2`Exploration ${live.explorationId} is open. Record its sessions, then run
 				<code>checkmate explore finish ${live.explorationId}</code>.`
@@ -38408,7 +38407,7 @@ function testerState(live, item) {
   if (live.running && live.paused && (item.state === "running" || item.state === "given"))
     return wordMark({ state: "paused", label: "Paused" });
   if (!item.state) return wordMark({ state: "not_started", label: "Not started" });
-  const look = {
+  const look2 = {
     given: "given",
     running: "running",
     ended: "finished",
@@ -38428,9 +38427,8 @@ function testerState(live, item) {
     stopped: "Stopped"
   };
   return wordMark({
-    state: look[item.state] ?? "not_running",
-    label: label[item.state] ?? item.state,
-    live: item.state === "running"
+    state: look2[item.state] ?? "not_running",
+    label: label[item.state] ?? item.state
   });
 }
 function testerLine(item) {
@@ -38520,7 +38518,7 @@ function explorationList(context2, live, others, asking) {
       `session-${index2}`
     )
   );
-  return html2`<div class="sp-list" role="listbox" aria-label="Testers and phases of ${live.explorationId}" data-list>
+  return html2`<div class="sc-list" role="listbox" aria-label="Testers and phases of ${live.explorationId}" data-list>
 		${groupHeader({ label: live.running ? "Testers now" : "Testers", count: explorers.length })}
 		${explorers.length ? explorers : emptyLine({ text: "No tester has started yet." })}
 		${groupHeader({ label: "After the testers", count: phases2.length })} ${phases2}
@@ -38721,7 +38719,6 @@ function phaseStrip(run2) {
     (phase) => phase === run2.phase ? wordMark({
       state: "running",
       label: phase,
-      live: true,
       attrs: { role: "listitem", "aria-current": "step", "data-phase": phase }
     }) : wordMark({ state: "phase", label: phase, attrs: { role: "listitem", "data-phase": phase } })
   )}
@@ -38835,7 +38832,7 @@ function explorationPage(store, context2, explorationId, params = new URLSearchP
 			</div>
 			<div data-region="exploration-banner">
 				${stateLine(store, live, run2)}${strayLines(live)}${stepAsks(open)}${rulesLines(permissionRules(store, explorationId))}
-				${live.warnings.map((warning) => banner({ kind: "warn", content: warning }))}
+				${live.warnings.map((warning) => notice({ kind: "warn", content: warning }))}
 			</div>
 			${runActions(
       context2,
@@ -39045,7 +39042,7 @@ function choice(name2, label, options4, checked) {
 						name="${name2}"
 						value="${value2}"
 						${value2 === checked ? html2`checked` : ""}
-					/><kbd>${index2 + 1}</kbd><span>${text2}</span></label
+					/>${key({ name: index2 + 1 })}<span>${text2}</span></label
 				>`
   )}
 	</fieldset>`;
@@ -39066,7 +39063,7 @@ function instanceChoice2(target, shown2) {
 						name="instance"
 						value="${instance.id}"
 						${instance.local ? "" : html2`data-nonlocal data-address="${instance.address ?? ""}"`}
-					/><kbd>${index2 + 1}</kbd><span>${instance.id}</span></label
+					/>${key({ name: index2 + 1 })}<span>${instance.id}</span></label
 				>`
   )}
 	</fieldset>`;
@@ -39308,8 +39305,8 @@ function permissionPage(store, context2, askerId, requestId2, view, refusal) {
 			${drawerHead({
       label: name2,
       tags: html2`${item.decision ? statusMark({ state: item.decision.kind === "closed" ? "stopped" : "completed", label: item.decision.kind === "closed" ? "Closed" : "Answered" }) : askBadge()}
-					<span class="sp-c-id">${name2}</span>
-					<span class="sp-c-id">${item.decision ? ago(item.at) : waitsFor(item)}</span>`,
+					<span class="sc-c-id">${name2}</span>
+					<span class="sc-c-id">${item.decision ? ago(item.at) : waitsFor(item)}</span>`,
       title: title2,
       titleText: title2,
       onOwnPage: true
@@ -39327,7 +39324,7 @@ function permissionPage(store, context2, askerId, requestId2, view, refusal) {
 							<ol class="sp-optlist asks">
 								${choices2.map((choice2, index2) => html2`<li>${optionOf(context2, item, from, choice2, index2 + 1)}<span class="help">${choice2.text}</span></li>`)}
 							</ol>
-							<div class="sp-c-extra" data-extra="deny" ${refusal?.field ? "" : html2`hidden`}>
+							<div class="sc-c-extra" data-extra="deny" ${refusal?.field ? "" : html2`hidden`}>
 								<form
 									method="post"
 									action="${recordPath(item)}"
@@ -39602,7 +39599,7 @@ function editPage(store, context2, planId, revision2, state = null) {
       section: "home",
       subjects: [`plan:${planId}`],
       body: html2`${heading({ title: title2, sub: detail.plan.objective })}
-			${banner({
+			${notice({
         kind: "info",
         content: html2`Only the latest revision can change.
 					<a href="/plans/${planId}@${detail.latestRevision}/edit"
@@ -39615,13 +39612,13 @@ function editPage(store, context2, planId, revision2, state = null) {
   const next = revision2 + 1;
   const save2 = frozen ? `Save as ${planId}@${next}` : "Save changes";
   const why = frozen === "run" ? `A run uses ${subject}.` : frozen === "promotion" ? `${subject} was promoted.` : `${subject} is approved.`;
-  const notice = frozen ? banner({
+  const status = frozen ? notice({
     kind: "warn",
     content: html2`<strong
 						>${why} Saving creates revision ${next}${needsApproval ? ", which needs approval" : ""}.</strong
 					>
 					${subject} stays as it is.`
-  }) : banner({
+  }) : notice({
     kind: "info",
     content: html2`<strong>Edits change this revision in place.</strong> ${subject} is not approved and no
 					run uses it.`
@@ -39638,7 +39635,7 @@ function editPage(store, context2, planId, revision2, state = null) {
     removed: [],
     rationale: ""
   };
-  const messages2 = html2`${shown2.stale ? banner({ kind: "warn", content: shown2.stale }) : ""}
+  const messages2 = html2`${shown2.stale ? notice({ kind: "warn", content: shown2.stale }) : ""}
 	${shown2.error ? html2`<p class="form-error" role="alert" data-field="${shown2.field ?? ""}">${shown2.error}</p>` : ""}`;
   const buttons = (mode) => html2`<div class="btns">
 				${formButton({ label: save2, emphasis: "primary" })}
@@ -39657,7 +39654,7 @@ function editPage(store, context2, planId, revision2, state = null) {
   })}
 		${shown2.unsaved === null ? "" : unsavedPanel(shown2.unsaved)}
 		<div data-region="edit" data-stale-message="${planId} changed. Review it before you save.">
-			<div data-stale-slot>${notice} ${messages2}</div>
+			<div data-stale-slot>${status} ${messages2}</div>
 			<form method="post" action="${path}" class="edit-form" data-edit-form>
 				${hidden4(context2, detail.sha256, "form", shown2.orig)}
 				<section aria-labelledby="edit-requirements">
@@ -39715,6 +39712,18 @@ function editPage(store, context2, planId, revision2, state = null) {
   };
 }
 
+// plugin/src/ui/components/banner.ts
+function blockingBanner({ count: count2, href }) {
+  return html2`<div class="sc-banner">
+		<b class="sc-banner-n">${count2}</b>
+		<div class="sc-banner-t">
+			<b>${count2 === 1 ? "question blocks" : "questions block"} testing</b>
+			<span>Testers wait on these answers. Everything else can wait.</span>
+		</div>
+		<a class="sc-btn is-you is-lg" href="${href}">Answer the first</a>
+	</div>`;
+}
+
 // plugin/src/ui/components/bulk-bar.ts
 var actions = ["accept", "right", "defer", "handoff", "copy", "allow", "deny"];
 function bulkBar({ planId, csrf }) {
@@ -39752,7 +39761,7 @@ function facts({ rows: rows3 }) {
 function recordFacts({ rows: rows3 }) {
   const shown2 = rows3.filter(([, value2]) => value2);
   if (!shown2.length) return "";
-  return html2`<dl class="sp-facts">
+  return html2`<dl class="sc-facts">
 		${shown2.map(
     ([label, value2]) => html2`<dt>${label}</dt>
 					<dd>${value2}</dd>`
@@ -39783,12 +39792,19 @@ function hiddenFields2(context2, item, back, fields) {
 function textForm(context2, item, back, spec2) {
   return html2`<form method="post" action="${spec2.action}" class="sp-form" id="${spec2.id}" data-field-form>
 		${hiddenFields2(context2, item, back, spec2.fields)}
-		<label for="${spec2.id}-text">${spec2.label}</label>
-		<textarea id="${spec2.id}-text" name="${spec2.name}" rows="3" required data-missing="${spec2.missing}">
+		<label class="sc-label" for="${spec2.id}-text">${spec2.label}</label>
+		<textarea
+			class="sc-textarea"
+			id="${spec2.id}-text"
+			name="${spec2.name}"
+			rows="3"
+			required
+			data-missing="${spec2.missing}"
+		>
 ${spec2.value ?? ""}</textarea>
 		${spec2.more ?? ""}
 		<div class="btns">
-			${button({ label: spec2.send, emphasis: "primary" })}
+			${button({ label: spec2.send, emphasis: item.blocking ? "unblocks" : "primary", mainAction: true })}
 			<span class="small muted">Enter sends. Shift+Enter starts a new line.</span>
 		</div>
 	</form>`;
@@ -39856,9 +39872,29 @@ function claimBody(context2, store, review, item, base2, back, state) {
     fields: [["claim", item.id]]
   }) : ""}`;
 }
-function questionBody(context2, review, item, back, state) {
+function questionFacts(review, item) {
   const question = item.question;
   const members = question?.members ?? [];
+  return recordFacts({
+    rows: [
+      ["Rule", item.kind === "gap" ? null : ruleText2(review, item.rule)],
+      ["Topic", item.topic],
+      ["Asked on", question?.builds.map((build) => `${buildLabel(review, build)} ${build}`).join(", ") ?? null],
+      [
+        "Asked by",
+        members.length > 1 ? `${plural(members.length, "question")}: ${members.join(", ")}. One answer answers all of them.` : members[0] ?? null
+      ],
+      ["Blocks testing", item.blocking ? "Yes" : null],
+      [
+        "From",
+        item.waiting?.runId ? html2`run <a href="/runs/${item.waiting.runId}">${item.waiting.runId}</a>` : null
+      ],
+      ["Answer", question?.answer ?? null]
+    ]
+  });
+}
+function questionBody(context2, review, item, back, state) {
+  const question = item.question;
   const open = item.kind === "question" || item.kind === "gap" || item.kind === "deferred";
   const more = html2`<details class="sp-more">
 		<summary>Source and reason</summary>
@@ -39875,23 +39911,6 @@ function questionBody(context2, review, item, back, state) {
 		</div>
 	</details>`;
   return html2`${question?.actual ? html2`<p class="sp-today"><span class="sp-lbl">What the build does</span>${question.actual}</p>` : ""}
-	${recordFacts({
-    rows: [
-      ["Rule", item.kind === "gap" ? null : ruleText2(review, item.rule)],
-      ["Topic", item.topic],
-      ["Asked on", question?.builds.map((build) => `${buildLabel(review, build)} ${build}`).join(", ") ?? null],
-      [
-        "Asked by",
-        members.length > 1 ? `${plural(members.length, "question")}: ${members.join(", ")}. One answer answers all of them.` : members[0] ?? null
-      ],
-      ["Blocks testing", item.blocking ? "Yes" : null],
-      [
-        "From",
-        item.waiting?.runId ? html2`run <a href="/runs/${item.waiting.runId}">${item.waiting.runId}</a>` : null
-      ],
-      ["Answer", question?.answer ?? null]
-    ]
-  })}
 	${open ? textForm(context2, item, back, {
     id: "answer",
     action: questionAction(review, item),
@@ -39930,16 +39949,17 @@ function recordDrawer(store, context2, review, item, view, refusal) {
     key: `record:${item.key}`,
     path: `${review.planId} \u203A ${view === "needs" ? "Needs you" : view.replace(/^[a-z]+:/, "")} \u203A ${item.id}`,
     slot: state ? html2`<div data-stale-slot>
-					${state.stale ? banner({ kind: "warn", content: state.stale }) : ""}${state.error ? html2`<p class="form-error" role="alert">${state.error}</p>` : ""}${keptText(state)}
+					${state.stale ? notice({ kind: "warn", content: state.stale }) : ""}${state.error ? html2`<p class="form-error" role="alert">${state.error}</p>` : ""}${keptText(state)}
 				</div>` : html2`<div data-stale-slot></div>`,
     head: drawerHead({
       label: item.id,
       tags: html2`${itemTag(item)}
 				${item.detail && item.kind !== "rejected" ? wordMark({ state: "build_state", label: buildStateWords[latestClaimBuild(item.detail)?.state ?? ""] ?? "" }) : ""}
 				${item.claim?.handoff ? wordMark({ state: "handed_over", label: "Handed over" }) : ""}
-				<span class="sp-c-id">${item.id}</span>
-				${when ? html2`<span class="sp-c-id">${time(when)}</span>` : ""}`,
+				<span class="sc-c-id">${item.id}</span>
+				${when ? html2`<span class="sc-c-id">${time(when)}</span>` : ""}`,
       title: item.title,
+      facts: item.claim || item.kind === "approval" ? "" : questionFacts(review, item),
       options: options4
     }),
     body
@@ -40034,7 +40054,7 @@ function ruleGroups(review, view, items) {
 function listOf(context2, review, view, groups, label) {
   if (!groups.length) return emptyLine({ text: emptyText(view) });
   let n = 0;
-  return html2`<div class="sp-list" role="list" aria-label="${label}" data-list>
+  return html2`<div class="sc-list" role="list" aria-label="${label}" data-list>
 		${groups.map(
     (group) => html2`${groupHeader({ label: group.label, count: group.items.length })}
 				${group.items.map((item) => itemRow(context2, review, item, `row-${slug(view)}-${n++}`, view))}`
@@ -40170,7 +40190,7 @@ function rulesList(context2, review) {
   const rows3 = review.map.rows.filter((row2) => row2.rule.id !== outside);
   if (!rows3.length) return emptyLine({ text: "This plan has no rules yet." });
   const editable = ruleEditable(review);
-  return html2`<div class="sp-list wide-title" role="list" aria-label="Rules of the plan" data-list>
+  return html2`<div class="sc-list wide-title" role="list" aria-label="Rules of the plan" data-list>
 		${groupHeader({ label: "Rules", count: rows3.length })}
 		${rows3.map(
     (row2, index2) => listRow({
@@ -40204,36 +40224,35 @@ function panel(context2, review, view, current2, cost) {
   const store = (view === "all" || view === "rules") && review.storable ? storeButton(review.planId, review.storable, view) : "";
   const tools = html2`${edit}${add}${own}${review.running ? "" : testButton(review.planId)}${review.answers ? actionButton("follow", `Test the answers (${review.answers.count})\u2026`) : ""}${store}`;
   return html2`<section
-		class="sp-panel"
+		class="sc-panel"
 		data-panel="${view}"
 		data-title="${title2}"
 		aria-labelledby="title-${slug(view)}"
 		${view === current2 ? "" : html2`hidden`}
 	>
-		<div class="sp-ch">
-			${crumbBar({
+		<header class="sc-h">
+			<div class="sc-h-text">
+				${crumbBar({
     crumbs: [
       [review.planId, `/plans/${review.planId}`],
       [review.target, null]
     ]
   })}
-			${view === current2 ? html2`<h1 id="title-${slug(view)}" data-view-title>${title2}</h1>` : html2`<h2 id="title-${slug(view)}" data-view-title>${title2}</h2>`}
-			${head.sub ? html2`<p class="sp-sub">${head.sub}</p>` : ""}
-			<div class="sp-pills">${head.pills}</div>
-			${cost === null ? "" : html2`<p
-							class="sp-sub"
-							title="Reported cost across this plan’s explorations, chats, and structured runs"
-						>
-							Total cost ${cost}
-						</p>`}
-			${canChoose(view) ? html2`<p class="sp-sub att" data-build-note></p>` : ""}
-		</div>
-		<div class="sp-tools" data-actions>${tools}</div>
+				${view === current2 ? html2`<h1 id="title-${slug(view)}" data-view-title>${title2}</h1>` : html2`<h2 id="title-${slug(view)}" data-view-title>${title2}</h2>`}
+				${head.sub ? html2`<p>${head.sub}</p>` : ""}
+				<div class="sc-h-marks">${head.pills}</div>
+				${cost === null ? "" : html2`<p title="Reported cost across this plan’s explorations, chats, and structured runs">
+								Total cost ${cost}
+							</p>`}
+				${canChoose(view) ? html2`<p class="sc-hot" data-build-note></p>` : ""}
+			</div>
+			<div class="sc-h-tools" data-actions>${tools}</div>
+		</header>
 		${view === "needs" ? blockingOf(review, groups, view) : ""}
 		${view === "rules" ? rulesList(context2, review) : listOf(context2, review, view, groups, title2)}
 	</section>`;
 }
-function reviewPage(store, context2, planId, params, refusal = null, notice = null) {
+function reviewPage(store, context2, planId, params, refusal = null, notice2 = null) {
   const review = reviewOf(store, planId, context2.harness);
   const views2 = viewsOf(review);
   const asked2 = params.get("view") ?? "needs";
@@ -40260,7 +40279,7 @@ function reviewPage(store, context2, planId, params, refusal = null, notice = nu
       "inbox",
       ...review.explorations.map((each) => `exploration:${each.explorationId}`)
     ],
-    status: refusal || notice ? 422 : 200,
+    status: refusal || notice2 ? 422 : 200,
     crumbs: [
       ["Plans", "/"],
       [planId, `/plans/${planId}`],
@@ -40270,9 +40289,9 @@ function reviewPage(store, context2, planId, params, refusal = null, notice = nu
     back: item ? reviewHref(planId, current2, `&at=${encodeURIComponent(item.key)}&focus=list`) : `/?at=${encodeURIComponent(`plan:${planId}`)}`,
     drawer: Boolean(item),
     nav: navigator(review, current2, null, { href: reviewHref(planId, current2, "&chat=list"), active: chatting }),
-    body: html2`${notice ? html2`<p class="form-error" role="alert" data-notice>${notice}</p>` : ""}${refusedAnswer}
+    body: html2`${notice2 ? html2`<p class="form-error" role="alert" data-notice>${notice2}</p>` : ""}${refusedAnswer}
 			<div
-				class="sp-review"
+				class="sc-review"
 				data-review
 				data-plan="${planId}"
 				data-qa-status="${JSON.stringify(review.qa)}"
@@ -40564,7 +40583,7 @@ function approvalPanel(store, context2, detail, state, extra = null) {
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short2(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
-				${latest.sha256 !== detail.sha256 ? banner({ kind: "warn", content: "This decision was for another digest." }) : ""}`,
+				${latest.sha256 !== detail.sha256 ? notice({ kind: "warn", content: "This decision was for another digest." }) : ""}`,
       `${subject} was ${latest.verdict} by ${latest.actor}. Review it before you decide.`
     );
   return verdictPanel(
@@ -40602,7 +40621,7 @@ function planSummaryLine(plan) {
 }
 function newerBanner(detail) {
   if (detail.revision === detail.latestRevision) return "";
-  return banner({
+  return notice({
     kind: "info",
     content: html2`Revision ${detail.latestRevision} is available.
 			<a href="/plans/${detail.planId}@${detail.latestRevision}"
@@ -40720,7 +40739,7 @@ function planPage(store, context2, planId, revision2, state = null, allHistory =
 			${downloadMenu({ label: "Export", base: `/plans/${subject}/export`, note: "The HTML export is print-ready. Open it and print to PDF." })}
 		</span>
 	</div>`;
-  const pending = detail.pendingDecisions.length ? banner({
+  const pending = detail.pendingDecisions.length ? notice({
     kind: "info",
     content: html2`${plural(detail.pendingDecisions.length, "decision")}
 				${detail.pendingDecisions.length === 1 ? "waits" : "wait"} for the next revision:
@@ -40890,7 +40909,7 @@ function gapPage(store, context2, planId, revision2, gapId, state = null) {
   const decision = decisionFor(plan, gap);
   const tests = plan.tests.filter((test) => gapsAffecting([gap], test).length > 0);
   const requirements = plan.requirements.filter((requirement) => gap.requirementIds.includes(requirement.id));
-  const runBanner = fromRun ? banner({
+  const runBanner = fromRun ? notice({
     kind: "info",
     content: html2`This gap comes from run
 					<a class="mono" href="/runs/${fromRun.runId}">${fromRun.runId}</a>. Your answer adds it to
@@ -40985,9 +41004,11 @@ function unadoptedRunGap(store, planId, gapId) {
 
 // plugin/src/ui/components/metric.ts
 function metrics({ items }) {
-  return html2`<div class="sp-nums">
+  return html2`<div class="sc-metrics">
 		${items.map(
-    ({ value: value2, name: name2, waitsOnYou }) => html2`<div><b class="${waitsOnYou ? "att" : value2 ? "" : "zero"}">${value2}</b><span>${name2}</span></div>`
+    ({ value: value2, name: name2, waitsOnYou }) => html2`<div class="sc-metric${waitsOnYou ? " is-hot" : value2 ? "" : " is-zero"}">
+					<span class="sc-metric-n">${value2}</span><span class="sc-metric-l">${name2}</span>
+				</div>`
   )}
 	</div>`;
 }
@@ -40995,7 +41016,7 @@ function metrics({ items }) {
 // plugin/src/ui/components/plan-tile.ts
 function planTile(tile3) {
   return html2`<div
-		class="sp-ct"
+		class="sc-plan"
 		role="listitem"
 		tabindex="-1"
 		id="plan-${tile3.index}"
@@ -41004,28 +41025,29 @@ function planTile(tile3) {
 		data-href="${tile3.href}"
 		data-label="${tile3.planId}"
 	>
-		<div class="sp-ct-main">
-			<div class="sp-ct-head">
-				<span class="sp-c-id">${tile3.planId}</span>
+		<div class="sc-plan-main">
+			<div class="sc-plan-top">
+				<span class="sc-plan-id">${tile3.planId}</span>
 				${tile3.status}
-				<span class="sp-ct-when ell" title="${tile3.whenTitle}">${tile3.when}</span>
+				<span class="sc-plan-when" title="${tile3.whenTitle}">${tile3.when}</span>
 			</div>
-			<h2 class="sp-ct-title ell" title="${tile3.objective}">${tile3.objective}</h2>
-			<p class="sp-ct-verdict"><b>${tile3.verdict.head}</b> ${tile3.verdict.tail}</p>
+			<h2 class="sc-plan-title" title="${tile3.objective}">${tile3.objective}</h2>
+			<p class="sc-plan-sum">${tile3.verdict.head} ${tile3.verdict.tail}</p>
 			${tile3.cost === null ? "" : html2`<p
-							class="sp-ct-cost"
+							class="sc-plan-sum"
 							title="Reported cost across this plan’s explorations, chats, and structured runs"
 						>
 							Total cost ${tile3.cost}
 						</p>`}
 		</div>
 		${tile3.board} ${tile3.metrics}
-		<div class="sp-ct-opts">
+		<div class="sc-plan-act">
 			${button({
     label: tile3.next.label,
     href: tile3.next.href,
     keyName: 1,
-    emphasis: tile3.next.unblocks ? "unblocks" : void 0,
+    emphasis: tile3.next.unblocks ? "unblocks" : "primary",
+    mainAction: true,
     attrs: { "data-option": true }
   })}
 		</div>
@@ -41033,7 +41055,7 @@ function planTile(tile3) {
 }
 function newChangeTile({ index: index2 }) {
   return html2`<div
-		class="sp-ct sp-ct-new"
+		class="sc-plan is-new"
 		role="listitem"
 		tabindex="-1"
 		id="plan-${index2}"
@@ -41042,12 +41064,19 @@ function newChangeTile({ index: index2 }) {
 		data-href="/new"
 		data-label="New change"
 	>
-		<div class="sp-ct-main">
-			<h2 class="sp-ct-title ell">New change</h2>
-			<p class="sp-ct-verdict">Give a ticket. Checkmate makes a plan and starts the first test.</p>
+		<div class="sc-plan-main">
+			<h2 class="sc-plan-title">New change</h2>
+			<p class="sc-plan-sum">Give a ticket. Checkmate makes a plan and starts the first test.</p>
 		</div>
-		<div class="sp-ct-opts">
-			${button({ label: "New change", href: "/new", keyName: 1, attrs: { "data-option": true } })}
+		<div class="sc-plan-act">
+			${button({
+    label: "New change",
+    href: "/new",
+    keyName: 1,
+    emphasis: "primary",
+    mainAction: true,
+    attrs: { "data-option": true }
+  })}
 		</div>
 	</div>`;
 }
@@ -41067,11 +41096,13 @@ function columns(review) {
 function planBoard(review) {
   const builds = review.map.builds.slice(-2);
   const from = review.map.builds.length - builds.length;
+  const cols = columns(review);
   return board({
-    builds: builds.map((build) => ({ build: build.build, label: buildLabel(review, build.build) })),
-    columns: columns(review).map((column2) => ({
-      ...column2,
-      cells: column2.cells.slice(from, from + builds.length)
+    label: `Rules against the last ${plural(builds.length, "build")}`,
+    builds: builds.map((build, index2) => ({
+      build: build.build,
+      label: buildLabel(review, build.build),
+      cells: cols.map((column2) => column2.cells[from + index2])
     }))
   });
 }
@@ -41103,7 +41134,7 @@ function tile(review, plan, runDefects, index2) {
   const latest = review.map.builds.at(-1);
   const last = review.explorations.at(-1);
   const ended = !review.running && last && ["stopped", "interrupted"].includes(last.state) ? last : null;
-  const status = review.running ? wordMark({ state: "testing", label: "Testing", live: true }) : ended ? statusMark({ state: ended.state }) : loop2 ? statusMark({ state: loop2.state }) : "";
+  const status = review.running ? wordMark({ state: "testing", label: "Testing" }) : ended ? statusMark({ state: ended.state }) : loop2 ? statusMark({ state: loop2.state }) : "";
   const when = review.running ? html2`${review.phase ?? words2(review.running.state)} ·
 				<span data-since="${review.running.startedAt}"
 					>${duration2(Date.now() - Date.parse(review.running.startedAt))}</span
@@ -41147,10 +41178,10 @@ function homePage(store) {
   const testing = reviews.filter((review) => review.running).length;
   const subtitle = html2`${plural(plans.length, "plan")} · ${testing} testing
 	now${blocking > 0 ? html2` ·
-					<span class="att"
-						>${plural(blocking, "question")} ${blocking === 1 ? "blocks" : "block"} testing</span
+					<b class="sc-hot"
+						>${plural(blocking, "question")} ${blocking === 1 ? "blocks" : "block"} testing</b
 					>` : ""}`;
-  const body = html2`<div class="sp-home" role="list" aria-label="Plans" data-list>
+  const body = html2`<div class="sc-plans" role="list" aria-label="Plans" data-list>
 		${listed.map(({ plan, review }, index2) => tile(review, plan, runDefects.get(plan.planId) ?? 0, index2))}${newChangeTile(
     { index: reviews.length }
   )}
@@ -41173,9 +41204,6 @@ function homePage(store) {
 
 // plugin/src/ui/components/banner.catalogue.ts
 var examples = [
-  ["banner warn", banner({ kind: "warn", content: "This decision was for another digest." })],
-  ["banner info", banner({ kind: "info", content: "The setup request is recorded." })],
-  ["banner fail", banner({ kind: "fail", content: "Checkmate cannot read the recipes." })],
   ["blockingBanner one", blockingBanner({ count: 1, href: "#" })],
   ["blockingBanner many", blockingBanner({ count: 3, href: "#" })]
 ];
@@ -41195,18 +41223,14 @@ var examples2 = [
   [
     "board",
     board({
+      label: "Rules against the last 2 builds",
       builds: [
-        { build: "build-1", label: "B1" },
-        { build: "build-2", label: "B2" }
-      ],
-      columns: [
-        { label: "R1", title: "Login works", cells: ["passed", "passed"] },
-        { label: "R2", title: "Checkout total", cells: ["failed", "question"] },
-        { label: "Out", title: "Outside the rules", cells: ["not_checked", "failed"] }
+        { build: "build-1", label: "B1", cells: ["passed", "failed", "not_checked"] },
+        { build: "build-2", label: "B2", cells: ["passed", "question", "failed"] }
       ]
     })
   ],
-  ["board without builds", board({ builds: [], columns: [] })],
+  ["board without builds", board({ builds: [], label: "No build" })],
   ["boardKey", boardKey]
 ];
 
@@ -41389,7 +41413,7 @@ var examples9 = [
 ];
 
 // plugin/src/ui/components/drawer.catalogue.ts
-var tags2 = html2`${wordMark({ state: "finding", label: "Finding" })} <span class="sp-c-id">k1/C2</span>`;
+var tags2 = html2`${wordMark({ state: "finding", label: "Finding" })} <span class="sc-c-id">k1/C2</span>`;
 var examples10 = [
   [
     "drawer with head and options",
@@ -41600,7 +41624,7 @@ var options3 = optionsBox([
   optionButton({ n: 2, label: "Different", attrs: { type: "button" } })
 ]);
 function list2(row2) {
-  return html2`<div class="sp-list" role="list" aria-label="Example">${row2}</div>`;
+  return html2`<div class="sc-list" role="list" aria-label="Example">${row2}</div>`;
 }
 var examples19 = [
   ["listRow plain", list2(listRow({ ...base, id: "catalogue-row-plain" }))],
@@ -41611,8 +41635,9 @@ var examples19 = [
       listRow({
         ...base,
         id: "catalogue-row-needs",
-        tag: wordMark({ state: "blocks", label: "Blocks", live: true }),
+        tag: wordMark({ state: "blocks", label: "Blocks" }),
         attrs: { "data-needs": true },
+        blocking: true,
         pickLabel: "k1/Q1"
       })
     )
@@ -41632,7 +41657,7 @@ var examples19 = [
   ["listRow with title link", list2(listRow({ ...base, id: "catalogue-row-link", titleHref: "#" }))],
   [
     "listRow in a listbox",
-    html2`<div class="sp-list" role="listbox" aria-label="Example">
+    html2`<div class="sc-list" role="listbox" aria-label="Example">
 			${listRow({ ...base, id: "catalogue-row-option", inListbox: true, tag: statusMark({ state: "running" }) })}
 		</div>`
   ],
@@ -41692,11 +41717,11 @@ var examples22 = [
     "navRail current, waits on you, area open, rule, link",
     navRail({
       planId: "checkout",
-      builds: 3,
+      buildCount: 3,
       pinned: html2`${railRow({ target: "needs", href: "#", id: "", text: "Needs you", end: railCount({ value: 2, waitsOnYou: true }), current: true, focusable: false })}
 			${railRow({ target: "all", href: "#", id: "", text: "All items", end: railCount({ value: 9 }), current: false, focusable: false })}
 			${railRow({ target: "chats", href: "#", id: "", text: "Plan chats", end: html2``, current: false, focusable: true, kind: "link" })}`,
-      rows: html2`${railBuilds({
+      board: html2`${railBuilds({
         builds: [
           { build: "build-1", label: "B1" },
           { build: "build-2", label: "B2" },
@@ -41705,15 +41730,22 @@ var examples22 = [
       })}
 			${railRow({ target: "area:Coupons", href: "#", id: glyph("\u25BE"), text: "Coupons", end: cells, current: false, focusable: false, kind: "area", expanded: true })}
 			${railRow({ target: "rule:R1", href: "#", id: "R1", text: "A coupon applies before tax", end: cells, current: false, focusable: false, kind: "rule", level: 2, area: "Coupons" })}
-			${railRow({ target: "rule:R2", href: "#", id: "R2", text: "Hidden rule of a closed area", end: cells, current: false, focusable: false, kind: "rule", level: 2, area: "Coupons", hidden: true })}
-			${railSeparator}
-			${railRow({ target: "testers", href: "#", id: "", text: "Testers now", end: railCount({ value: "4 min", waitsOnYou: true, title: "Paused" }), current: false, focusable: false, kind: "link" })}`
+			${railRow({ target: "rule:R2", href: "#", id: "R2", text: "Hidden rule of a closed area", end: cells, current: false, focusable: false, kind: "rule", level: 2, area: "Coupons", hidden: true })}`,
+      builds: html2`${railRow({ target: "build:build-3", href: "#", id: "B3", text: "build-3", end: railCount({ value: 4 }), current: false, focusable: false })}`,
+      links: html2`${railRow({ target: "testers", href: "#", id: "", text: "Testers now", end: railCount({ value: "4 min", waitsOnYou: true, title: "Paused" }), current: false, focusable: false, kind: "link" })}`
     })
   ]
 ];
 
-// plugin/src/ui/components/page-heading.catalogue.ts
+// plugin/src/ui/components/notice.catalogue.ts
 var examples23 = [
+  ["notice info", notice({ kind: "info", content: "The setup request is recorded." })],
+  ["notice warn", notice({ kind: "warn", content: "This decision was for another digest." })],
+  ["notice fail", notice({ kind: "fail", content: "Checkmate cannot read the recipes." })]
+];
+
+// plugin/src/ui/components/page-heading.catalogue.ts
+var examples24 = [
   ["heading title only", heading({ title: "Runs" })],
   [
     "heading with sub and extra",
@@ -41747,13 +41779,10 @@ var tile2 = {
   verdict: { head: "Build build-2: 2 open defects.", tail: "3 questions open, 1 blocks testing." },
   cost: "$0.42",
   board: board({
+    label: "Rules against the last 2 builds",
     builds: [
-      { build: "build-1", label: "B1" },
-      { build: "build-2", label: "B2" }
-    ],
-    columns: [
-      { label: "R1", title: "Coupon", cells: ["passed", "failed"] },
-      { label: "Out", title: "Outside the rules", cells: ["not_checked", "question"] }
+      { build: "build-1", label: "B1", cells: ["passed", "not_checked"] },
+      { build: "build-2", label: "B2", cells: ["failed", "question"] }
     ]
   }),
   metrics: metrics({
@@ -41768,7 +41797,7 @@ var tile2 = {
 function list3(content) {
   return html2`<div class="sp-home" role="list" aria-label="Example">${content}</div>`;
 }
-var examples24 = [
+var examples25 = [
   ["planTile blocked", list3(planTile(tile2))],
   [
     "planTile testing",
@@ -41777,7 +41806,7 @@ var examples24 = [
         ...tile2,
         index: 1,
         planId: "login",
-        status: wordMark({ state: "testing", label: "Testing", live: true }),
+        status: wordMark({ state: "testing", label: "Testing" }),
         cost: null,
         next: { label: "Watch the testers", href: "#", unblocks: false }
       })
@@ -41787,7 +41816,7 @@ var examples24 = [
 ];
 
 // plugin/src/ui/components/radio-group.catalogue.ts
-var examples25 = [
+var examples26 = [
   [
     "radioGroup",
     radioGroup({
@@ -41839,7 +41868,7 @@ var context = {
   testerRules: ""
 };
 var page = { title: "Catalogue", section: null, subjects: [], body: html2`` };
-var examples26 = [
+var examples27 = [
   ["statusBar quiet", statusBar({ context, page })],
   [
     "statusBar with work waiting",
@@ -41871,13 +41900,12 @@ var examples26 = [
 ];
 
 // plugin/src/ui/components/status-mark.catalogue.ts
-var examples27 = [
+var examples28 = [
   ...statusStates.map((state) => [`statusMark ${state}`, statusMark({ state })]),
   ["statusMark unknown state", statusMark({ state: "something_new" })],
   ["statusMark with label", statusMark({ state: "approved", label: "accepted" })],
   ...wordStates.map((state) => [`wordMark ${state}`, wordMark({ state, label: state })]),
   ["wordMark neutral", wordMark({ state: "question", label: "Question" })],
-  ["wordMark live", wordMark({ state: "testing", label: "Testing", live: true })],
   ["wordMark with title", wordMark({ state: "cost", label: "Total cost $0.42", title: "Reported cost" })],
   ["statusWord passed", statusWord({ state: "completed", label: "record" })],
   ["statusWord not run", statusWord({ state: "not_run", label: "merge" })],
@@ -41912,7 +41940,7 @@ var tabs = [
   { href: "#recipes", label: "Recipes" },
   { href: "#harness", label: "Coding harness" }
 ];
-var examples28 = [
+var examples29 = [
   ["pageTabs current", pageTabs({ label: "Settings pages", tabs, current: "#recipes" })],
   ["jumpLinks", jumpLinks({ links: tabs })]
 ];
@@ -41941,14 +41969,15 @@ var entries = [
   ["menu", examples20],
   ["metric", examples21],
   ["nav-rail", examples22],
-  ["page-heading", examples23],
-  ["plan-tile", examples24],
-  ["radio-group", examples25],
-  ["status-bar", examples26],
-  ["status-mark", examples27],
-  ["tabs", examples28]
+  ["notice", examples23],
+  ["page-heading", examples24],
+  ["plan-tile", examples25],
+  ["radio-group", examples26],
+  ["status-bar", examples27],
+  ["status-mark", examples28],
+  ["tabs", examples29]
 ];
-function entry([name2, examples29]) {
+function entry([name2, examples30]) {
   return html2`<section
 		class="catalogue-entry"
 		id="${name2}"
@@ -41956,7 +41985,7 @@ function entry([name2, examples29]) {
 		aria-labelledby="catalogue-${name2}"
 	>
 		<h2 id="catalogue-${name2}">${name2}</h2>
-		${examples29.map(
+		${examples30.map(
     ([state, rendered2]) => html2`<figure class="catalogue-example" data-catalogue-example="${name2}: ${state}">
 					<figcaption>${state}</figcaption>
 					<div class="catalogue-render">${rendered2}</div>
@@ -42262,7 +42291,7 @@ function targetPage(store, context2, targetId, revision2, form = null, retire = 
 				<section aria-labelledby="profile">
 					<h2 id="profile">Profile</h2>
 					${profileFacts(shown2.profile)}
-				</section>` : banner({ kind: "info", content: html2`The setup request is recorded. The profile is not saved yet.` });
+				</section>` : notice({ kind: "info", content: html2`The setup request is recorded. The profile is not saved yet.` });
   const body = html2`${heading({
     title: targetId,
     sub,
@@ -42547,7 +42576,7 @@ function recipesPage(workspace2) {
 				Checkmate. Custom recipes come from <code>.checkmate/recipes/</code> in this workspace.`
   })}
 		<div data-region="recipes">
-			${error ? banner({ kind: "fail", content: html2`Checkmate cannot read the recipes. ${error}` }) : ""}
+			${error ? notice({ kind: "fail", content: html2`Checkmate cannot read the recipes. ${error}` }) : ""}
 			${rows3.length + invalidRows.length ? html2`<ul class="q-items l-rows">
 							${rows3} ${invalidRows}
 						</ul>` : ""}
@@ -42585,9 +42614,9 @@ function reachability(recipe) {
 		${recipe.reachable.map((check) => html2`<li>${checkText(check)}</li>`)}
 	</ul>`;
 }
-function fact(label, value2, look = "") {
+function fact(label, value2, look2 = "") {
   return html2`<dt>${label}</dt>
-		<dd class="${look}">${value2}</dd>`;
+		<dd class="${look2}">${value2}</dd>`;
 }
 function pairs2(values) {
   const entries2 = Object.entries(values);
@@ -42620,7 +42649,7 @@ function catalogFailure(title2, error) {
     title2,
     ["recipes"],
     html2`<div data-region="recipe">
-			${banner({ kind: "fail", content: html2`Checkmate cannot read the recipes. ${error}` })}
+			${notice({ kind: "fail", content: html2`Checkmate cannot read the recipes. ${error}` })}
 		</div>`
   );
 }
@@ -43132,7 +43161,7 @@ function runList2(detail, selected) {
 				${time(detail.startedAt)}${result ? html2` · finished ${time(result.finishedAt)}` : ""}
 			</p>
 		</div>
-		<div class="sp-list" role="listbox" aria-label="Run ${detail.runId}" data-list>
+		<div class="sc-list" role="listbox" aria-label="Run ${detail.runId}" data-list>
 			${runGroup("Run", [runRow(detail.runId, "summary", selected, "Overview", "", html2`${statusCounts({ counts: outcomeCounts2(detail) })}`)])}
 			${runGroup("Tests", tests)} ${runGroup("Findings", found)} ${runGroup("New gaps", gaps)}
 			${runGroup("Record", record)}
@@ -43167,7 +43196,7 @@ function summaryDetail2(store, context2, detail, state, crumbs) {
 		<h2 class="q-h">Overview</h2>
 		${strip(detail)}
 		<p class="muted small" data-region="run-usage">${runUsageLine(detail)}</p>
-		${detail.warnings.map((warning) => banner({ kind: "warn", content: warning }))} ${openChecks(detail)}
+		${detail.warnings.map((warning) => notice({ kind: "warn", content: warning }))} ${openChecks(detail)}
 		${decisionPanel(store, context2, detail, state, returnFields({ key: "summary" }, `/runs/${detail.runId}`))}
 		<div class="actions">${report}</div>`;
 }
@@ -43217,7 +43246,7 @@ function runPage(store, context2, runId, params = new URLSearchParams(), state =
 				data-key="detail:${selected}"
 				data-stale-message="This run changed. Review it before you decide."
 			>
-				${!detail.result && interruption ? banner({
+				${!detail.result && interruption ? notice({
       kind: "info",
       content: html2`<b>Delegated worker interrupted ${time(interruption)}.</b> Recorded
 									results stay. Run <code>checkmate run resume ${runId}</code> to continue. To end the
@@ -43309,10 +43338,9 @@ var routes = {
   question: new RegExp(`^/explorations/(${id})/questions/(${id}/${id})$`),
   claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
   claimEvidence: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})/evidence/([0-9]{1,3})$`),
-  entryEvidence: new RegExp(`^/explorations/(${id})/entries/(${id}/${id})/evidence/([0-9]{1,3})$`),
-  font: /^\/assets\/fonts\/(ibm-plex-sans-(?:400|600)|ibm-plex-mono-(?:400|500|600))\.woff2$/
+  entryEvidence: new RegExp(`^/explorations/(${id})/entries/(${id}/${id})/evidence/([0-9]{1,3})$`)
 };
-var contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'";
+var contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self' https://fonts.googleapis.com; script-src 'self'; connect-src 'self'; font-src https://fonts.gstatic.com; frame-ancestors 'none'; form-action 'self'";
 var previewPolicy = "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 var documentTypes = {
   html: "text/html; charset=utf-8",
@@ -43331,15 +43359,13 @@ function directory(candidates, file) {
 }
 function assets() {
   const files3 = directory(["./assets/", "../src/ui/assets/", "../plugin/src/ui/assets/"], "favicon.svg");
-  const fonts = `${files3}fonts/`;
   const read = (name2) => readFileSync13(files3 + name2);
   const client = directory(["./", "../../dist/"], "client.js");
   const styles2 = directory(["./", "../../dist/"], "style.css");
   return {
     "/assets/style.css": { type: "text/css; charset=utf-8", body: readFileSync13(`${styles2}style.css`) },
     "/assets/client.js": { type: "text/javascript; charset=utf-8", body: readFileSync13(`${client}client.js`) },
-    "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
-    font: (name2) => readFileSync13(`${fonts}${name2}.woff2`)
+    "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") }
   };
 }
 function securityHeaders() {
@@ -43643,11 +43669,6 @@ data: ${matched.join(",") || "*"}
     const asset = files3[pathname];
     if (asset && typeof asset === "object")
       return send(request3.res, 200, asset.type, asset.body, { "Cache-Control": "no-cache" });
-    const font = routes.font.exec(pathname);
-    if (font)
-      return send(request3.res, 200, "font/woff2", files3.font(font[1]), {
-        "Cache-Control": "public, max-age=31536000, immutable"
-      });
     if (pathname === "/events") return events(request3);
     if (pathname === "/settings/harness/models") return modelCatalog(request3);
     if (pathname === "/settings/harness/tester-count") return testerCount(request3);

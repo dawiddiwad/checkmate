@@ -1,6 +1,6 @@
 import { closeGone } from './actions.js'
 import { scrollChatToLatest } from './chat.js'
-import { duration, glyphHtml } from './format.js'
+import { duration } from './format.js'
 import { syncRationale, syncSource } from './forms.js'
 import { watchMoveOn } from './move-on.js'
 import { current, currentView, highlight, listRows, mark, navRows, rowsAt } from './navigation.js'
@@ -51,7 +51,7 @@ function staleNotice(region, replacement) {
 	if (notice?.textContent === text) return
 	if (!notice) {
 		notice = document.createElement('div')
-		notice.className = 'banner warn'
+		notice.className = 'sc-notice is-warn'
 		notice.setAttribute('role', 'status')
 		notice.dataset.liveStale = ''
 		slot.prepend(notice)
@@ -276,8 +276,8 @@ let last = body.dataset.cursor ?? '0'
 
 function setLive(up) {
 	live.hidden = false
-	live.classList.toggle('down', !up)
-	live.innerHTML = `${glyphHtml(up ? '●' : '○')} ${up ? 'Live' : 'Reconnecting'}`
+	live.classList.toggle('is-off', !up)
+	live.textContent = up ? 'Live' : 'Reconnecting'
 }
 
 export function connect() {
@@ -285,7 +285,7 @@ export function connect() {
 	const subjects = encodeURIComponent(body.dataset.subjects)
 	source = new EventSource(`/events?subjects=${subjects}&after=${encodeURIComponent(last)}`)
 	source.onopen = () => {
-		if (live.classList.contains('down')) renewToken().catch(() => {})
+		if (live.classList.contains('is-off')) renewToken().catch(() => {})
 		setLive(true)
 	}
 	source.onerror = () => setLive(false)

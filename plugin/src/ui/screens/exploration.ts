@@ -24,13 +24,13 @@ import {
 	testerStopOption,
 } from '../actions.ts'
 import { failureOf, phases, runsOf } from '../activity.ts'
-import { banner } from '../components/banner.ts'
 import { formButton } from '../components/button.ts'
 import { dataTable, tableRow } from '../components/data-table.ts'
 import { emptyLine } from '../components/empty-state.ts'
 import { evidenceList, viewLink } from '../components/evidence-viewer.ts'
 import { groupHeader, listRow, optionsBox } from '../components/list-row.ts'
 import { downloadMenu } from '../components/menu.ts'
+import { notice } from '../components/notice.ts'
 import { crumbBar, heading } from '../components/page-heading.ts'
 import { statusMark, statusWord, wordMark } from '../components/status-mark.ts'
 import { shownAsText } from '../evidence.ts'
@@ -155,7 +155,7 @@ export function explorationBanners(explorations: Listed[]) {
 	const running = explorations.filter((item) => item.running)
 	const last = explorations.at(-1)
 	return html`${running.map((item) =>
-		banner({
+		notice({
 			kind: item.paused ? 'warn' : 'info',
 			content: html`<span data-key="running:${item.explorationId}"
 				>${item.paused ? html`<strong>Exploration ${item.explorationId} is paused: ${item.paused}</strong> It waits on the oracle in the Claude Code session.` : html`Exploration ${item.explorationId} is running.`}
@@ -166,7 +166,7 @@ export function explorationBanners(explorations: Listed[]) {
 	)}
 	${
 		last && (last.state === 'failed' || last.state === 'stopped' || last.state === 'interrupted')
-			? banner({
+			? notice({
 					kind: 'fail',
 					content: html`<span data-key="failed:${last.explorationId}"
 						>${endedLine(last)} ${dataLine('', last.data)}
@@ -277,7 +277,7 @@ function strayLines(live: Live) {
 
 function stateLine(store: Store, live: Live, run: Run) {
 	if (live.stuck.length)
-		return banner({
+		return notice({
 			kind: 'fail',
 			content: html`<span data-key="stop-stuck"
 				><strong
@@ -288,7 +288,7 @@ function stateLine(store: Store, live: Live, run: Run) {
 			>`,
 		})
 	if (live.stopping)
-		return banner({
+		return notice({
 			kind: 'info',
 			content: html`<span data-key="stopping"
 				><strong>Stopping ${live.explorationId}…</strong> The testers end now. This page shows the result when
@@ -296,27 +296,27 @@ function stateLine(store: Store, live: Live, run: Run) {
 			>`,
 		})
 	if (live.running && live.paused)
-		return banner({
+		return notice({
 			kind: 'warn',
 			content: html`<span data-key="paused"
 				><strong>Paused: ${live.paused}</strong> It waits for you in the Claude Code session.</span
 			>`,
 		})
 	if (live.running)
-		return banner({
+		return notice({
 			kind: 'info',
 			content: html`Exploration ${live.explorationId} is running. Phase: ${run.phase ?? live.phase}. This page
 			updates by itself.`,
 		})
 	if (live.state === 'failed')
-		return banner({ kind: 'fail', content: html`<span data-key="run-ended">${failedLine(run, live)}</span>` })
+		return notice({ kind: 'fail', content: html`<span data-key="run-ended">${failedLine(run, live)}</span>` })
 	if (live.state === 'stopped')
-		return banner({
+		return notice({
 			kind: 'fail',
 			content: html`<span data-key="run-ended">${stoppedLine(store, live)}.${workNote(live)}</span>`,
 		})
 	if (live.state === 'interrupted')
-		return banner({
+		return notice({
 			kind: 'fail',
 			content: html`<span data-key="run-ended"
 				><strong>The run was interrupted: the supervisor stopped before the end.</strong>${workNote(live)}
@@ -327,7 +327,7 @@ function stateLine(store: Store, live: Live, run: Run) {
 			>`,
 		})
 	if (live.follow === 'failed' || live.follow === 'stopped' || live.follow === 'interrupted')
-		return banner({
+		return notice({
 			kind: 'fail',
 			content: html`<span data-key="follow-failed"
 				><strong
@@ -338,7 +338,7 @@ function stateLine(store: Store, live: Live, run: Run) {
 			>`,
 		})
 	if (live.state === 'open')
-		return banner({
+		return notice({
 			kind: 'info',
 			content: html`Exploration ${live.explorationId} is open. Record its sessions, then run
 				<code>checkmate explore finish ${live.explorationId}</code>.`,
@@ -376,7 +376,6 @@ function testerState(live: Live, item: LiveExplorer) {
 	return wordMark({
 		state: look[item.state] ?? 'not_running',
 		label: label[item.state] ?? item.state,
-		live: item.state === 'running',
 	})
 }
 
@@ -500,7 +499,7 @@ function explorationList(context: Context, live: Live, others: Listed[], asking:
 			`session-${index}`
 		)
 	)
-	return html`<div class="sp-list" role="listbox" aria-label="Testers and phases of ${live.explorationId}" data-list>
+	return html`<div class="sc-list" role="listbox" aria-label="Testers and phases of ${live.explorationId}" data-list>
 		${groupHeader({ label: live.running ? 'Testers now' : 'Testers', count: explorers.length })}
 		${explorers.length ? explorers : emptyLine({ text: 'No tester has started yet.' })}
 		${groupHeader({ label: 'After the testers', count: phases.length })} ${phases}
@@ -746,7 +745,6 @@ function phaseStrip(run: Run) {
 				? wordMark({
 						state: 'running',
 						label: phase,
-						live: true,
 						attrs: { role: 'listitem', 'aria-current': 'step', 'data-phase': phase },
 					})
 				: wordMark({ state: 'phase', label: phase, attrs: { role: 'listitem', 'data-phase': phase } })
@@ -891,7 +889,7 @@ export function explorationPage(
 			</div>
 			<div data-region="exploration-banner">
 				${stateLine(store, live, run)}${strayLines(live)}${stepAsks(open)}${rulesLines(permissionRules(store, explorationId))}
-				${live.warnings.map((warning) => banner({ kind: 'warn', content: warning }))}
+				${live.warnings.map((warning) => notice({ kind: 'warn', content: warning }))}
 			</div>
 			${runActions(
 				context,

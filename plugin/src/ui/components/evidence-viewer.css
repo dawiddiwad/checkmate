@@ -23,7 +23,7 @@
 .sp-file:focus-visible {
 	outline: none;
 }
-.sp-file.hl {
+.sp-file.is-sel {
 	background: var(--surface-2);
 	color: var(--ink);
 }
@@ -32,8 +32,8 @@
 	letter-spacing: 0;
 	color: var(--muted);
 }
-.sp-file.hl .sp-file-k,
-.sp-file.hl .muted {
+.sp-file.is-sel .sp-file-k,
+.sp-file.is-sel .muted {
 	color: var(--muted);
 }
 
@@ -41,7 +41,7 @@
 	position: fixed;
 	z-index: 55;
 	top: 0;
-	bottom: calc(var(--sp-bar) + var(--dock-h, 0px));
+	bottom: calc(var(--bar-h) + var(--dock-h, 0px));
 	left: 0;
 	right: 0;
 	display: flex;
@@ -76,7 +76,7 @@
 }
 .sp-fig pre {
 	padding: 16px;
-	max-height: calc(100vh - var(--sp-bar) - 120px);
+	max-height: calc(100vh - var(--bar-h) - 120px);
 	overflow: auto;
 }
 .ev-frame {
@@ -87,7 +87,7 @@
 	background: var(--surface);
 }
 .sp-fig .ev-frame {
-	height: max(220px, calc(100dvh - var(--sp-bar) - 120px));
+	height: max(220px, calc(100dvh - var(--bar-h) - 120px));
 }
 .sp-fig figcaption {
 	display: flex;
@@ -161,7 +161,7 @@
 .viewer {
 	position: fixed;
 	z-index: 90;
-	inset: 0 0 var(--sp-bar) 0;
+	inset: 0 0 var(--bar-h) 0;
 	display: flex;
 	flex-direction: column;
 	background: var(--ground);

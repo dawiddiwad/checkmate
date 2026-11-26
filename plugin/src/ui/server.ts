@@ -203,10 +203,9 @@ const routes = {
 	claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
 	claimEvidence: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})/evidence/([0-9]{1,3})$`),
 	entryEvidence: new RegExp(`^/explorations/(${id})/entries/(${id}/${id})/evidence/([0-9]{1,3})$`),
-	font: /^\/assets\/fonts\/(ibm-plex-sans-(?:400|600)|ibm-plex-mono-(?:400|500|600))\.woff2$/,
 }
 const contentSecurityPolicy =
-	"default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'"
+	"default-src 'self'; img-src 'self' data:; style-src 'self' https://fonts.googleapis.com; script-src 'self'; connect-src 'self'; font-src https://fonts.gstatic.com; frame-ancestors 'none'; form-action 'self'"
 const previewPolicy =
 	"sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
 const documentTypes: Record<string, string> = {
@@ -228,7 +227,6 @@ function directory(candidates: string[], file: string) {
 
 function assets() {
 	const files = directory(['./assets/', '../src/ui/assets/', '../plugin/src/ui/assets/'], 'favicon.svg')
-	const fonts = `${files}fonts/`
 	const read = (name: string) => readFileSync(files + name)
 	const client = directory(['./', '../../dist/'], 'client.js')
 	// scripts/build-plugin.ts joins the stylesheets of plugin/src/ui/ into plugin/dist/style.css.
@@ -237,7 +235,6 @@ function assets() {
 		'/assets/style.css': { type: 'text/css; charset=utf-8', body: readFileSync(`${styles}style.css`) },
 		'/assets/client.js': { type: 'text/javascript; charset=utf-8', body: readFileSync(`${client}client.js`) },
 		'/assets/favicon.svg': { type: 'image/svg+xml', body: read('favicon.svg') },
-		font: (name: string) => readFileSync(`${fonts}${name}.woff2`),
 	}
 }
 
@@ -598,11 +595,6 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const asset = files[pathname as keyof typeof files]
 		if (asset && typeof asset === 'object')
 			return send(request.res, 200, asset.type, asset.body, { 'Cache-Control': 'no-cache' })
-		const font = routes.font.exec(pathname)
-		if (font)
-			return send(request.res, 200, 'font/woff2', files.font(font[1]), {
-				'Cache-Control': 'public, max-age=31536000, immutable',
-			})
 		if (pathname === '/events') return events(request)
 		if (pathname === '/settings/harness/models') return modelCatalog(request)
 		if (pathname === '/settings/harness/tester-count') return testerCount(request)

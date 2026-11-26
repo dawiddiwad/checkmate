@@ -4,7 +4,7 @@ function placeMenu(menu) {
 	const edge = 8
 	const box = menu.getBoundingClientRect()
 	const top = edge
-	const bottom = document.querySelector('.statusbar').getBoundingClientRect().top - edge
+	const bottom = document.querySelector('.sc-bar').getBoundingClientRect().top - edge
 	const above = Math.min(bottom, box.top - edge)
 	const below = Math.max(top, box.bottom + edge)
 	const roomAbove = Math.max(0, above - top)

@@ -16,7 +16,7 @@
 .decision h2,
 .box h2 {
 	margin-bottom: 8px;
-	font: 600 13px/16px var(--font-body);
+	font: 600 13px/16px var(--font-sans);
 	letter-spacing: 0;
 	color: var(--muted);
 }

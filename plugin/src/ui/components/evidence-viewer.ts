@@ -4,6 +4,7 @@ import { htmlType, imageTypes, shownAsText, size } from '../evidence.ts'
 import { html } from '../html.ts'
 import { formButton } from './button.ts'
 import { emptyLine } from './empty-state.ts'
+import { key } from './key.ts'
 
 export function htmlPreview(file: EvidenceFile) {
 	if (!file.href || file.mediaType !== htmlType) return null
@@ -108,10 +109,10 @@ export const evidenceOverlay = html`<div
 			${formButton({ label: 'Fit', inline: true, attrs: { type: 'button', 'data-zoom': 'fit', title: 'Fit to the window (0)' } })}
 		</span>
 		<label class="viewer-tools viewer-wrap" data-viewer-tools="text"
-			><input type="checkbox" data-viewer-wrap checked /> Wrap lines <kbd>w</kbd></label
+			><input type="checkbox" data-viewer-wrap checked /> Wrap lines ${key({ name: 'w' })}</label
 		>
 		${formButton({ label: 'Download', href: '#', inline: true, attrs: { 'data-viewer-download': true, download: true } })}
-		${formButton({ label: html`Close <kbd>Esc</kbd>`, inline: true, attrs: { type: 'button', 'data-viewer-close': true } })}
+		${formButton({ label: html`Close ${key({ name: 'Esc' })}`, inline: true, attrs: { type: 'button', 'data-viewer-close': true } })}
 	</div>
 	<div class="viewer-body" data-viewer-body>
 		<img data-viewer-image alt="" hidden />

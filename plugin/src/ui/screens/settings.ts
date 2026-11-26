@@ -16,7 +16,7 @@ import type { Env } from '../../sessions.ts'
 import { instanceList, targetHistory, targetList, targetRequest, targetRevision } from '../../targets.ts'
 import type { Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
-import { banner } from '../components/banner.ts'
+import { notice } from '../components/notice.ts'
 import { formButton } from '../components/button.ts'
 import { dataTable, tableRow } from '../components/data-table.ts'
 import { emptyNotice } from '../components/empty-state.ts'
@@ -357,7 +357,7 @@ export function targetPage(
 					<h2 id="profile">Profile</h2>
 					${profileFacts(shown.profile)}
 				</section>`
-		: banner({ kind: 'info', content: html`The setup request is recorded. The profile is not saved yet.` })
+		: notice({ kind: 'info', content: html`The setup request is recorded. The profile is not saved yet.` })
 	const body = html`${heading({
 			title: targetId,
 			sub,

@@ -7,7 +7,7 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
-	height: var(--sp-ctl);
+	height: var(--ctl);
 	margin: 0;
 	padding: 0 8px;
 	border: 1px solid var(--edge);

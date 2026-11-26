@@ -1,6 +1,6 @@
 import type { Html } from './html.ts'
 import type { Context } from './layout.ts'
-import { banner } from './components/banner.ts'
+import { notice } from './components/notice.ts'
 import { formButton } from './components/button.ts'
 import { field, textArea, textInput } from './components/field.ts'
 import { actorLimit, html, short } from './html.ts'
@@ -42,7 +42,7 @@ export function actorField(context: Context, state: FormState) {
 }
 
 export function messages(state: FormState) {
-	return html`${state.stale ? banner({ kind: 'warn', content: state.stale }) : ''}
+	return html`${state.stale ? notice({ kind: 'warn', content: state.stale }) : ''}
 	${state.error ? html`<p class="form-error" role="alert">${state.error}</p>` : ''}`
 }
 

@@ -16,7 +16,7 @@
 	padding: 0 12px;
 	color: var(--muted);
 	text-decoration: none;
-	font: 600 13px/16px var(--font-body);
+	font: 600 13px/16px var(--font-sans);
 	letter-spacing: 0;
 }
 .settings-nav .nav a:hover,

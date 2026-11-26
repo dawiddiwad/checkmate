@@ -2,7 +2,7 @@
 	top: 16px;
 	margin: 0 auto;
 	width: min(944px, calc(100vw - 32px));
-	max-height: calc(100vh - var(--sp-bar) - 32px);
+	max-height: calc(100vh - var(--bar-h) - 32px);
 	overflow-y: auto;
 }
 .sp-ktable {
@@ -16,7 +16,7 @@
 	padding: 8px 16px;
 	text-align: left;
 	vertical-align: top;
-	font: 400 14px/20px var(--font-body);
+	font: 400 14px/20px var(--font-sans);
 	border-bottom: 1px solid var(--hair);
 	background: transparent;
 	text-transform: none;
@@ -45,7 +45,7 @@
 }
 .sp-knote {
 	padding: 12px 16px 16px;
-	font: 400 14px/20px var(--font-body);
+	font: 400 14px/20px var(--font-sans);
 	color: var(--muted);
 }
 .sp-foot {
@@ -55,7 +55,7 @@
 	gap: 16px;
 	height: 32px;
 	padding: 0 16px;
-	font: 600 13px/16px var(--font-body);
+	font: 600 13px/16px var(--font-sans);
 	letter-spacing: 0;
 	color: var(--muted);
 }

@@ -23,7 +23,7 @@ import type { Context } from './layout.ts'
 import { phaseOf } from './activity.ts'
 import { button, optionButton } from './components/button.ts'
 import { listRow, optionsBox } from './components/list-row.ts'
-import { navRail, railBuilds, railCells, railCount, railRow, railSeparator } from './components/nav-rail.ts'
+import { navRail, railBuilds, railCells, railCount, railRow } from './components/nav-rail.ts'
 import { wordMark } from './components/status-mark.ts'
 import { age, glyph, html, plural, words } from './html.ts'
 import { askBadge, askTitle, requestHref, requestName, rowOptions, waitsFor } from './permissions.ts'
@@ -301,7 +301,7 @@ const tags: Record<string, string> = {
 
 export function itemTag(item: Item) {
 	if (item.permission) return askBadge()
-	if (item.blocking) return wordMark({ state: 'blocks', label: 'Blocks', live: true })
+	if (item.blocking) return wordMark({ state: 'blocks', label: 'Blocks' })
 	const state = item.kind === 'defect' ? (item.severity ?? 'low') : item.kind
 	return tags[state] ? wordMark({ state, label: tags[state] }) : wordMark({ state: 'low', label: tags.low })
 }
@@ -396,7 +396,7 @@ export function optionsOf(context: Context, review: Review, item: Item): Html[] 
 
 export function extraOf(context: Context, review: Review, item: Item) {
 	const form = (field: string, label: string, name: string, fields: Array<[string, string]>, url = action(item)) =>
-		html`<div class="sp-c-extra" data-extra="${field}" hidden>
+		html`<div class="sc-c-extra" data-extra="${field}" hidden>
 			<form method="post" action="${url}" class="sp-form" data-field-form>
 				${hiddenFields(context, item, fields)} ${item.kind === 'gap' ? html`<div data-stale-slot></div>` : ''}
 				<label for="${field}-${item.key}">${label}</label>
@@ -443,6 +443,7 @@ export function itemRow(context: Context, review: Review, item: Item, id: string
 		href: opened,
 		label: item.id,
 		settled: dim,
+		blocking: item.blocking,
 		attrs: {
 			'data-builds': JSON.stringify(item.builds),
 			'data-needs': item.needs,
@@ -622,7 +623,7 @@ export function navigator(
 	})
 	return navRail({
 		planId,
-		builds: builds.length,
+		buildCount: builds.length,
 		pinned: html`${review.running ? testersRow : ''}
 		${navRow(
 			review,
@@ -638,7 +639,7 @@ export function navigator(
 		)}
 		${navRow(review, active, 'all', href('all'), '', 'All items', count(review.items.length))}
 		${navRow(review, active, 'chats', chat.href, '', 'Plan chats', html``, { look: 'link' })}`,
-		rows: html`${railBuilds({ builds: builds.map((item) => ({ build: item.build, label: buildLabel(review, item.build) })) })}
+		board: html`${railBuilds({ builds: builds.map((item) => ({ build: item.build, label: buildLabel(review, item.build) })) })}
 		${ruleRows}
 		${navRow(
 			review,
@@ -654,9 +655,8 @@ export function navigator(
 			{
 				look: 'rule',
 			}
-		)}
-		${railSeparator}
-		${review.map.builds.map((item) =>
+		)}`,
+		builds: html`${review.map.builds.map((item) =>
 			navRow(
 				review,
 				active,
@@ -666,11 +666,10 @@ export function navigator(
 				item.build,
 				count(itemsOf(review, `build:${item.build}`).length)
 			)
-		)}
-		${review.map.builds.length ? railSeparator : ''}
-		${navRow(review, active, 'rules', href('rules'), '', 'Rules of the plan', count(review.map.rows.length - 1))}
+		)}`,
+		links: html`${navRow(review, active, 'rules', href('rules'), '', 'Rules of the plan', count(review.map.rows.length - 1))}
 		${review.running ? '' : testersRow}
-		${navRow(review, active, 'plan', review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, '', review.revision ? `Plan @${review.revision}` : 'Plan request', html`<span></span>`, { look: 'link' })}`,
+		${navRow(review, active, 'plan', review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, '', review.revision ? `Plan @${review.revision}` : 'Plan request', html``, { look: 'link' })}`,
 	})
 }
 

@@ -1,19 +1,19 @@
 .facts,
-.sp-facts {
+.sc-facts {
 	display: grid;
 	grid-template-columns: 136px minmax(0, 1fr);
 	gap: 4px 12px;
 	margin: 0;
-	font: 400 14px/20px var(--font-body);
+	font: 400 14px/20px var(--font-sans);
 }
 .facts dt,
-.sp-facts dt {
-	font: 600 13px/20px var(--font-body);
+.sc-facts dt {
+	font: 600 13px/20px var(--font-sans);
 	letter-spacing: 0;
 	color: var(--muted);
 }
 .facts dd,
-.sp-facts dd {
+.sc-facts dd {
 	margin: 0;
 	min-width: 0;
 	overflow-wrap: anywhere;
@@ -31,14 +31,35 @@
 	flex-wrap: wrap;
 	gap: 4px;
 }
+.sc-facts {
+	display: grid;
+	grid-template-columns: 120px minmax(0, 1fr);
+	margin: 0;
+	border-top: var(--hairline) solid var(--hair);
+	font: 400 14px/20px var(--font-sans);
+	gap: 0;
+}
+.sc-facts dt,
+.sc-facts dd {
+	margin: 0;
+	padding: var(--space-2) 0;
+	border-bottom: var(--hairline) solid var(--hair);
+}
+.sc-facts dt {
+	color: var(--muted);
+	font-weight: 400;
+}
+.sc-facts dd {
+	font: 500 13px/20px var(--font-mono);
+}
 @media (max-width: 760px) {
 	.facts,
-	.sp-facts {
+	.sc-facts {
 		grid-template-columns: minmax(0, 1fr);
 		gap: 0 12px;
 	}
 	.facts dd + dt,
-	.sp-facts dd + dt {
+	.sc-facts dd + dt {
 		margin-top: 8px;
 	}
 }

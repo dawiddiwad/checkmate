@@ -171,7 +171,7 @@ export function activityPage(
 				</p>
 				${
 					total
-						? html`<div class="sp-list activity" role="list" aria-label="Runs and chat messages" data-list>
+						? html`<div class="sc-list activity" role="list" aria-label="Runs and chat messages" data-list>
 									${group('Running now', running)}${group('Earlier', earlier)}
 								</div>
 								${pager(spec, shown, total)}`

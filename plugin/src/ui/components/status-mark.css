@@ -1,83 +1,103 @@
-.sp-pills {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 8px;
-}
-
-.sp-pill,
-.st {
+.sc-mark {
+	--mark-edge: var(--edge);
+	--mark-fill: transparent;
+	--mark-size: var(--mark);
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	gap: var(--space-2);
 	height: 20px;
-	padding: 0;
 	flex: none;
-	border: 0;
-	background: transparent;
-	color: var(--muted);
-	font: 500 13px/20px var(--font-body);
-	letter-spacing: 0;
-	text-transform: none;
 	white-space: nowrap;
+	color: var(--muted);
+	font: 500 13px/20px var(--font-sans);
 }
-.sp-pill.run {
-	color: var(--ink);
-}
-.sp-pill.pass {
-	color: var(--pass);
-}
-.sp-pill.fail {
-	color: var(--fail);
-}
-.sp-pill.you {
-	color: var(--signal);
-	font-weight: 600;
-}
-.sp-pill.crit {
-	padding: 0 6px;
-	background: var(--fail);
-	color: var(--on-signal);
-}
-.sp-pill > span[aria-hidden='true'],
-.sp-pill > .dot {
-	display: none;
-}
-.sp-pill:is(.run, .pass, .fail, .you, [data-status]):not(.crit)::before,
-.sp-c-tag .sp-pill:not(.crit)::before {
+.sc-mark::before {
 	content: '';
 	flex: none;
-	width: 10px;
-	height: 10px;
-	border: 1.5px solid var(--mark-edge, var(--edge));
-	background: var(--mark-fill, transparent);
+	width: var(--mark-size);
+	height: var(--mark-size);
+	border: var(--stroke) solid var(--mark-edge);
+	background: var(--mark-fill);
+	background-origin: border-box;
 }
-.sp-pill.run {
+.sc-mark.is-run {
+	color: var(--ink);
 	--mark-edge: var(--ink);
 	--mark-fill: repeating-linear-gradient(135deg, var(--ink) 0 1.5px, transparent 1.5px 4px);
 }
-.sp-pill.pass {
+.sc-mark.is-pass {
+	color: var(--pass);
 	--mark-edge: var(--pass);
 	--mark-fill: var(--pass);
 }
-.sp-pill.you {
-	--mark-edge: var(--signal);
-	--mark-fill: var(--signal);
-}
-.sp-pill.you.triage,
-.sp-pill.you[data-status='needs_triage'] {
-	--mark-fill: transparent;
-}
-.sp-pill.fail {
+.sc-mark.is-fail {
+	color: var(--fail);
 	--mark-edge: transparent;
 	--mark-fill:
 		linear-gradient(45deg, transparent 42%, var(--fail) 42% 58%, transparent 58%),
 		linear-gradient(-45deg, transparent 42%, var(--fail) 42% 58%, transparent 58%);
 }
-.dot {
-	display: inline-block;
-	width: 6px;
-	height: 6px;
-	border-radius: 50%;
-	background: currentColor;
+.sc-mark.is-you {
+	color: var(--signal);
+	font-weight: 600;
+	--mark-edge: var(--signal);
+	--mark-fill:
+		linear-gradient(var(--on-signal), var(--on-signal)) 50% 38% / 17% 34% no-repeat,
+		linear-gradient(var(--on-signal), var(--on-signal)) 50% 81% / 17% 14% no-repeat, var(--signal);
+}
+.sc-mark.is-triage {
+	color: var(--signal);
+	font-weight: 500;
+	--mark-edge: var(--signal);
+	--mark-fill:
+		linear-gradient(var(--signal), var(--signal)) 50% 38% / 17% 34% no-repeat,
+		linear-gradient(var(--signal), var(--signal)) 50% 81% / 17% 14% no-repeat;
+}
+.sc-mark.is-approve {
+	color: var(--ink);
+	--mark-edge: var(--ink);
+	--mark-fill: linear-gradient(var(--ink), var(--ink)) 50% 50% / 4px 4px no-repeat;
+}
+.sc-mark.is-question {
+	color: var(--muted);
+	--mark-edge: var(--edge);
+}
+.sc-mark.is-stop {
+	color: var(--muted);
+	--mark-edge: var(--edge);
+	--mark-fill: linear-gradient(var(--muted), var(--muted)) 50% 50% / 50% 1.5px no-repeat;
+}
+.sc-mark.is-none {
+	color: var(--muted);
+	--mark-edge: var(--edge-soft);
+}
+.sc-mark.is-crit {
+	padding: 0 6px;
+	background: var(--fail);
+	color: var(--on-signal);
+	font-weight: 600;
+}
+.sc-mark.is-crit::before {
+	display: none;
+}
+.sc-row .sc-mark,
+.sc-notice .sc-mark {
+	--mark-size: var(--mark-sm);
+}
+.sc-word {
+	display: inline-flex;
+	align-items: center;
+	height: 20px;
+	white-space: nowrap;
+	color: var(--muted);
+	font: 500 13px/20px var(--font-mono);
+}
+.sc-counts {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-3);
+}
+.sc-counts .sc-mark {
+	font-family: var(--font-mono);
 }

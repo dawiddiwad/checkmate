@@ -24,6 +24,7 @@ import { examples as listRow } from '../components/list-row.catalogue.ts'
 import { examples as menu } from '../components/menu.catalogue.ts'
 import { examples as metric } from '../components/metric.catalogue.ts'
 import { examples as navRail } from '../components/nav-rail.catalogue.ts'
+import { examples as notice } from '../components/notice.catalogue.ts'
 import { examples as pageHeading } from '../components/page-heading.catalogue.ts'
 import { examples as planTile } from '../components/plan-tile.catalogue.ts'
 import { examples as radioGroup } from '../components/radio-group.catalogue.ts'
@@ -54,6 +55,7 @@ const entries: Array<[string, Array<[string, Html | string]>]> = [
 	['menu', menu],
 	['metric', metric],
 	['nav-rail', navRail],
+	['notice', notice],
 	['page-heading', pageHeading],
 	['plan-tile', planTile],
 	['radio-group', radioGroup],

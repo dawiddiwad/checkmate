@@ -5,13 +5,13 @@ import type { EvidenceFile } from '../evidence.ts'
 import type { FormState } from '../forms.ts'
 import type { Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
-import { banner } from '../components/banner.ts'
 import { resultCell } from '../components/board.ts'
 import { formButton } from '../components/button.ts'
 import { dataTable, tableRow } from '../components/data-table.ts'
 import { evidenceList } from '../components/evidence-viewer.ts'
 import { groupHeader, listRow } from '../components/list-row.ts'
 import { downloadMenu } from '../components/menu.ts'
+import { notice } from '../components/notice.ts'
 import { crumbBar } from '../components/page-heading.ts'
 import { statusCounts, statusMark } from '../components/status-mark.ts'
 import { shownAsText } from '../evidence.ts'
@@ -546,7 +546,7 @@ function runList(detail: Detail, selected: string) {
 				${time(detail.startedAt)}${result ? html` · finished ${time(result.finishedAt)}` : ''}
 			</p>
 		</div>
-		<div class="sp-list" role="listbox" aria-label="Run ${detail.runId}" data-list>
+		<div class="sc-list" role="listbox" aria-label="Run ${detail.runId}" data-list>
 			${runGroup('Run', [runRow(detail.runId, 'summary', selected, 'Overview', '', html`${statusCounts({ counts: outcomeCounts(detail) })}`)])}
 			${runGroup('Tests', tests)} ${runGroup('Findings', found)} ${runGroup('New gaps', gaps)}
 			${runGroup('Record', record)}
@@ -588,7 +588,7 @@ function summaryDetail(store: Store, context: Context, detail: Detail, state: Fo
 		<h2 class="q-h">Overview</h2>
 		${strip(detail)}
 		<p class="muted small" data-region="run-usage">${runUsageLine(detail)}</p>
-		${detail.warnings.map((warning) => banner({ kind: 'warn', content: warning }))} ${openChecks(detail)}
+		${detail.warnings.map((warning) => notice({ kind: 'warn', content: warning }))} ${openChecks(detail)}
 		${decisionPanel(store, context, detail, state, returnFields({ key: 'summary' }, `/runs/${detail.runId}`))}
 		<div class="actions">${report}</div>`
 }
@@ -659,7 +659,7 @@ export function runPage(
 			>
 				${
 					!detail.result && interruption
-						? banner({
+						? notice({
 								kind: 'info',
 								content: html`<b>Delegated worker interrupted ${time(interruption)}.</b> Recorded
 									results stay. Run <code>checkmate run resume ${runId}</code> to continue. To end the

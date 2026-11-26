@@ -17,17 +17,13 @@ export const examples: Array<[string, Html | string]> = [
 	[
 		'board',
 		board({
+			label: 'Rules against the last 2 builds',
 			builds: [
-				{ build: 'build-1', label: 'B1' },
-				{ build: 'build-2', label: 'B2' },
-			],
-			columns: [
-				{ label: 'R1', title: 'Login works', cells: ['passed', 'passed'] },
-				{ label: 'R2', title: 'Checkout total', cells: ['failed', 'question'] },
-				{ label: 'Out', title: 'Outside the rules', cells: ['not_checked', 'failed'] },
+				{ build: 'build-1', label: 'B1', cells: ['passed', 'failed', 'not_checked'] },
+				{ build: 'build-2', label: 'B2', cells: ['passed', 'question', 'failed'] },
 			],
 		}),
 	],
-	['board without builds', board({ builds: [], columns: [] })],
+	['board without builds', board({ builds: [], label: 'No build' })],
 	['boardKey', boardKey],
 ]

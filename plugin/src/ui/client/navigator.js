@@ -30,7 +30,7 @@ function areaRules(area) {
 
 export function expand(row, open) {
 	row.setAttribute('aria-expanded', open ? 'true' : 'false')
-	row.querySelector('.sp-nid').innerHTML = glyphHtml(open ? '▾' : '▸')
+	row.querySelector('.sc-rail-id').innerHTML = glyphHtml(open ? '▾' : '▸')
 	for (const rule of areaRules(row)) rule.hidden = !open
 }
 
@@ -83,9 +83,9 @@ export function applyBuild() {
 			row.closest('[data-panel]').dataset.panel === view &&
 			!JSON.parse(row.dataset.builds ?? '[]').includes(build)
 	const list = panel()?.querySelector('[data-list]')
-	for (const head of list?.querySelectorAll('.sp-gh') ?? []) {
+	for (const head of list?.querySelectorAll('.sc-group-h') ?? []) {
 		let count = 0
-		for (let next = head.nextElementSibling; next && !next.matches('.sp-gh'); next = next.nextElementSibling)
+		for (let next = head.nextElementSibling; next && !next.matches('.sc-group-h'); next = next.nextElementSibling)
 			if (next.matches('[data-row]') && !next.hidden) count++
 		head.hidden = count === 0
 		const number = head.querySelector('span')
@@ -141,7 +141,6 @@ export function showView(view) {
 	}
 	for (const row of document.querySelectorAll('[data-nav]')) {
 		row.setAttribute('aria-selected', row.dataset.target === view ? 'true' : 'false')
-		row.classList.toggle('on', row.dataset.target === view)
 	}
 	const title = panel()?.dataset.title
 	if (title) document.title = `${title} · ${review.dataset.plan} · Checkmate`

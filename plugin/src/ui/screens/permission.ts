@@ -78,8 +78,8 @@ export function permissionPage(
 			${drawerHead({
 				label: name,
 				tags: html`${item.decision ? statusMark({ state: item.decision.kind === 'closed' ? 'stopped' : 'completed', label: item.decision.kind === 'closed' ? 'Closed' : 'Answered' }) : askBadge()}
-					<span class="sp-c-id">${name}</span>
-					<span class="sp-c-id">${item.decision ? ago(item.at) : waitsFor(item)}</span>`,
+					<span class="sc-c-id">${name}</span>
+					<span class="sc-c-id">${item.decision ? ago(item.at) : waitsFor(item)}</span>`,
 				title,
 				titleText: title,
 				onOwnPage: true,
@@ -107,7 +107,7 @@ export function permissionPage(
 							<ol class="sp-optlist asks">
 								${choices.map((choice, index) => html`<li>${optionOf(context, item, from, choice, index + 1)}<span class="help">${choice.text}</span></li>`)}
 							</ol>
-							<div class="sp-c-extra" data-extra="deny" ${refusal?.field ? '' : html`hidden`}>
+							<div class="sc-c-extra" data-extra="deny" ${refusal?.field ? '' : html`hidden`}>
 								<form
 									method="post"
 									action="${recordPath(item)}"

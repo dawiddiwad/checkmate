@@ -19,10 +19,10 @@
 	padding-bottom: 16px;
 }
 .sp-record .sp-ask-title {
-	font: 600 20px/28px var(--font-body);
+	font: 600 20px/28px var(--font-sans);
 	overflow-wrap: anywhere;
 }
-.sp-record .banner {
+.sp-record .sc-notice {
 	margin: 0;
 }
 .sp-optlist.asks li {
@@ -34,19 +34,19 @@
 	margin: 0;
 	max-width: 72ch;
 }
-.sp-record .sp-c-extra {
+.sp-record .sc-c-extra {
 	margin-top: 12px;
 }
 .sp-record .sp-form textarea {
 	width: 100%;
 }
 @media (max-width: 760px) {
-	.sp-record .sp-btn,
-	.sp-record .pager .btn,
-	.fold-b .pager .btn {
+	.sp-record .sc-btn,
+	.sp-record .pager .sc-btn,
+	.fold-b .pager .sc-btn {
 		min-height: 40px;
 	}
-	.fold-b .pager .btn,
+	.fold-b .pager .sc-btn,
 	.sp-asks a {
 		display: inline-flex;
 		align-items: center;
@@ -57,7 +57,7 @@
 }
 .sp-reply {
 	max-width: 72ch;
-	font: 400 14px/22px var(--font-body);
+	font: 400 14px/22px var(--font-sans);
 	overflow-wrap: anywhere;
 }
 .sp-asked {
@@ -81,12 +81,12 @@
 .sp-changes {
 	margin: 0;
 	padding-left: 24px;
-	font: 400 14px/22px var(--font-body);
+	font: 400 14px/22px var(--font-sans);
 }
 @media (max-width: 760px) {
 	.sp-changes a,
 	.sp-record .help a,
-	.sp-record .banner a {
+	.sp-record .sc-notice a {
 		display: inline-flex;
 		align-items: center;
 		min-height: 40px;

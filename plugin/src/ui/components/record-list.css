@@ -21,7 +21,7 @@
 .test-h h3,
 .q-h,
 .record-h h3 {
-	font: 600 16px/24px var(--font-body);
+	font: 600 16px/24px var(--font-sans);
 }
 .test-b {
 	display: flex;

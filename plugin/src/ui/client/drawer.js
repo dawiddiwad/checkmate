@@ -7,9 +7,9 @@ import { announce, showHints, tell } from './status-bar.js'
 
 export function optionsNow() {
 	if (state.level === 'detail')
-		return [...state.drawer.querySelectorAll('.sp-dhead [data-option], .sp-options [data-option]')]
+		return [...state.drawer.querySelectorAll('.sc-drawer-top [data-option], .sp-options [data-option]')]
 	const row = state.level === 'list' ? current('list') : null
-	if (row?.classList.contains('many')) return detailOptions(row)
+	if (row?.classList.contains('is-many')) return detailOptions(row)
 	return row ? [...row.querySelectorAll('[data-option]')] : []
 }
 
@@ -58,7 +58,7 @@ export function showExtra(row, field) {
 	const extra = row.querySelector(`[data-extra="${CSS.escape(field)}"]`)
 	if (!extra) return
 	for (const other of row.querySelectorAll('[data-extra]')) other.hidden = other !== extra
-	row.classList.add('ext')
+	row.classList.add('is-ext')
 	const area = extra.querySelector('textarea')
 	area.focus()
 	area.setSelectionRange(area.value.length, area.value.length)
@@ -78,7 +78,7 @@ export function focusField(field) {
 
 export function hideExtra(row) {
 	for (const extra of row.querySelectorAll('[data-extra]')) extra.hidden = true
-	row.classList.remove('ext')
+	row.classList.remove('is-ext')
 }
 
 export function choose(n) {
@@ -95,7 +95,7 @@ export function choose(n) {
 	}
 	if (state.level === 'nav' && review) return chooseBuild(n)
 	const options = optionsNow()
-	if (state.level === 'list' && current('list')?.classList.contains('many') && !options.length)
+	if (state.level === 'list' && current('list')?.classList.contains('is-many') && !options.length)
 		return tell('The options do not fit in the row. Open the row to see them.')
 	if (!options.length) return tell('No options here.')
 	const option = options[n - 1]

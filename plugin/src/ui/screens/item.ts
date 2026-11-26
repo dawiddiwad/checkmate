@@ -5,7 +5,7 @@ import type { FormState } from '../forms.ts'
 import type { Html } from '../html.ts'
 import type { Context } from '../layout.ts'
 import type { Item, Review } from '../review.ts'
-import { banner } from '../components/banner.ts'
+import { notice } from '../components/notice.ts'
 import { button } from '../components/button.ts'
 import { closeButton, drawer, drawerHead } from '../components/drawer.ts'
 import { evidenceFiles, evidencePreview } from '../components/evidence-viewer.ts'
@@ -63,12 +63,19 @@ function textForm(
 ) {
 	return html`<form method="post" action="${spec.action}" class="sp-form" id="${spec.id}" data-field-form>
 		${hiddenFields(context, item, back, spec.fields)}
-		<label for="${spec.id}-text">${spec.label}</label>
-		<textarea id="${spec.id}-text" name="${spec.name}" rows="3" required data-missing="${spec.missing}">
+		<label class="sc-label" for="${spec.id}-text">${spec.label}</label>
+		<textarea
+			class="sc-textarea"
+			id="${spec.id}-text"
+			name="${spec.name}"
+			rows="3"
+			required
+			data-missing="${spec.missing}"
+		>
 ${spec.value ?? ''}</textarea>
 		${spec.more ?? ''}
 		<div class="btns">
-			${button({ label: spec.send, emphasis: 'primary' })}
+			${button({ label: spec.send, emphasis: item.blocking ? 'unblocks' : 'primary', mainAction: true })}
 			<span class="small muted">Enter sends. Shift+Enter starts a new line.</span>
 		</div>
 	</form>`
@@ -166,26 +173,10 @@ function claimBody(
 		}`
 }
 
-function questionBody(context: Context, review: Review, item: Item, back: string, state: FormState | null) {
+function questionFacts(review: Review, item: Item) {
 	const question = item.question
 	const members = question?.members ?? []
-	const open = item.kind === 'question' || item.kind === 'gap' || item.kind === 'deferred'
-	const more = html`<details class="sp-more">
-		<summary>Source and reason</summary>
-		<div class="sp-form">
-			<label for="answer-source">Source</label>
-			<input
-				id="answer-source"
-				name="source"
-				value="${state?.values.source ?? ''}"
-				placeholder="${context.actor ?? 'You'}, in the review UI"
-			/>
-			<label for="answer-rationale">Reason</label>
-			<input id="answer-rationale" name="rationale" value="${state?.values.rationale ?? ''}" />
-		</div>
-	</details>`
-	return html`${question?.actual ? html`<p class="sp-today"><span class="sp-lbl">What the build does</span>${question.actual}</p>` : ''}
-	${recordFacts({
+	return recordFacts({
 		rows: [
 			['Rule', item.kind === 'gap' ? null : ruleText(review, item.rule)],
 			['Topic', item.topic],
@@ -203,7 +194,27 @@ function questionBody(context: Context, review: Review, item: Item, back: string
 			],
 			['Answer', question?.answer ?? null],
 		],
-	})}
+	})
+}
+
+function questionBody(context: Context, review: Review, item: Item, back: string, state: FormState | null) {
+	const question = item.question
+	const open = item.kind === 'question' || item.kind === 'gap' || item.kind === 'deferred'
+	const more = html`<details class="sp-more">
+		<summary>Source and reason</summary>
+		<div class="sp-form">
+			<label for="answer-source">Source</label>
+			<input
+				id="answer-source"
+				name="source"
+				value="${state?.values.source ?? ''}"
+				placeholder="${context.actor ?? 'You'}, in the review UI"
+			/>
+			<label for="answer-rationale">Reason</label>
+			<input id="answer-rationale" name="rationale" value="${state?.values.rationale ?? ''}" />
+		</div>
+	</details>`
+	return html`${question?.actual ? html`<p class="sp-today"><span class="sp-lbl">What the build does</span>${question.actual}</p>` : ''}
 	${
 		open
 			? textForm(context, item, back, {
@@ -260,7 +271,7 @@ export function recordDrawer(
 		path: `${review.planId} › ${view === 'needs' ? 'Needs you' : view.replace(/^[a-z]+:/, '')} › ${item.id}`,
 		slot: state
 			? html`<div data-stale-slot>
-					${state.stale ? banner({ kind: 'warn', content: state.stale }) : ''}${state.error ? html`<p class="form-error" role="alert">${state.error}</p>` : ''}${keptText(state)}
+					${state.stale ? notice({ kind: 'warn', content: state.stale }) : ''}${state.error ? html`<p class="form-error" role="alert">${state.error}</p>` : ''}${keptText(state)}
 				</div>`
 			: html`<div data-stale-slot></div>`,
 		head: drawerHead({
@@ -268,9 +279,10 @@ export function recordDrawer(
 			tags: html`${itemTag(item)}
 				${item.detail && item.kind !== 'rejected' ? wordMark({ state: 'build_state', label: buildStateWords[latestClaimBuild(item.detail)?.state ?? ''] ?? '' }) : ''}
 				${item.claim?.handoff ? wordMark({ state: 'handed_over', label: 'Handed over' }) : ''}
-				<span class="sp-c-id">${item.id}</span>
-				${when ? html`<span class="sp-c-id">${time(when)}</span>` : ''}`,
+				<span class="sc-c-id">${item.id}</span>
+				${when ? html`<span class="sc-c-id">${time(when)}</span>` : ''}`,
 			title: item.title,
+			facts: item.claim || item.kind === 'approval' ? '' : questionFacts(review, item),
 			options,
 		}),
 		body,

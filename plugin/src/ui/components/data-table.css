@@ -3,7 +3,7 @@ table {
 	border-collapse: collapse;
 	background: var(--surface);
 	border: 1px solid var(--hair);
-	font: 400 13px/20px var(--font-body);
+	font: 400 13px/20px var(--font-sans);
 }
 th,
 td {
@@ -44,7 +44,7 @@ tbody tr:hover {
 	letter-spacing: 0;
 }
 .matrix tbody th {
-	font: 400 14px/20px var(--font-body);
+	font: 400 14px/20px var(--font-sans);
 	color: var(--ink);
 	background: none;
 	white-space: normal;

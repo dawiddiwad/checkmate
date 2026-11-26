@@ -88,10 +88,10 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 			${drawerHead({
 				label: 'Message details',
 				tags: html`${stateLabel(request)}
-					<span class="sp-c-id">${request.harness === 'pi' ? 'Pi' : 'Claude Code'}</span>
-					${model ? html`<span class="sp-c-id">${model}</span>` : ''}
-					<span class="sp-c-id">${request.asker}</span>
-					<span class="sp-c-id">${ago(request.askedAt)}</span>`,
+					<span class="sc-c-id">${request.harness === 'pi' ? 'Pi' : 'Claude Code'}</span>
+					${model ? html`<span class="sc-c-id">${model}</span>` : ''}
+					<span class="sc-c-id">${request.asker}</span>
+					<span class="sc-c-id">${ago(request.askedAt)}</span>`,
 				title: 'Message details',
 				onOwnPage: true,
 			})}

@@ -5,6 +5,7 @@ import type { Context, Page } from '../layout.ts'
 import { testerModels, testerToolHelp } from '../actions.ts'
 import { button } from '../components/button.ts'
 import { field, textArea, textInput } from '../components/field.ts'
+import { key } from '../components/key.ts'
 import { heading } from '../components/page-heading.ts'
 import { html } from '../html.ts'
 
@@ -44,7 +45,7 @@ function choice(name: string, label: string, options: Array<[string, string, str
 						name="${name}"
 						value="${value}"
 						${value === checked ? html`checked` : ''}
-					/><kbd>${index + 1}</kbd><span>${text}</span></label
+					/>${key({ name: index + 1 })}<span>${text}</span></label
 				>`
 		)}
 	</fieldset>`
@@ -67,7 +68,7 @@ function instanceChoice(target: NewTarget, shown: boolean) {
 						name="instance"
 						value="${instance.id}"
 						${instance.local ? '' : html`data-nonlocal data-address="${instance.address ?? ''}"`}
-					/><kbd>${index + 1}</kbd><span>${instance.id}</span></label
+					/>${key({ name: index + 1 })}<span>${instance.id}</span></label
 				>`
 		)}
 	</fieldset>`

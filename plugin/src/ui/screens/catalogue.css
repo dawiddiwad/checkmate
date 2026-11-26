@@ -21,9 +21,9 @@
 	position: relative;
 	contain: layout;
 }
-.catalogue-render:has(> .sp-drawer) {
+.catalogue-render:has(> .sc-drawer) {
 	min-height: 480px;
 }
-.catalogue-render:has(> .statusbar) {
-	min-height: calc(var(--sp-bar) + 8px);
+.catalogue-render:has(> .sc-bar) {
+	min-height: calc(var(--bar-h) + 8px);
 }

@@ -64,7 +64,7 @@ export const keyTable = [
 			if (state.level === 'nav') return row.getAttribute('aria-expanded') === 'false' ? 'expand' : 'enter list'
 			if (state.level === 'detail') return row.dataset.href ? 'view' : null
 			if (state.level === 'viewer') return null
-			if (row.classList.contains('many') || row.querySelector(':scope > .asks')) return 'options'
+			if (row.classList.contains('is-many') || row.querySelector(':scope > .asks')) return 'options'
 			return row.dataset.href ? 'open' : null
 		},
 	},
@@ -150,7 +150,7 @@ const fieldTable = [
 ]
 
 function keyCaps(caps) {
-	return caps.map((cap) => `<kbd>${glyphHtml(cap)}</kbd>`).join('')
+	return caps.map((cap) => `<kbd class="sc-key">${glyphHtml(cap)}</kbd>`).join('')
 }
 
 function keysTable() {

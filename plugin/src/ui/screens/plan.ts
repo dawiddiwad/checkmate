@@ -16,7 +16,6 @@ import { planCost } from '../../costs.ts'
 import type { FormState } from '../forms.ts'
 import type { Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
-import { banner } from '../components/banner.ts'
 import { formButton } from '../components/button.ts'
 import { dataTable, tableRow } from '../components/data-table.ts'
 import { emptyNotice } from '../components/empty-state.ts'
@@ -24,6 +23,7 @@ import { facts } from '../components/facts.ts'
 import { field, textArea, textInput } from '../components/field.ts'
 import { fold } from '../components/fold.ts'
 import { downloadMenu } from '../components/menu.ts'
+import { notice } from '../components/notice.ts'
 import { heading } from '../components/page-heading.ts'
 import { statusCounts, statusMark } from '../components/status-mark.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from '../forms.ts'
@@ -352,7 +352,7 @@ export function approvalPanel(
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
-				${latest.sha256 !== detail.sha256 ? banner({ kind: 'warn', content: 'This decision was for another digest.' }) : ''}`,
+				${latest.sha256 !== detail.sha256 ? notice({ kind: 'warn', content: 'This decision was for another digest.' }) : ''}`,
 			`${subject} was ${latest.verdict} by ${latest.actor}. Review it before you decide.`
 		)
 	return verdictPanel(
@@ -392,7 +392,7 @@ function planSummaryLine(plan: Plan) {
 
 function newerBanner(detail: Detail) {
 	if (detail.revision === detail.latestRevision) return ''
-	return banner({
+	return notice({
 		kind: 'info',
 		content: html`Revision ${detail.latestRevision} is available.
 			<a href="/plans/${detail.planId}@${detail.latestRevision}"
@@ -545,7 +545,7 @@ export function planPage(
 		</span>
 	</div>`
 	const pending = detail.pendingDecisions.length
-		? banner({
+		? notice({
 				kind: 'info',
 				content: html`${plural(detail.pendingDecisions.length, 'decision')}
 				${detail.pendingDecisions.length === 1 ? 'waits' : 'wait'} for the next revision:
@@ -739,7 +739,7 @@ export function gapPage(
 	const tests = plan.tests.filter((test) => gapsAffecting([gap], test).length > 0)
 	const requirements = plan.requirements.filter((requirement) => gap.requirementIds.includes(requirement.id))
 	const runBanner = fromRun
-		? banner({
+		? notice({
 				kind: 'info',
 				content: html`This gap comes from run
 					<a class="mono" href="/runs/${fromRun.runId}">${fromRun.runId}</a>. Your answer adds it to

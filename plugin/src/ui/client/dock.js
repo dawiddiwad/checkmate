@@ -14,7 +14,7 @@ export function dockRoom() {
 	document.documentElement.style.setProperty('--bulk-h', `${bulk}px`)
 	document.documentElement.style.setProperty('--say-h', `${message}px`)
 	document.documentElement.style.setProperty('--dock-h', `${bulk + message + toast}px`)
-	const row = document.querySelector('.hl[data-row]')
+	const row = document.querySelector('.is-sel[data-row]')
 	if (row) reveal(row)
 }
 

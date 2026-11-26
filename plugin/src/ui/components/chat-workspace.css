@@ -73,12 +73,12 @@
 	background: var(--surface-2);
 	box-shadow: inset 2px 0 var(--ink);
 }
-.chat-list-item.hl,
-.chat-sidebar-header .btn.hl {
+.chat-list-item.is-sel,
+.chat-sidebar-header .sc-btn.is-sel {
 	background: var(--surface-2);
 	color: var(--ink);
 }
-.chat-list-item.hl span {
+.chat-list-item.is-sel span {
 	color: var(--muted);
 }
 .chat-list-item span,

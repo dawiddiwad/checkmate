@@ -2,7 +2,7 @@ import type { InvalidRecipe, ReachCheck, Recipe, RecipeCatalog, RecipeEntry } fr
 import { listRecipes, projectRecipeFolder, recipeProblem, toolExecutable } from '../../recipes.ts'
 import type { Html } from '../html.ts'
 import type { Page } from '../layout.ts'
-import { banner } from '../components/banner.ts'
+import { notice } from '../components/notice.ts'
 import { emptyNotice } from '../components/empty-state.ts'
 import { fold } from '../components/fold.ts'
 import { listPageRow } from '../components/list-row.ts'
@@ -95,7 +95,7 @@ export function recipesPage(workspace: string): Page {
 				Checkmate. Custom recipes come from <code>.checkmate/recipes/</code> in this workspace.`,
 		})}
 		<div data-region="recipes">
-			${error ? banner({ kind: 'fail', content: html`Checkmate cannot read the recipes. ${error}` }) : ''}
+			${error ? notice({ kind: 'fail', content: html`Checkmate cannot read the recipes. ${error}` }) : ''}
 			${
 				rows.length + invalidRows.length
 					? html`<ul class="q-items l-rows">
@@ -187,7 +187,7 @@ function catalogFailure(title: string, error: string) {
 		title,
 		['recipes'],
 		html`<div data-region="recipe">
-			${banner({ kind: 'fail', content: html`Checkmate cannot read the recipes. ${error}` })}
+			${notice({ kind: 'fail', content: html`Checkmate cannot read the recipes. ${error}` })}
 		</div>`
 	)
 }

@@ -2,7 +2,7 @@
 	padding: 16px;
 	border: 1px solid var(--hair);
 	background: var(--surface);
-	font: 400 14px/20px var(--font-body);
+	font: 400 14px/20px var(--font-sans);
 	color: var(--muted);
 }
 .sp-empty b {

@@ -38,7 +38,7 @@ import {
 import { lastEntry, recordAnswer, recordTask } from './recorder.ts'
 import { firstRevision } from './testRevision.ts'
 import { replyArray } from './sessions.ts'
-import { requireValidRecipes, shellInstructions, testerTools } from './recipes.ts'
+import { requireValidRecipes } from './recipes.ts'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
@@ -197,22 +197,9 @@ function testerAction(store: Store, explorationId: string, explorer: string, due
 			study: launch.studySeconds,
 			test: launch.testSeconds,
 		},
-		false
+		session
 	)
-	if (due === 'test') return action('test', 'task-test.md', brief.test)
-	const tools = testerTools(
-		store.workspace,
-		opened.charter.tools.map((tool) => tool.name),
-		false
-	)
-	const shell = shellInstructions(store.workspace, { session, workFolder: join(store.workspace, folder) }, tools)
-	return action(
-		'study',
-		'task-study.md',
-		shell.length
-			? `${brief.study}\n\nYour shell does not keep settings between commands. ${shell.join(' ')}`
-			: brief.study
-	)
+	return due === 'test' ? action('test', 'task-test.md', brief.test) : action('study', 'task-study.md', brief.study)
 }
 
 function rulesAction(store: Store, explorationId: string, round: string, phase: Phase): Action {

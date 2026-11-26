@@ -7,9 +7,9 @@ Use native `checkmate_*` tools. They take named arguments and return the recorde
 
 ## Set up and plan
 
-If the tool you need has no recipe, write `<tool>.json` in the project's `.checkmate/recipes/` folder. Use a built-in JSON file from the Checkmate plugin’s `recipes/` folder as an example. Include `name`, `capability`, `kind`, `purpose`, `detect`, `environment`, `workspaceFolders`, `observeFrom`, `evidence`, `usage`. Put the tester instructions in `usage` as a list of Markdown lines. For each needed input, put its `name`, `kind`, and `purpose` in `entryPoints`.
+If the tool you need has no recipe, write `<tool>.json` in the project's `.checkmate/recipes/` folder. Use a built-in JSON file from the Checkmate plugin’s `recipes/` folder as an example. Include `name`, `capability`, `kind`, `purpose`, `detect`, `environment`, `workspaceFolders`, `observeFrom`, `evidence`. For each needed input, put its `name`, `kind`, and `purpose` in `entryPoints`.
 
-Continue with `checkmate_setup` and the declared entries. If Checkmate refuses the recipe, edit the file to fix the listed problems. Tell the person you added the recipe and what it lets testers run.
+Continue with `checkmate_setup` and the declared entries. If Checkmate refuses the recipe, edit the file to fix the listed problems. Tell the person you added the recipe.
 
 1. Ask for the application address or the entries its tool needs. Confirm the environment and permitted operations for a remote target. Use `checkmate_setup` and report its reachability result. Use `checkmate_replace_instance` for an instance correction and use the instance ID it returns.
 2. Report assumptions and readiness. Ask for the missing reset or isolation policy when data can change. Do not write a policy or a hook yourself. Stop for setup-only requests.

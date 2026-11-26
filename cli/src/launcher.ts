@@ -33,6 +33,7 @@ import {
 	usageOf,
 } from '../../plugin/src/sessions.ts'
 import { write } from '../../plugin/src/store.ts'
+import { toolGuidance } from '../../plugin/src/tester-guidance.ts'
 import { entriesWords, entryNoun } from '../../plugin/src/targets.ts'
 import {
 	filled,
@@ -41,7 +42,7 @@ import {
 	recipesFor,
 	testerEnvironment,
 	testerTools,
-	recipeFilesFor,
+	evidenceChoices,
 	type Recipe,
 	type SessionValues,
 } from '../../plugin/src/recipes.ts'
@@ -926,12 +927,11 @@ function toolStatus(workspace: string, request: PlanRequest, profile: Profile) {
 	})
 }
 
-function contextLines(execution: Execution, workspace: string, tools: string[]) {
+function contextLines(execution: Execution, workspace: string, tools: string[], pluginRoot?: string) {
 	const { run, planRequest: planning } = execution
 	const sources = planning.context?.sources ?? []
 	const values = sessionValues(workspace, run)
 	const names = toolNames(workspace, execution)
-	const usage = recipeFilesFor(workspace, names)
 	return [
 		...(sources.length
 			? [
@@ -939,10 +939,10 @@ function contextLines(execution: Execution, workspace: string, tools: string[]) 
 				]
 			: []),
 		`Tools: ${tools.join(', ')}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error. A tool with an attached server whose tools you do not have is missing too.`,
-		...(usage.length ? [`Read the usage field of the recipe you use: ${usage.join(', ')}.`] : []),
-		...recipesFor(workspace, names).flatMap((recipe) =>
-			recipe.delegatedInstruction ? [filled(recipe.delegatedInstruction, values)] : []
-		),
+		`Evidence kinds: ${evidenceChoices(workspace, names)
+			.map(({ value }) => value)
+			.join(', ')}.`,
+		...toolGuidance(names, values, pluginRoot),
 	]
 }
 
@@ -955,7 +955,12 @@ function probePrompt(execution: Execution, workspace: string, actor: string, plu
 		`Checkmate commands: ${cli} <command>. Run them from the workspace.`,
 		`Run: ${runId}. Plan: ${run.plan_id}@${run.plan_revision}. Build: ${run.application_build}. Instance: ${run.instance_id}. Run \`${cli} target show ${run.target_id} --instance ${run.instance_id}\` once for the entry values. Run that command exactly as written: target show takes one target and --instance <instance>. Use ${entriesWords(execution.profile.entryPoints)} for every action. Do not write entry values into evidence.`,
 		'Make at most 10 probe actions. Probe the rules of the selected tests: a value at a limit, the other entry point, extra spaces, a total in a second view. Use only the instance entries and new data.',
-		...contextLines(execution, workspace, toolStatus(workspace, execution.planRequest, execution.profile)),
+		...contextLines(
+			execution,
+			workspace,
+			toolStatus(workspace, execution.planRequest, execution.profile),
+			pluginRoot
+		),
 		`Record a probe finding only when a probe contradicts a value that a source or a check states: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"P-1","type":"potential_issue","severity":"medium","assertionIds":[],"requirementIds":[],"title":"<short title>","expected":"<the stated value>","observed":"<probe output>","reproduction":["<probe steps>"],"evidenceIds":[]} then EOF. Record nothing for a probe that shows correct behaviour.`,
 		`In your final answer, return only one JSON object: {"status":"completed","subject":"${runId}","reasons":[]}.`,
 	].join('\n\n')
@@ -1011,7 +1016,7 @@ function testPrompt(
 				? `${assertion.id}: ${text(assertion.check)} This assertion has no expected value: decide it with --result passed, failed or inconclusive.`
 				: `${assertion.id}: observe ${text(assertion.observe ?? '')}. Expected value: ${text(assertion.expected)}.`
 		),
-		...contextLines(execution, workspace, tools),
+		...contextLines(execution, workspace, tools, pluginRoot),
 		...requestLines(test, text),
 		`Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed '<only the bare value: for a status code 200, for an amount $5.00>'${plannedRequest(test.action) || test.assertions.some((assertion) => assertion.request) ? " --request '<method and path you sent for this check>'" : ''} --evidence - <<'EOF'`,
 		'Put --observed and --request values in single quotes. Inside double quotes the shell expands $ and backticks: $5.00 becomes .00 and $0 becomes a shell path. Give only the bare value in --observed: HTTP 200 is refused, 200 is accepted.',

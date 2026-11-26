@@ -3,11 +3,12 @@
 // A template names an action tool as {{tool <action>}}. The build writes the tool name that the host calls.
 // The action must be in the list below, so TypeScript fails when the action is renamed or removed.
 // A template names an input field of a tool as {{field <action>.<field>}}. The build fails when the action schema has no such field.
+import { readFileSync } from 'node:fs'
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import type { Actions } from '../plugin/src/types.ts'
 import { toolName } from '../plugin/src/tool-names.ts'
-import { requiredRecipeFields } from '../plugin/src/recipes.ts'
+import { mcpToolName, requiredRecipeFields, type Recipe } from '../plugin/src/recipes.ts'
 
 const tools: Array<keyof Actions> = [
 	'answer_gap',
@@ -45,6 +46,16 @@ for (const path of (await readdir(templates, { recursive: true })).filter((path)
 		.replace(/\{\{field (\w+)\.(\w+)\}\}/g, (_, name: string, field: string) => {
 			assert(actions[name]?.properties?.[field], `${path} names field ${field}, which ${name} does not have`)
 			return field
+		})
+		.replace(/\{\{recipe-tool ([\w-]+)\.(\w+)\}\}/g, (_, name: string, tool: string) => {
+			const recipe = JSON.parse(
+				readFileSync(new URL(`../plugin/recipes/${name}.json`, import.meta.url), 'utf8')
+			) as Recipe
+			assert(
+				recipe.kind === 'mcp' && recipe.tools?.includes(tool),
+				`${path} names tool ${tool}, which ${name} does not have`
+			)
+			return mcpToolName(recipe, tool)
 		})
 	assert.doesNotMatch(text, /\{\{/, `${path} has a placeholder that is not filled`)
 	const output = new URL(`../${path}`, import.meta.url)

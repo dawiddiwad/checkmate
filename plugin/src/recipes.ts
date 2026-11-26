@@ -26,14 +26,11 @@ export type Recipe = {
 	entryPoints?: RecipeEntryPoint[]
 	reachable?: ReachCheck[]
 	environment: Record<string, string>
-	shellInstruction?: string
-	delegatedInstruction?: string
 	closeSession?: string[]
 	workspaceFolders: string[]
 	observeFrom: Record<string, ObserveReading>
 	evidence: string[]
 	evidenceExtensions?: Record<string, string>
-	usage: string[]
 	// Kind mcp only: the server that Checkmate starts, and the exact names of its tools that a tester can call.
 	server?: ToolServer
 	tools?: string[]
@@ -59,8 +56,19 @@ export const requiredRecipeFields = [
 	'workspaceFolders',
 	'observeFrom',
 	'evidence',
-	'usage',
 ] as const satisfies ReadonlyArray<keyof Recipe>
+
+const recipeFields = new Set<string>([
+	...requiredRecipeFields,
+	'entryPoints',
+	'reachable',
+	'closeSession',
+	'evidenceExtensions',
+	'server',
+	'tools',
+	'refusedArguments',
+	'entryArguments',
+] satisfies Array<keyof Recipe>)
 
 export type RecipeEntry = {
 	source: 'built-in' | 'custom'
@@ -108,6 +116,9 @@ function readRecipe(path: string, source: RecipeEntry['source']): RecipeEntry | 
 	const refuse = (problem: string) => problems.push(problem)
 	for (const field of requiredRecipeFields)
 		if (!Object.hasOwn(recipe, field)) refuse(`give the required field ${field}.`)
+	for (const field of Object.keys(recipe))
+		if (!recipeFields.has(field))
+			refuse(`Unknown field ${field}. Recipes are manifests. Put tool instructions in a skill.`)
 	if (recipe.name !== undefined && (!isIdentifier(recipe.name) || `${recipe.name}.json` !== file))
 		refuse('name must match the file name without .json and use letters, numbers, dashes, or underscores.')
 	if (recipe.capability !== undefined && !isIdentifier(recipe.capability))
@@ -143,10 +154,6 @@ function readRecipe(path: string, source: RecipeEntry['source']): RecipeEntry | 
 	}
 	if (recipe.entryPoints !== undefined) readEntryPoints(recipe.entryPoints, refuse)
 	if (recipe.reachable !== undefined) readReachable(recipe, refuse)
-	if (recipe.shellInstruction !== undefined && !isText(recipe.shellInstruction))
-		refuse('shellInstruction must be a text when it is given.')
-	if (recipe.delegatedInstruction !== undefined && !isText(recipe.delegatedInstruction))
-		refuse('delegatedInstruction must be a text when it is given.')
 	if (
 		recipe.closeSession !== undefined &&
 		(!Array.isArray(recipe.closeSession) || !recipe.closeSession.length || !recipe.closeSession.every(isText))
@@ -187,12 +194,6 @@ function readRecipe(path: string, source: RecipeEntry['source']): RecipeEntry | 
 			))
 	)
 		refuse('evidenceExtensions must map each file extension, for example .mp4, to an evidence kind of the recipe.')
-	const usage = recipe.usage
-	if (
-		usage !== undefined &&
-		(!Array.isArray(usage) || !usage.every((line) => typeof line === 'string') || !usage.some(isText))
-	)
-		refuse('usage must be a non-empty list of Markdown lines.')
 	if (problems.length) return invalidRecipe(path, [...new Set(problems)], recipe)
 	return { source, path, recipe: recipe as Recipe, jsonText }
 }
@@ -282,8 +283,8 @@ function readServer(recipe: Partial<Recipe>, refuse: (problem: string) => void) 
 		!recipe.tools.every((name) => typeof name === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(name))
 	)
 		refuse('tools must list the names of the server tools that a tester can call.')
-	if (recipe.closeSession !== undefined || recipe.shellInstruction !== undefined)
-		refuse('a recipe of kind mcp has no closeSession or shellInstruction: Checkmate stops its server.')
+	if (recipe.closeSession !== undefined)
+		refuse('a recipe of kind mcp has no closeSession: Checkmate stops its server.')
 	const refused: unknown = recipe.refusedArguments
 	if (
 		refused !== undefined &&
@@ -332,7 +333,7 @@ export function refuseInvalidRecipes(items: InvalidRecipe[]) {
 	throw new Refusal(
 		'prohibited',
 		items.map(recipeProblem).join(' '),
-		`Edit ${items.map((item) => item.path).join(', ')} to fix the listed problems. Run checkmate recipe list to check the files.`
+		`Edit ${items.map((item) => item.path).join(', ')} to fix the listed problems. Edits apply immediately. Retry the refused action. A saved target needs setup again only if its inputs changed. Run checkmate recipe list to check the files.`
 	)
 }
 
@@ -446,14 +447,6 @@ export function testerEnvironment(workspace: string, values: SessionValues, tool
 	)
 }
 
-export function shellInstructions(workspace: string, values: SessionValues, toolNames: string[]) {
-	return listRecipes(workspace).recipes.flatMap(({ recipe, source }) =>
-		recipe.shellInstruction && (source === 'built-in' || toolNames.includes(recipe.name))
-			? [filled(recipe.shellInstruction, values)]
-			: []
-	)
-}
-
 // Refuses tool names whose custom recipe is invalid. A tool without a recipe is allowed.
 export function requireValidRecipes(workspace: string, toolNames: string[]) {
 	const { recipes, invalid } = listRecipes(workspace)
@@ -511,11 +504,8 @@ export function serverName(recipe: Recipe) {
 	return recipe.name.replaceAll('-', '_')
 }
 
-// The full paths of the usage texts of the named tools that have a recipe, in recipe order.
-export function recipeFilesFor(workspace: string, toolNames: string[]) {
-	return requireValidRecipes(workspace, toolNames)
-		.filter(({ recipe }) => toolNames.includes(recipe.name))
-		.map(({ path }) => path)
+export function mcpToolName(recipe: Recipe, tool: string) {
+	return `mcp__${serverName(recipe)}__${tool}`
 }
 
 export type Choice = { value: string; from: string[] }

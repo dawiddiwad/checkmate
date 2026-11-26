@@ -6,7 +6,16 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { signalChild, trackGroup } from './processes.ts'
-import { filled, recipes, recipesFor, serverName, testerTools, type Recipe, type SessionValues } from './recipes.ts'
+import {
+	filled,
+	mcpToolName,
+	recipes,
+	recipesFor,
+	serverName,
+	testerTools,
+	type Recipe,
+	type SessionValues,
+} from './recipes.ts'
 
 export type AttachedServer = { name: string; command: string; args: string[]; tools: string[] }
 
@@ -37,7 +46,7 @@ export function attachedServers(
 					entries[entry] ? [`${entry}=${entries[entry]}`] : []
 				),
 			],
-			tools: recipe.tools!.map((tool) => `mcp__${serverName(recipe)}__${tool}`),
+			tools: recipe.tools!.map((tool) => mcpToolName(recipe, tool)),
 		}))
 }
 

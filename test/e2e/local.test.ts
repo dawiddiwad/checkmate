@@ -15,7 +15,7 @@ import {
 import { createServer } from 'node:http'
 import { connect, type AddressInfo } from 'node:net'
 import { createInterface } from 'node:readline'
-import { delimiter, dirname, join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { DatabaseSync } from 'node:sqlite'
 import test, { type TestContext } from 'node:test'
@@ -2576,7 +2576,14 @@ test('Give a session tester the data rules of a read-only target — the test ta
 	writeFileSync(join(workspace, 'ticket.md'), 'The catalog is listed.\n')
 	const app = await fixture()
 	t.after(() => app.close())
-	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'claude' }
+	const bin = directory(t)
+	writeFileSync(join(bin, 'playwright-cli'), '#!/bin/sh\necho 1.0\n', { mode: 0o755 })
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+	}
 	const ok = async (...args: string[]) => {
 		const result = await command(workspace, env, ...args)
 		assert.equal(result.code, 0, result.output)
@@ -2649,6 +2656,7 @@ test('Give a session tester the data rules of a read-only target — the test ta
 	const { session } = identities.rows[0]
 	assert.match(session, /^qa-[a-z0-9]{6}-x-1-a1$/)
 	assert.ok(study.includes(`export PLAYWRIGHT_CLI_SESSION=${session};`))
+	assert.match(study, /^# Browser recipe$/m)
 	for (const text of [study, task]) assert.match(text, /Data policy: Read only\. Never create or change a record\./)
 	assert.doesNotMatch(task, /make new records|Make a new record/)
 	assert.match(task, /Do not create, change, or delete a record/)
@@ -7006,7 +7014,7 @@ test('Drop and use a project tool recipe from the packed CLI', async (t) => {
 			text,
 			/write `<tool>\.json` in the project's `\.checkmate\/recipes\/` folder.*Include `name`, .* in `entryPoints`/
 		)
-		assert.match(text, /Tell the person you added the recipe and what it lets testers run/)
+		assert.match(text, /Tell the person you added the recipe/)
 	}
 	const recipe = {
 		name: 'sf',
@@ -7023,10 +7031,8 @@ test('Drop and use a project tool recipe from the packed CLI', async (t) => {
 		],
 		environment: { SF_TEST_FOLDER: '{workFolder}', SF_TEST_SESSION: '{session}' },
 		workspaceFolders: [],
-		shellInstruction: 'Use the Salesforce org alias from the target.',
 		observeFrom: { soql: 'state' },
 		evidence: ['soql_result'],
-		usage: ['# Salesforce CLI', '', 'Use the org entry as the target org.'],
 	}
 	const folder = join(workspace, '.checkmate', 'recipes')
 	const path = join(folder, 'sf.json')
@@ -7067,8 +7073,6 @@ test('Drop and use a project tool recipe from the packed CLI', async (t) => {
 	const request = await ok(['plan', 'request', 'catalog'])
 	assert.deepEqual(request.observeFrom, [{ value: 'soql', reading: 'state', tool: 'sf' }])
 	await ok(['plan', 'save', 'catalog'], JSON.stringify(recipePlan('salesforce', ['soql'])))
-	const instruction = 'Read the org alias before running a query.'
-	writeFileSync(path, JSON.stringify({ ...recipe, shellInstruction: instruction }))
 	await ok(['run', 'begin', 'org-run', 'catalog@1', '--build', 'b1', '--instance', 'local'])
 	await ok(['run', 'check', 'org-run', 'T1', 'A1', '--observed', 'Kettle', '--evidence', '-:soql_result'], 'Kettle')
 	const evidence = await ok(['query', "SELECT kind FROM evidence WHERE run_id = 'org-run'"])
@@ -7095,8 +7099,11 @@ test('Drop and use a project tool recipe from the packed CLI', async (t) => {
 	await ok(['explore', 'done', id, 'rules', 'rules', '--agent', 'clerk-1'])
 	await ok(['explore', 'next', id])
 	const task = readFileSync(join(workspace, '.checkmate/work', id, 'a1/task-study.md'), 'utf8')
-	assert.ok(task.includes(`Before you use a tool, read its usage field in: ${path}.`), task)
-	assert.ok(task.includes(instruction), task)
+	assert.match(task, /^Tools you can use: sf\.$/m)
+	assert.match(task, /^- org: sandbox\. Salesforce org alias\.$/m)
+	assert.match(task, /^Evidence kinds: observation, soql_result\.$/m)
+	assert.match(task, /read_catalog/)
+	assert.doesNotMatch(task, /usage field|sf\.json|# HTTP recipe|# Mobile recipe/)
 	rmSync(path)
 	const after = await ok(['recipe', 'list'])
 	assert.equal(
@@ -7134,7 +7141,6 @@ test('Keep the recipe catalog usable when a custom recipe is invalid — one bad
 		workspaceFolders: [],
 		observeFrom: { stock: 'state' },
 		evidence: ['stock_report'],
-		usage: ['Read stock from the inventory file.'],
 	}
 	const put = (name: string, fields: object = {}) =>
 		writeFileSync(join(folder, `${name}.json`), JSON.stringify({ ...recipe, name, ...fields }))
@@ -7165,7 +7171,7 @@ test('Keep the recipe catalog usable when a custom recipe is invalid — one bad
 
 	put('good', { kind: 'shell', environment: { STOCK: '{stock}' }, usage: [] })
 	writeFileSync(join(folder, 'broken.json'), '{ "name": "broken",')
-	put('node', { usage: [] })
+	put('node', { shellInstruction: 'Test.' })
 	put('first')
 	put('later', { name: 'first' })
 	put('conflicts', { observeFrom: { api: 'view' }, entryPoints: [{ name: 'web', kind: 'value', purpose: 'Wrong.' }] })
@@ -7175,13 +7181,16 @@ test('Keep the recipe catalog usable when a custom recipe is invalid — one bad
 	const problems = (name: string) =>
 		listed.invalid.find((item: { name: string }) => item.name === name).problems as string[]
 	assert.match(problems('broken').join(' '), /Cannot read JSON/)
-	assert.match(problems('node').join(' '), /Name node is in use by the built-in recipe/)
+	assert.match(
+		problems('node').join(' '),
+		/Unknown field shellInstruction.*Name node is in use by the built-in recipe/
+	)
 	assert.match(problems('later').join(' '), /Name first is in use by the custom recipe/)
 	assert.match(problems('conflicts').join(' '), /observeFrom api is view.*entry point web differs/)
 	assert.deepEqual(problems('good'), [
+		'Unknown field usage. Recipes are manifests. Put tool instructions in a skill.',
 		'kind must be cli or mcp.',
 		'environment.STOCK cannot use {stock}. Use {session} or {workFolder}, or pass the entry as a tool argument.',
-		'usage must be a non-empty list of Markdown lines.',
 	])
 	const compact = spawnSync(process.execPath, [binary, 'recipe', 'list'], { cwd: workspace, env, encoding: 'utf8' })
 	assert.equal(compact.status, 0, compact.stderr)
@@ -7201,7 +7210,7 @@ test('Keep the recipe catalog usable when a custom recipe is invalid — one bad
 		assert.ok(result.body.reasons.includes(reason), result.output)
 		assert.equal(
 			result.body.hint,
-			`Edit ${path} to fix the listed problems. Run checkmate recipe list to check the files.`
+			`Edit ${path} to fix the listed problems. Edits apply immediately. Retry the refused action. A saved target needs setup again only if its inputs changed. Run checkmate recipe list to check the files.`
 		)
 	}
 
@@ -7630,23 +7639,16 @@ test('Test a mobile app with maestro: the tester gets the Maestro environment an
 	assert.match(study.prompt, /- app: com\.example\.shop\. The app ID\./)
 	assert.match(study.prompt, /- device: emulator-5554\. The device ID\./)
 	assert.match(study.prompt, /Tools you can use: maestro\./)
-	const usage = /^Before you use a tool, read its usage field in: (.+)\.$/m.exec(study.prompt)
-	assert.ok(usage, study.prompt)
-	assert.match(usage[1], /\/plugin\/recipes\/maestro\.json$/)
-	assert.ok(existsSync(usage[1]), `${usage[1]} must exist in the installed package`)
-	const guidance = readFileSync(usage[1], 'utf8')
-	const { delegatedInstruction } = JSON.parse(readFileSync(join(dirname(usage[1]), 'maestro.json'), 'utf8'))
-	for (const text of [guidance, delegatedInstruction]) {
-		assert.match(text, /steps that need no screen read in between in one flow/i)
-		assert.match(text, /decision or a check/i)
-		assert.match(text, /point:\x60? inside the bounds of the element with \x60?checked\x60? or \x60?value/)
-		assert.match(text, /scroll[^\n]*read the hierarchy again[^\n]*retry once[^\n]*close the test as error/i)
-		assert.match(text, /if a value still looks unchanged, read the hierarchy once more/i)
-		assert.match(text, /keep assertions out of the flow/i)
-		assert.match(text, /--evidence -:view_hierarchy/)
-		assert.match(text, /--evidence <path>:screenshot/)
-		assert.match(text, /XDG_STATE_HOME=/)
-	}
+	const guidance = study.prompt
+	assert.match(guidance, /steps that need no screen read in between in one flow/i)
+	assert.match(guidance, /decision or a check/i)
+	assert.match(guidance, /point:\x60? inside the bounds of the element with \x60?checked\x60? or \x60?value/)
+	assert.match(guidance, /scroll[^\n]*read the hierarchy again[^\n]*retry once[^\n]*close the test as error/i)
+	assert.match(guidance, /if a value still looks unchanged, read the hierarchy once more/i)
+	assert.match(guidance, /keep assertions out of the flow/i)
+	assert.match(guidance, /--evidence -:view_hierarchy/)
+	assert.match(guidance, /--evidence <path>:screenshot/)
+	assert.match(guidance, /XDG_STATE_HOME=/)
 	assert.match(guidance, /~\/\.maestro\/tests\/<timestamp>/)
 	assert.match(guidance, /<out>\/<timestamp>\/<flow>\/takeScreenshot\/<name>\.png/)
 	assert.match(guidance, /startRecording\/<name>\.mp4[^\n]*QuickTime/)
@@ -7732,13 +7734,12 @@ test('Name the usage text of each tool in the brief of a web target and keep its
 	const lines = study.prompt.split('\n')
 	const tools = lines.indexOf('Tools you can use: node.')
 	assert.ok(tools >= 0, study.prompt)
+	assert.equal(lines[tools + 1], 'Evidence kinds: observation, http_exchange.')
+	assert.match(study.prompt, /^# HTTP recipe$/m)
+	assert.match(study.prompt, /Use Node\.js `fetch` with an explicit timeout\./)
 	assert.match(
-		lines[tools + 1],
-		/^Before you use a tool, read its usage field in: \S+\/plugin\/recipes\/node\.json\.$/
-	)
-	assert.equal(
-		lines[tools + 2],
-		'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.'
+		study.prompt,
+		/A direct HTTP call is sufficient when it proves the behaviour\. Use the browser when the page itself is what you test\./
 	)
 })
 
@@ -11473,6 +11474,8 @@ test("Give each per-test execute worker the oracle's run rejection of its own te
 				assert.match(prompt, /The oracle rejected run-1, the earlier run that holds the last result of T1\./)
 				assert(prompt.includes(JSON.stringify(reason)), prompt)
 				assert.match(prompt, /Take it into account only where it applies to T1\./)
+				assert.match(prompt, /^# HTTP recipe$/m)
+				assert.match(prompt, /^HTTP: node --input-type=module/m)
 			}
 			// Both reads name the rejected run, the test it covers, and the reason, once each for begin and resume.
 			assert.equal(retest.shown.split('The oracle rejected run-1').length - 1, 2, retest.shown)
@@ -11543,6 +11546,7 @@ test('Set up a mobile app from its entries — the profile gets the entry points
 		const result = await command(workspace, environment, ...args)
 		assert.equal(result.code, 1, result.output)
 		assert.match(result.output, pattern)
+		return result.body
 	}
 	await refused(
 		['setup', '--entry', 'app=com.apple.Preferences', '--target', 'phone'],
@@ -11559,14 +11563,19 @@ test('Set up a mobile app from its entries — the profile gets the entry points
 		unknown.output
 	)
 	assert.equal(unknown.body.refusal, 'malformed')
-	assert.match(unknown.body.reasons.join(' '), /Known entries: .*app.*web/)
+	assert.match(unknown.body.reasons.join(' '), /Entries of existing recipes: .*app.*web/)
 	assert.match(unknown.body.hint, /write one JSON file.*checkmate recipe list --json/)
+	assert.match(unknown.body.hint, /Give a new tool its own entry names/)
 	assert.match(unknown.body.hint, /edit that file to fix the listed problems/)
 	await refused(['setup', '--entry', 'web=ftp://x', '--target', 'phone'], /Entry web must match \^https\?:\/\//)
-	await refused(
+	const missingTool = await refused(
 		['setup', ...mobileEntries, '--target', 'phone'],
 		/No tool that is installed fits the entries app, device\. maestro-mcp \(mobile\) and maestro \(mobile\) need them and are not on PATH\./,
 		{ ...env, PATH: process.env.PATH ?? '' }
+	)
+	assert.match(
+		missingTool.hint,
+		/Checked PATH for maestro.*For detect: path, the CLI executable name is the recipe name/
 	)
 	const targets = await command(workspace, env, 'target', 'list')
 	assert.doesNotMatch(targets.output, /phone/)
@@ -12192,6 +12201,7 @@ test('A delegated Claude worker drives a mobile app through the attached Maestro
 		launch.prompt,
 		/maestro-mcp \(mcp, Checkmate attached its server; call only inspect_screen, run, take_screenshot\)/
 	)
+	assert.match(launch.prompt, /^# Mobile recipe: Maestro MCP server$/m)
 	assert.match(launch.prompt, /Give device_id, the device entry of the instance, on every call\./)
 	assert.match(
 		launch.prompt,
@@ -12407,10 +12417,8 @@ test('A tester gets one of two Maestro recipes — the MCP server in a new proce
 		assert.equal((await ok(['explore', 'wait', started.explorationId, '--timeout', '60'])).state, 'completed')
 		const study = host.called().find((item: { role: string }) => item.role === 'explorer')
 		assert.match(study.prompt, /^Tools you can use: maestro-mcp\.$/m)
-		assert.match(
-			study.prompt,
-			/^Before you use a tool, read its usage field in: \S+\/plugin\/recipes\/maestro-mcp\.json\.$/m
-		)
+		assert.match(study.prompt, /^# Mobile recipe: Maestro MCP server$/m)
+		for (const tool of recipeTools) assert.ok(study.prompt.includes(tool), study.prompt)
 		if (harness === 'claude') {
 			const config = JSON.parse(study.args[study.args.indexOf('--mcp-config') + 1])
 			assert.deepEqual(Object.keys(config.mcpServers), ['maestro_mcp'])
@@ -12444,6 +12452,7 @@ test('A tester gets one of two Maestro recipes — the MCP server in a new proce
 		await ok(['explore', 'next', id])
 		const task = readFileSync(join(workspace, '.checkmate/work', id, 'a1/task-study.md'), 'utf8')
 		assert.match(task, /^Tools you can use: maestro\.$/m)
-		assert.match(task, /^Before you use a tool, read its usage field in: \S+\/plugin\/recipes\/maestro\.json\.$/m)
+		assert.match(task, /^# Mobile recipe$/m)
+		assert.match(task, /Use only the device of the instance\./)
 	}
 })

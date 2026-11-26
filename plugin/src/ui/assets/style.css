@@ -220,8 +220,10 @@ small {
 	display: none !important;
 }
 kbd {
-	display: inline-grid;
-	place-items: center;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 1px;
 	min-width: 16px;
 	height: 16px;
 	padding: 0 4px;
@@ -1445,6 +1447,7 @@ a.sp-c-title {
 .sp-ct-opts {
 	display: flex;
 	flex-wrap: wrap;
+	justify-content: flex-end;
 	gap: 8px;
 	align-items: center;
 	margin: 0;
@@ -3794,6 +3797,13 @@ main a:active {
 	height: 12px;
 	font-size: 10px;
 	line-height: 1;
+}
+.sp-legend .sp-mk .glyph {
+	width: 8px;
+	height: 8px;
+	-webkit-mask-size: 8px 8px;
+	mask-size: 8px 8px;
+	vertical-align: 0;
 }
 .sp-banner {
 	display: flex;

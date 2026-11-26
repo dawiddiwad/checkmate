@@ -34,6 +34,7 @@ This codebase is for humans first, and must be:
 
 - `.agents/skills/update-documentation/SKILL.md` for public API, configuration, behavior, and workflow documentation.
 - `.agents/skills/update-model-policy/SKILL.md` for model aliases, authentication, and permissions.
+- `.agents/skills/pull-request/SKILL.md` for every pull request.
 
 ## Non-Negotiables
 
@@ -41,7 +42,9 @@ This codebase is for humans first, and must be:
 - Do not spread one concept across many files without a good reason.
 - Do not add abstractions unless they remove real complexity.
 - If behavior changes, update tests.
-- Test public behavior through the command or UI first. Use the built or packed artifact when packaging can change behavior. Use real persistence or a loopback app when the workflow crosses those boundaries. Follow [test design](.agents/wiki/development-procedures.md#test-design).
+- Test public behavior through the command or UI first. Follow [test design](.agents/wiki/development-procedures.md#test-design).
 - Run `npm test` for the required packaged scenarios. Read `test/e2e/scenarios.json` for coverage and gaps.
 - If public API, config, or workflow changes, update documentation.
-- Keep authentication, credentials, and permissions with the host. Checkmate names a default model alias only for the sessions that it starts. The host can override it. Use ASD-STE100 style for documentation, instructions, and skills.
+- Do not type a Checkmate tool name or tool field as a string literal. Edit a generated skill only in `scripts/templates/`. Follow [tool names and generated skills](.agents/wiki/development-procedures.md#tool-names-and-generated-skills).
+- Keep authentication, credentials, and permissions with the host. Follow `.agents/skills/update-model-policy/SKILL.md`.
+- Use ASD-STE100 style for documentation, instructions, and skills: short sentences, consistent terms, and one action per instruction.

@@ -69,23 +69,17 @@ function themeForm(context: Context) {
 	</form>`
 }
 
-function header(context: Context) {
+function statusWho(context: Context) {
 	const back = encodeURIComponent(context.path)
 	const actor = context.actor
 		? html`<a class="actor" href="/actor?back=${back}" title="${context.actor}. Change your name"
 				>${context.actor}</a
 			>`
 		: html`<a class="actor att" href="/actor?back=${back}">Set your name</a>`
-	return html`<header class="top">
-		<div class="top-in">
-			<a class="brand" href="/" aria-label="Checkmate, home">${mark()}<span>Checkmate</span></a>
-			<span class="top-fill"></span>
-			<div class="who">
-				<span class="live" data-live hidden>Connecting</span>
-				${actor} ${themeForm(context)}
-			</div>
-		</div>
-	</header>`
+	return html`<div class="who">
+		<span class="live" data-live hidden>Connecting</span>
+		${actor} ${themeForm(context)}
+	</div>`
 }
 
 function statusLink(page: Page, section: Section, href: string, label: string) {
@@ -97,6 +91,7 @@ function statusBar(context: Context, page: Page) {
 	const path = page.crumbs?.length ? page.crumbs : [[page.title, null] as [string, null]]
 	const waiting = context.queueCount
 	return html`<footer class="statusbar" aria-label="Status bar">
+		<a class="brand" href="/" aria-label="Checkmate, home">${mark()}<span>Checkmate</span></a>
 		<nav class="sb-where" aria-label="Where you are">
 			<ol>
 				${path.map(([label, href]) =>
@@ -171,6 +166,7 @@ function statusBar(context: Context, page: Page) {
 		</span>
 		<span class="sb-say" aria-live="polite" data-say></span>
 		<span class="sb-keys" data-hints></span>
+		${statusWho(context)}
 	</footer>`
 }
 
@@ -260,7 +256,6 @@ export function layout(context: Context, page: Page) {
 				${page.address ? html`data-address="${page.address}"` : ''}
 			>
 				<a class="skip" href="#main">Skip to content</a>
-				${header(context)}
 				<div class="app${page.drawer ? ' with-drawer' : ''}">
 					${page.nav ? html`<div class="with-nav">${page.nav}${main}</div>` : main}
 				</div>

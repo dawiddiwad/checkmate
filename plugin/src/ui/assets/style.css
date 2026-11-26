@@ -119,7 +119,7 @@
 }
 html {
 	-webkit-text-size-adjust: 100%;
-	scroll-padding-top: calc(var(--top-h) + 8px);
+	scroll-padding-top: 8px;
 	scroll-padding-bottom: calc(var(--sp-bar) + var(--dock-h, 0px) + 8px);
 }
 body {
@@ -257,35 +257,13 @@ th {
 	text-transform: none;
 }
 
-.top {
-	position: sticky;
-	top: 0;
-	z-index: 60;
-	height: var(--top-h);
-	background: var(--ground);
-}
-.top::after {
-	content: '';
-	position: absolute;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	height: 1px;
-	background: var(--hair);
-}
-.top-in {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	height: var(--top-h);
-	padding: 0 max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px));
-}
 .brand {
 	display: inline-flex;
 	align-items: center;
 	gap: 10px;
 	height: 28px;
-	font: 600 15px/1 var(--font-mono);
+	color: var(--ink);
+	font: 600 13px/1 var(--font-mono);
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
 	text-decoration: none;
@@ -304,16 +282,14 @@ th {
 .mark i.on {
 	background: currentColor;
 }
-.top-fill {
-	flex: 1;
-}
 .who {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	min-width: 0;
-	font: 500 12px/16px var(--font-mono);
-	letter-spacing: 0.05em;
+	margin-left: auto;
+	font: 400 13px/20px var(--font-body);
+	letter-spacing: 0;
 	color: var(--muted);
 }
 .who .actor {
@@ -333,7 +309,6 @@ th {
 }
 .live {
 	white-space: nowrap;
-	text-transform: uppercase;
 }
 .live.down {
 	color: var(--signal);
@@ -961,8 +936,8 @@ details.menu > summary::-webkit-details-marker {
 
 .sp-nav {
 	position: sticky;
-	top: calc(var(--top-h) + 16px);
-	max-height: calc(100vh - var(--top-h) - var(--sp-bar) - var(--dock-h, 0px) - 32px);
+	top: 16px;
+	max-height: calc(100vh - var(--sp-bar) - var(--dock-h, 0px) - 32px);
 	overflow-y: auto;
 	padding: 8px 0;
 	border: 1px solid var(--hair);
@@ -1469,7 +1444,7 @@ a.sp-c-title {
 .sp-drawer {
 	position: fixed;
 	z-index: 50;
-	top: var(--top-h);
+	top: 0;
 	bottom: calc(var(--sp-bar) + var(--dock-h, 0px));
 	right: 0;
 	width: var(--sp-drawer);
@@ -1647,7 +1622,7 @@ a.sp-c-title {
 .sp-viewer {
 	position: fixed;
 	z-index: 55;
-	top: var(--top-h);
+	top: 0;
 	bottom: calc(var(--sp-bar) + var(--dock-h, 0px));
 	left: 0;
 	right: 0;
@@ -1683,7 +1658,7 @@ a.sp-c-title {
 }
 .sp-fig pre {
 	padding: 16px;
-	max-height: calc(100vh - var(--top-h) - var(--sp-bar) - 120px);
+	max-height: calc(100vh - var(--sp-bar) - 120px);
 	overflow: auto;
 }
 .ev-frame {
@@ -1694,7 +1669,7 @@ a.sp-c-title {
 	background: var(--surface);
 }
 .sp-fig .ev-frame {
-	height: max(220px, calc(100dvh - var(--top-h) - var(--sp-bar) - 120px));
+	height: max(220px, calc(100dvh - var(--sp-bar) - 120px));
 }
 .sp-fig figcaption {
 	display: flex;
@@ -1725,7 +1700,7 @@ a.sp-c-title {
 	font: 500 12px/16px var(--font-mono);
 }
 .sp-confirm {
-	top: calc(var(--top-h) + 48px);
+	top: 48px;
 	margin: 0 auto;
 	width: min(560px, calc(100vw - 32px));
 }
@@ -1752,12 +1727,13 @@ a.sp-c-title {
 	height: calc(var(--sp-bar) + env(safe-area-inset-bottom, 0px));
 	display: flex;
 	align-items: center;
-	gap: 16px;
-	padding: 0 max(16px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px)
-		max(16px, env(safe-area-inset-left, 0px));
-	background: var(--ground);
+	gap: 20px;
+	padding: 0 max(24px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px)
+		max(24px, env(safe-area-inset-left, 0px));
+	background: var(--surface);
 	color: var(--muted);
-	font: 500 12px/16px var(--font-mono);
+	font: 400 13px/20px var(--font-body);
+	letter-spacing: 0;
 }
 .statusbar::before {
 	content: '';
@@ -1772,6 +1748,13 @@ a.sp-c-title {
 	flex: 0 1 var(--path-w, 320px);
 	min-width: 0;
 	overflow: hidden;
+	color: var(--ink);
+	font: 400 13px/20px var(--font-mono);
+}
+.sb-where a {
+	color: var(--muted);
+}
+.sb-where a:hover {
 	color: var(--ink);
 }
 .sb-where ol {
@@ -1803,19 +1786,21 @@ a.sp-c-title {
 }
 .sb-links {
 	display: flex;
-	gap: 8px;
+	align-self: stretch;
+	gap: 0;
 	flex: none;
 }
 .sb-btn {
 	display: inline-flex;
 	align-items: center;
-	height: 24px;
-	padding: 0 8px;
-	border: 1px solid var(--edge);
+	height: 100%;
+	padding: 0 12px;
+	border: 0;
 	background: transparent;
-	color: var(--ink);
+	color: var(--muted);
 	cursor: pointer;
-	font: 500 12px/16px var(--font-mono);
+	font: 400 13px/20px var(--font-body);
+	letter-spacing: 0;
 	text-decoration: none;
 	white-space: nowrap;
 }
@@ -1824,7 +1809,7 @@ a.sp-c-title {
 }
 .sb-btn-set {
 	display: flex;
-	gap: 8px;
+	gap: 0;
 }
 .sb-links .sb-more {
 	display: none;
@@ -1853,13 +1838,14 @@ a.sp-c-title {
 	right: 0;
 }
 .sb-btn[aria-current='page'] {
-	background: var(--surface-2);
-	border-color: var(--surface-2);
+	box-shadow: inset 0 2px 0 var(--ink);
 	color: var(--ink);
+	font-weight: 600;
 }
 .sb-btn.att {
-	border-color: var(--signal);
+	border: 0;
 	color: var(--signal);
+	font-weight: 600;
 }
 .sb-say {
 	flex: 1 1 0;
@@ -1962,10 +1948,10 @@ dialog::backdrop {
 	background: var(--scrim);
 }
 .sp-keys {
-	top: calc(var(--top-h) + 16px);
+	top: 16px;
 	margin: 0 auto;
 	width: min(944px, calc(100vw - 32px));
-	max-height: calc(100vh - var(--top-h) - var(--sp-bar) - 32px);
+	max-height: calc(100vh - var(--sp-bar) - 32px);
 	overflow-y: auto;
 }
 .sp-ktable {
@@ -2013,7 +1999,7 @@ dialog::backdrop {
 	color: var(--muted);
 }
 .sp-find {
-	top: calc(var(--top-h) + 48px);
+	top: 48px;
 	margin: 0 auto;
 	width: min(660px, calc(100vw - 32px));
 }
@@ -2394,7 +2380,7 @@ dialog::backdrop {
 	background: var(--surface-2);
 	color: var(--ink);
 }
-.q-row.hl .sp-pill:not(.red, .amber, .blue, .green, .crit),
+.q-row.hl .sp-pill:not(.pass, .fail, .you, .run, .crit),
 .q-row.hl .muted {
 	color: var(--ink);
 }
@@ -2548,7 +2534,7 @@ td code {
 .viewer {
 	position: fixed;
 	z-index: 90;
-	inset: var(--top-h) 0 var(--sp-bar) 0;
+	inset: 0 0 var(--sp-bar) 0;
 	display: flex;
 	flex-direction: column;
 	background: var(--ground);
@@ -2885,12 +2871,7 @@ details.fold[open] > summary::before {
 		min-height: 40px;
 	}
 	:root {
-		--top-h: 56px;
 		--path-w: 72px;
-	}
-	.top,
-	.top-in {
-		height: 56px;
 	}
 	.who .actor {
 		max-width: 12ch;
@@ -2991,7 +2972,6 @@ details.fold[open] > summary::before {
 	:root {
 		color-scheme: light;
 	}
-	.top,
 	.statusbar,
 	.sp-nav,
 	.toast,
@@ -3044,7 +3024,8 @@ details.fold[open] > summary::before {
 }
 
 @media (max-width: 400px) {
-	.brand > span:last-child {
+	.brand > span:last-child,
+	.who .actor {
 		display: none;
 	}
 	.sb-links {
@@ -3165,11 +3146,11 @@ main a:active {
 @media (max-width: 900px) {
 	:root:has(.sp-nav) {
 		--strip-h: 58px;
-		scroll-padding-top: calc(var(--top-h) + var(--strip-h) + 8px);
+		scroll-padding-top: calc(var(--strip-h) + 8px);
 	}
 	.with-nav > .sp-nav {
 		position: sticky;
-		top: var(--top-h);
+		top: 0;
 		z-index: 20;
 		margin: -16px -16px 0;
 		border-width: 0 0 1px;
@@ -3234,7 +3215,7 @@ main a:active {
 	gap: 12px;
 }
 .sp-act {
-	max-height: calc(100vh - var(--top-h) - var(--sp-bar) - 32px);
+	max-height: calc(100vh - var(--sp-bar) - 32px);
 	overflow-y: auto;
 }
 .sp-act [data-act-error]:empty {

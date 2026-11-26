@@ -360,22 +360,22 @@ function ruleGroups(review: Review, view: string, items: Item[]): Group[] {
 }
 
 const tags: Record<string, [string, string]> = {
-	finding: ['? Finding', 'amber'],
+	finding: ['? Finding', 'you'],
 	question: ['Question', ''],
-	answered: ['Answered', 'green'],
+	answered: ['Answered', 'pass'],
 	deferred: ['Deferred', ''],
 	gap: ['Gap', ''],
-	approval: ['Approve', 'blue'],
+	approval: ['Approve', 'you'],
 	rejected: ['Rejected', ''],
 	critical: ['!! Critical', 'crit'],
-	high: ['! High', 'red'],
-	medium: ['Medium', 'amber'],
+	high: ['! High', 'fail'],
+	medium: ['Medium', 'you'],
 	low: ['Low', ''],
 }
 
 export function itemTag(item: Item) {
 	if (item.permission) return askBadge()
-	if (item.blocking) return html`<span class="sp-pill red"><span class="dot" aria-hidden="true"></span>Blocks</span>`
+	if (item.blocking) return html`<span class="sp-pill you"><span class="dot" aria-hidden="true"></span>Blocks</span>`
 	const [label, color] = tags[item.kind === 'defect' ? (item.severity ?? 'low') : item.kind] ?? tags.low
 	return html`<span class="sp-pill ${color}">${label}</span>`
 }
@@ -821,9 +821,9 @@ export function viewTitle(review: Review, view: string) {
 }
 
 const cellWords: Record<CellStatus, [string, string]> = {
-	failed: ['failed', 'red'],
-	question: ['uncertain', 'amber'],
-	passed: ['passed', 'green'],
+	failed: ['failed', 'fail'],
+	question: ['uncertain', 'you'],
+	passed: ['passed', 'pass'],
 	not_checked: ['not tested', ''],
 }
 

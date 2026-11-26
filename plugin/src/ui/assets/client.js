@@ -477,7 +477,7 @@ function reveal(row) {
 	const strip = row.matches('[data-nav]')
 		? 0
 		: parseFloat(window.getComputedStyle(document.documentElement).getPropertyValue('--strip-h')) || 0
-	const top = (document.querySelector('.top')?.getBoundingClientRect().bottom ?? 0) + strip
+	const top = strip
 	if (row.getBoundingClientRect().top < top) row.scrollIntoView({ block: 'start' })
 }
 
@@ -2932,7 +2932,7 @@ function placeMenu(menu) {
 	if (!list) return
 	const edge = 8
 	const box = menu.getBoundingClientRect()
-	const top = document.querySelector('.top').getBoundingClientRect().bottom + edge
+	const top = edge
 	const bottom = document.querySelector('.statusbar').getBoundingClientRect().top - edge
 	const above = Math.min(bottom, box.top - edge)
 	const below = Math.max(top, box.bottom + edge)

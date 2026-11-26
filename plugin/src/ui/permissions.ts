@@ -208,11 +208,11 @@ export function rowOptions(context: Context, item: Permission, returnTo: string)
 }
 
 export function askBadge() {
-	return html`<span class="sp-pill amber">ASKS</span>`
+	return html`<span class="sp-pill you">Asks</span>`
 }
 
 export function askingPill() {
-	return html`<span class="sp-pill amber"><span class="dot" aria-hidden="true"></span>Asks</span>`
+	return html`<span class="sp-pill you"><span class="dot" aria-hidden="true"></span>Asks</span>`
 }
 
 function optionOf(context: Context, item: Permission, from: string | null, choice: Choice, n: number) {
@@ -519,13 +519,13 @@ export function permissionHistory(store: Store, explorationId: string, params: U
 function decisionPill(item: Permission) {
 	const kind = item.decision!.kind
 	const look: Record<string, [string, string]> = {
-		allow: ['Allowed', 'green'],
-		'allow-kind': ['Allowed', 'green'],
-		'allow-tool': ['Allowed', 'green'],
-		always: ['Allowed', 'green'],
-		rule: ['By rule', 'green'],
-		deny: ['Denied', 'red'],
-		stop: ['Stopped', 'red'],
+		allow: ['Allowed', 'pass'],
+		'allow-kind': ['Allowed', 'pass'],
+		'allow-tool': ['Allowed', 'pass'],
+		always: ['Allowed', 'pass'],
+		rule: ['By rule', 'pass'],
+		deny: ['Denied', 'fail'],
+		stop: ['Stopped', 'fail'],
 		closed: ['Closed', ''],
 	}
 	const [label, tone] = look[kind]

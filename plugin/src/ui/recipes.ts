@@ -26,11 +26,15 @@ function invalidHref(item: InvalidRecipe) {
 }
 
 function invalidPill() {
-	return html`<span class="sp-pill red" data-source="invalid">invalid</span>`
+	return html`<span class="sp-pill fail" data-source="invalid">Invalid</span>`
 }
 
+const sourceLabel = { 'built-in': 'Built-in', custom: 'Custom' }
+
 function sourcePill(source: RecipeEntry['source']) {
-	return html`<span class="sp-pill${source === 'custom' ? ' blue' : ''}" data-source="${source}">${source}</span>`
+	return html`<span class="sp-pill${source === 'custom' ? ' run' : ''}" data-source="${source}"
+		>${sourceLabel[source]}</span
+	>`
 }
 
 function codes(items: string[]) {

@@ -101,7 +101,7 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 				<span class="sp-c-id">${review.planId}</span>
 				${
 					review.running
-						? html`<span class="sp-pill blue"><span class="dot" aria-hidden="true"></span>Testing</span>`
+						? html`<span class="sp-pill run"><span class="dot" aria-hidden="true"></span>Testing</span>`
 						: ended
 							? pill(ended.state)
 							: loop

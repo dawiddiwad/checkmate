@@ -1,17 +1,19 @@
 import type { Store } from './store.ts'
-import type { Plan } from './types.ts'
+import type { Exploration, Plan } from './types.ts'
 import type { Change } from './change.ts'
 import { all, canonical, completed, execute, one, write } from './store.ts'
-import { requireChoice, requireIdentifier, requireText, unusedId } from './contracts.ts'
+import { unusedId } from './contracts.ts'
+import explorationSchema from '../contracts/exploration.schema.json' with { type: 'json' }
 import { executionTarget, planRequest, planTools } from './plans.ts'
 import { correctedEntryText, runInstance } from './targets.ts'
+import { requireValidRecipes } from './recipes.ts'
 import { explorationRules, planRules } from './rules.ts'
 import type { Claim } from './journal.ts'
 import { addPlanBuild, explorationRow, journal, planClaims, planQuestions } from './journal.ts'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-export const explorationModes = ['exploratory', 'regression'] as const
+export const explorationModes = explorationSchema.properties.mode.enum
 export type Charter = {
 	goal: string
 	dataRules?: string[]
@@ -215,23 +217,22 @@ export function nextExplorationId(store: Store) {
 	return unusedId('x-', ids)
 }
 
-export type OpenInput = {
-	planId: string
-	build: string
-	instance?: string
-	mode?: string
+export type OpenInput = Pick<Exploration, 'planId' | 'build' | 'instance' | 'mode'> & {
 	scope?: string[]
 	change?: Change | null
 	explorationId?: string
 }
 
 export function insertExploration(store: Store, input: OpenInput, operationId: string, at: string) {
-	const planId = requireIdentifier(input.planId, 'plan ID')
+	const { planId, build } = input
 	const { target: pinned } = planRequest(store, planId)
 	const target = executionTarget(store, planId, pinned.profile.targetId, pinned.revision)
-	const build = requireText(input.build, 'application build (--build)')
-	const mode = requireChoice(input.mode ?? 'exploratory', explorationModes, 'mode (--mode)')
-	const instance = runInstance(store, target.profile.targetId, input.instance)
+	const mode = input.mode ?? 'exploratory'
+	requireValidRecipes(
+		store.workspace,
+		planTools(planRequest(store, planId).request, target.profile).map((tool) => tool.name)
+	)
+	const instance = runInstance(store, target.profile.targetId, input.instance, build)
 	const explorationId = input.explorationId ?? nextExplorationId(store)
 	const revision = latestRevision(store, planId)
 	const charter = charterOf(

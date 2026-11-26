@@ -41,6 +41,8 @@ if (process.env.QA_STAGE === 'setup') {
 		approvals: { plan: 'required', result: 'required' },
 	})
 } else if (process.env.QA_STAGE === 'plan') {
+	if (!prompt.includes('Do not search the file system: do not use rg, grep, or find.'))
+		throw Error('The plan prompt does not forbid a file search')
 	if (!prompt.includes('plan save') || !readFileSync('ticket.md', 'utf8').includes('The quote is 240.'))
 		throw Error('Ticket or plan command missing')
 	result = run(['plan', 'save', 'ticket', ...(process.env.QA_LIE === 'actor' ? ['--actor', 'impostor'] : [])], {

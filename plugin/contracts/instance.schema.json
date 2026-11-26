@@ -6,24 +6,22 @@
 		"entries": {
 			"type": "object",
 			"propertyNames": {
-				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				"$ref": "identifier.schema.json"
 			},
 			"additionalProperties": {
 				"type": "string",
-				"minLength": 1,
-				"maxLength": 2000
+				"maxLength": 2000,
+				"pattern": "\\S"
 			},
 			"minProperties": 1
 		},
 		"environment": {
 			"type": "string",
-			"minLength": 1,
-			"maxLength": 500
+			"maxLength": 500,
+			"pattern": "\\S"
 		},
 		"build": {
-			"type": "string",
-			"minLength": 1,
-			"maxLength": 200
+			"$ref": "build.schema.json"
 		},
 		"references": {
 			"type": "array",

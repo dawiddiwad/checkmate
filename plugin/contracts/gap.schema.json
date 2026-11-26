@@ -4,8 +4,7 @@
 	"type": "object",
 	"properties": {
 		"id": {
-			"type": "string",
-			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			"$ref": "identifier.schema.json"
 		},
 		"severity": {
 			"enum": ["blocking", "non_blocking"]
@@ -16,8 +15,7 @@
 		"requirementIds": {
 			"type": "array",
 			"items": {
-				"type": "string",
-				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				"$ref": "identifier.schema.json"
 			},
 			"minItems": 0,
 			"uniqueItems": true
@@ -42,8 +40,7 @@
 		"decisionId": {
 			"anyOf": [
 				{
-					"type": "string",
-					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					"$ref": "identifier.schema.json"
 				},
 				{
 					"type": "null"

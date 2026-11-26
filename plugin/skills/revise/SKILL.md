@@ -1,60 +1,17 @@
 ---
 name: revise
-description: Apply recorded oracle answers to a Checkmate plan and save the next revision. Not for testing: a request to test goes to the test skill.
+description: Apply the oracle's recorded decisions to a Checkmate test plan.
 ---
-
-> **Agent only:** This file contains repository or workflow instructions for coding agents.
 
 ## Operator
 
-Read the plan status. If a received answer matches an open question, record the person's exact words with `checkmate_answer_gap`. It starts a reviser for a plan gap. If the plan already has pending decisions or checks that need migration, use `checkmate_delegate_work` with stage `revise` and the plan ID. If status says `waitsOn=oracle`, ask for the stated decision and stop. Do not choose a value from context.
+Read the plan status. Record an answer only when it answers the question. Use the person's words. Delegate pending decisions or check migration. If the oracle must decide, ask and stop.
 
 ## Delegated reviser
 
-Only apply decisions that the oracle recorded.
+1. Read the pending decisions and the affected tests. If there are no decisions and no checks to migrate, return `needs_decision`.
+2. Apply only the decisions that affect the tests. Keep each test independent. When the oracle removes a requirement, remove its tests with it. Leave a gap for a fact the oracle did not settle.
+3. When migrating checks, use the source for each expected value. Split checks that compare more than one value. Keep observable checks for what the source supports.
+4. Save the delta. Follow the refusal if the tool asks for a correction. Return the recorded result.
 
-1. Call `checkmate_read_pending` with the plan ID. It prints each pending decision with its ID, gap, kind, value, and rationale, then the affected gaps and tests with their assertions.
-2. If there is a check migration, repair the affected tests. If there is no pending decision or migration, stop with `needs_decision`.
-3. For each decision, find the change in the affected tests that the decision value requires. Read the rationale too. It can limit or explain the value.
-4. Write the delta. Use the shape below.
-5. Call `checkmate_revise_plan` with the plan ID and the delta object.
-6. If the tool refuses the delta, use its reasons and next action to correct it.
-7. Return the response of `checkmate_revise_plan`.
-
-```json
-{
-	"tests": {
-		"T2": {
-			"title": "Order",
-			"requirementIds": ["R2"],
-			"capability": "http",
-			"operations": ["read_catalog"],
-			"dependsOn": [],
-			"preconditions": [],
-			"action": "Read the list.",
-			"assertions": [
-				{ "check": "The newest item is first.", "checkKind": "deterministic" },
-				{ "check": "The list has at most 10 items.", "checkKind": "deterministic" }
-			]
-		}
-	},
-	"requirements": {
-		"R7": { "text": "The list has at most 10 items.", "source": "ticket.md" }
-	}
-}
-```
-
-Rules:
-
-- Change only tests that the pending decisions affect. Send each one whole.
-- When a decision drops a criterion or puts it out of scope, remove its requirement and its tests in the same delta: `"requirements": { "R2": { "remove": true } }` and `"tests": { "T2": { "remove": true } }`. A requirement stays while any of its tests stays.
-- Keep each test independent. A changed precondition creates its own data. It does not use the records of another test.
-- A delta does not change `metadata`. The team fields of each test stay in the next revision. Do not put team fields in a check. To change `metadata`, the oracle uses `checkmate_edit_plan` with a patch.
-- Send each changed test whole. The code keeps an assertion ID when its check text is unchanged. Do not send assertion IDs. Give one value in each check.
-- Each assertion needs `check` and `checkKind`. A test that a decision drops is removed with `{ "remove": true }`.
-- `clarify`: write the assertions that the decision value makes known. Use the exact value from the decision. If the answer settles part of a question, apply that part and add a question only for the fact still needed. Never infer an order, rounding rule, or arithmetic result that the person did not state.
-- `accept_assumption`: write the assertions that the assumption makes known. When the decision and the sources give no expected value, do not invent one and do not stop. Write one `agent_observation` assertion that records the behavior and checks only what the sources state, for example: "Record whether the code is applied or refused. The cart total stays consistent and no error shows."
-- `defer`: change no assertion for that gap. A deferred blocking gap defers its tests. A deferred non-blocking gap only closes, and its tests stay ready. Send `{ "tests": {} }` when every decision is `defer`.
-- Do not write gap status, decisions, or assumptions. Checkmate applies them from the pending decisions.
-- Do not invent a decision. Do not answer a gap. Only the oracle records a decision, with `checkmate_answer_gap` or in the review UI.
-- Without a pending decision, a revise migrates the checks to the current shape: change only the tests that `plan show --json` shows with a deterministic check that has no `expected`, or a check that states more than one value. Give each migrated check `observe` and `expected` from the sources. Do not invent an expected value. When a split or a value needs a decision, send that test with `"assertions": []` and a gap: `"gaps": { "G-<testId>": { "question": "...", "consequence": "...", "testIds": ["<testId>"] } }`.
+Do not invent a decision or answer a gap. Only the oracle decides.

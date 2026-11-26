@@ -165,7 +165,7 @@ CREATE TABLE runs (
   application_build TEXT NOT NULL,
   request TEXT NOT NULL,          -- JSON: selection and execution policy
   started_at TEXT NOT NULL,
-  browser_session TEXT NOT NULL,
+  tool_session TEXT NOT NULL,     -- the session ID that each test tool of the run uses
   deadline_seconds INTEGER NOT NULL,
   operation_id TEXT NOT NULL REFERENCES operations(id),
   FOREIGN KEY (plan_id, plan_revision) REFERENCES plan_revisions(plan_id, revision)
@@ -418,7 +418,7 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 ### Commands
 
 1. `checkmate run gate <planId@rev> --tests T1,T2 --build <build>` checks the gate without side effects.
-2. `checkmate run begin <runId> <planId@rev> --tests T1,T2 --build <build> [--retest-of <runId>] [--timeout <s>] [--partial wait_for_resolution|ready_only] [--on-new-blocker return_to_oracle|continue_independent]` runs the gate, records the run and attempt 1, and prints `startedAt` and `browserSession`. A plan revision that needs approval and has none fails the gate.
+2. `checkmate run begin <runId> <planId@rev> --tests T1,T2 --build <build> [--retest-of <runId>] [--timeout <s>] [--partial wait_for_resolution|ready_only] [--on-new-blocker return_to_oracle|continue_independent]` runs the gate, records the run and attempt 1, and prints `startedAt` and `toolSession`. A plan revision that needs approval and has none fails the gate.
 3. For each assertion, the agent runs `checkmate run check <runId> <testId> <assertionId> --result <result> [--observed <text>] [--reason <text>] [--evidence -[:kind]] [--evidence <file>[:kind]]...`.
    - The agent does not send the check text or the check kind. Checkmate copies them from the plan.
    - `--evidence -` reads text evidence from stdin. A binary file, for example a screenshot, goes to `.checkmate/tmp/<runId>/` first. Checkmate stores the bytes as a blob, records the evidence row, and deletes the file.

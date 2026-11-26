@@ -12,8 +12,7 @@
 				"type": "object",
 				"properties": {
 					"id": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"title": {
 						"type": "string",
@@ -23,21 +22,18 @@
 					"requirementIds": {
 						"type": "array",
 						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+							"$ref": "identifier.schema.json"
 						},
 						"minItems": 1,
 						"uniqueItems": true
 					},
 					"capability": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"operations": {
 						"type": "array",
 						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+							"$ref": "identifier.schema.json"
 						},
 						"minItems": 1,
 						"uniqueItems": true
@@ -102,5 +98,32 @@
 		}
 	},
 	"required": ["tests", "gaps"],
-	"additionalProperties": false
+	"additionalProperties": false,
+	"examples": [
+		{
+			"tests": [
+				{
+					"id": "T1",
+					"title": "Read the order total",
+					"requirementIds": ["R1"],
+					"capability": "browser",
+					"operations": ["read_orders"],
+					"dependsOn": [],
+					"preconditions": [],
+					"action": "Open the order confirmation.",
+					"assertions": [
+						{
+							"id": "A1",
+							"check": "The order total is 240 PLN.",
+							"checkKind": "deterministic",
+							"observe": "Order total",
+							"expected": "240 PLN"
+						}
+					],
+					"metadata": { "type": "regression" }
+				}
+			],
+			"gaps": []
+		}
+	]
 }

@@ -1,6 +1,7 @@
 import type { Charter } from './explorations.ts'
 import { changesData } from './resets.ts'
 import { anyTestOperation, anyTestOperationText, readOnlyOperation, readOnlyOperationText } from './targets.ts'
+import { testerTools, recipeFilesFor } from './recipes.ts'
 import entrySchema from '../contracts/journal-entry.schema.json' with { type: 'json' }
 import criterionSchema from '../contracts/journal-criterion.schema.json' with { type: 'json' }
 import observationSchema from '../contracts/journal-observation.schema.json' with { type: 'json' }
@@ -10,6 +11,9 @@ import verdictSchema from '../contracts/journal-verdict.schema.json' with { type
 import noteSchema from '../contracts/journal-note.schema.json' with { type: 'json' }
 import issueSchema from '../contracts/journal-issue.schema.json' with { type: 'json' }
 import topicSchema from '../contracts/journal-topic.schema.json' with { type: 'json' }
+import ruleSchema from '../contracts/worker-rule.schema.json' with { type: 'json' }
+import verificationSchema from '../contracts/verification.schema.json' with { type: 'json' }
+import identifierSchema from '../contracts/identifier.schema.json' with { type: 'json' }
 
 type Schema = {
 	$ref?: string
@@ -24,6 +28,7 @@ type Schema = {
 type Field = { path: string; type: string; required: boolean; description: string }
 
 const files: Record<string, Schema> = {
+	'identifier.schema.json': identifierSchema as Schema,
 	'journal-entry.schema.json': entrySchema as Schema,
 	'journal-criterion.schema.json': criterionSchema as Schema,
 	'journal-observation.schema.json': observationSchema as Schema,
@@ -34,7 +39,7 @@ const files: Record<string, Schema> = {
 	'journal-issue.schema.json': issueSchema as Schema,
 	'journal-topic.schema.json': topicSchema as Schema,
 }
-const commonFields = ['kind', 'id', 'build', 'supersedes']
+const commonFields = ['kind', 'id', 'supersedes']
 const teamFields = ['confirms', 'refutes']
 const recordedKinds = ['criterion', 'observation', 'defect', 'question', 'verdict', 'note']
 
@@ -43,7 +48,7 @@ function resolved(node: Schema, file: string): [Schema, string] {
 	const [path, pointer] = node.$ref.split('#')
 	const target = path || file
 	let found = files[target] as unknown as Record<string, unknown>
-	for (const key of pointer.split('/').filter(Boolean)) found = found[key] as Record<string, unknown>
+	for (const key of (pointer ?? '').split('/').filter(Boolean)) found = found[key] as Record<string, unknown>
 	const [inner, at] = resolved(found as Schema, target)
 	const { $ref, ...own } = node
 	return [{ ...inner, ...own }, at]
@@ -93,9 +98,9 @@ function kindText(kind: string, keep: (field: Field) => boolean, described: Set<
 
 function commonText(kinds: string[], described: Set<string>) {
 	const file = 'journal-entry.schema.json'
-	const fields = fieldsOf(files[file], file, '')
-		.filter((field) => field.path !== 'build')
-		.map((field) => (field.path === 'kind' ? { ...field, type: kinds.join('|') } : field))
+	const fields = fieldsOf(files[file], file, '').map((field) =>
+		field.path === 'kind' ? { ...field, type: kinds.join('|') } : field
+	)
 	return `${files[file].description} Every entry has: ${fieldText(fields, described)}`
 }
 
@@ -162,16 +167,12 @@ export function recorderPrompt(
 	return answer ? withoutName(text) : text
 }
 
-const ruleObject =
-	'{"id": "R1", "text": "<the rule, in one sentence>", "source": "<the source file>#<the place in it>", "area": "<the area of the rule>"}'
-
 export function rulesPrompt(goal: string, sources: Array<{ name: string; text: string | null }>, answer?: string) {
 	const text = [
 		'Write the rules of the change that the sources below describe. Do not test.',
 		'A rule is one sentence that a tester can check on the application: an action or an input, and the correct result. Write one rule for each requirement, limit, and case that the sources state. Do not add a rule that the sources do not state.',
-		'Number the rules R1, R2, and so on, in the order of the sources. The place is a heading or a line of the source file.',
-		'Sort the rules into areas. Use at most nine areas for one plan. Put each rule in exactly one area. Rules that test one feature or one page share an area. An area name is a plain noun phrase of one to three words, taken from the words of the sources, for example "Approval" or "Notifications". Keep the numbers and the order of the rules.',
-		`${replyText('rules', answer)} Each rule: ${ruleObject}`,
+		'Group rules that concern the same feature.',
+		`${replyText('rules', answer)} Example: ${JSON.stringify(ruleSchema.examples)}`,
 		'',
 		`Goal: ${goal}`,
 		...sources.flatMap((source) => [
@@ -234,6 +235,11 @@ function operationText(operations: string[]) {
 
 export type EntryPointValue = { name: string; kind: string; purpose: string; value: string }
 
+function usageLine(workspace: string, toolNames: string[]) {
+	const files = recipeFilesFor(workspace, toolNames)
+	return files.length ? [`Before you use a tool, read its usage field in: ${files.join(', ')}.`] : []
+}
+
 function entryPointLine(entry: EntryPointValue) {
 	if (entry.kind === 'command')
 		return `- ${entry.name}: run \`${entry.value}\` when you need it. ${entry.purpose} Do not write its output in your notes.`
@@ -248,13 +254,21 @@ function testDataText(operations: string[], dataPrefix: string) {
 }
 
 export function explorerBrief(
+	workspace: string,
 	charter: Charter,
 	entries: EntryPointValue[],
 	dataPrefix: string,
 	workFolder: string,
-	seconds: { study: number; test: number }
+	seconds: { study: number; test: number },
+	attached = true
 ) {
 	const change = charter.change
+	// A tester in a new process gets the attached server of a recipe of kind mcp. A tester of the host session does not.
+	const tools = testerTools(
+		workspace,
+		charter.tools.map((tool) => tool.name),
+		attached
+	)
 	const decisions = charter.decisions ?? []
 	const decisionInstructions = [
 		'Use the applied oracle answers to settle open points in the sources. Keep deferred questions deferred.',
@@ -309,15 +323,13 @@ export function explorerBrief(
 		hostContextRule,
 		`${operationText(charter.operations)} Do not change the code, the configuration, or the deployment of the application.`,
 		...(charter.dataRules ?? []),
-		...(charter.tools.length
+		...(tools.length ? [`Tools you can use: ${[...tools].sort().join(', ')}.`] : []),
+		...usageLine(workspace, tools),
+		...(charter.capabilities.some((capability) => capability === 'http' || capability === 'browser')
 			? [
-					`Tools you can use: ${charter.tools
-						.map((tool) => tool.name)
-						.sort()
-						.join(', ')}.`,
+					'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.',
 				]
 			: []),
-		'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.',
 		`Your work folder is ${workFolder}/. Put each file that you or your tools make in it, for example notes, scripts, screenshots, responses, and logs.`,
 		'Apart from your work folder, the folders in the workspace whose names start with a dot belong to tools, not to the product under test.',
 		'',
@@ -424,19 +436,12 @@ export function mergeAgainPrompt(unplaced: Unplaced[], answer?: string) {
 
 type VerifyItem = { id: string; title: string; expected: string; actual: string; steps: string | string[] | null }
 
-const verifierObject =
-	'with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.'
-
 function verifierReplyText(answer?: string) {
-	return answer
-		? `write only one JSON array to ${answer}, ${verifierObject}`
-		: `reply with only one JSON array, ${verifierObject}`
+	return `${answer ? `Write the result to ${answer}.` : 'Return the result.'} Example: ${JSON.stringify(verificationSchema.examples)}`
 }
 
 export function verifierRepairPrompt(answer?: string) {
-	return answer
-		? `Your file has no JSON array that I can use. Do not test again. Now ${verifierReplyText(answer)}`
-		: `Your reply has no JSON array that I can use. Do not test again. Now ${verifierReplyText()} Use no tool.`
+	return `Your verification has no usable result. Do not test again. ${verifierReplyText(answer)}`
 }
 
 export function verifierBrief(
@@ -463,6 +468,6 @@ export function verifierBrief(
 				`- ${item.id}: ${item.title} Steps: ${[item.steps ?? 'not given'].flat().join(' ')} Expected: ${item.expected} Reported: ${item.actual}`
 		),
 		'',
-		`At the end, ${verifierReplyText(answer)}`,
+		verifierReplyText(answer),
 	].join('\n')
 }

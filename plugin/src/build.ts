@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { executableOnPath } from './sessions.ts'
 import { hostSession } from './actor.ts'
 
-const instructionFolders = ['agents', 'contracts', 'pi', 'references', 'skills']
+const instructionFolders = ['agents', 'contracts', 'pi', 'recipes', 'references', 'skills']
 
 function filesUnder(folder: string): string[] {
 	if (!existsSync(folder)) return []
@@ -45,7 +45,7 @@ export function versionLines(version: string, bundle: string, env: NodeJS.Proces
 			)
 		}
 	}
-	return [...lines, ...piCopyWarnings(bundle, env, process.cwd())]
+	return env.CHECKMATE_HARNESS?.trim() === 'pi' ? [...lines, ...piCopyWarnings(bundle, env, process.cwd())] : lines
 }
 
 type PiDeclaration = { scope: 'global' | 'project'; source: string }
@@ -78,7 +78,7 @@ function packageRootOf(file: string) {
 	return folder
 }
 
-export function piCopyWarnings(bundle: string, env: NodeJS.ProcessEnv, cwd: string) {
+function piCopyWarnings(bundle: string, env: NodeJS.ProcessEnv, cwd: string) {
 	const root = packageRootOf(fileURLToPath(bundle))
 	return piDeclarations(env, cwd)
 		.filter(({ source }) => !(isAbsolute(source) && (resolve(source) + sep).startsWith(root + sep)))

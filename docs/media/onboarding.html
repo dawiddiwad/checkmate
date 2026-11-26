@@ -213,22 +213,31 @@
 	const fade = 0.3
 	const storyEnd = 52
 	const track = document.getElementById('track')
+	const viewport = track.parentElement
 	const ramp = (time, start, length) => Math.min(1, Math.max(0, (time - start) / length))
 	const ease = (t) => t * t * (3 - 2 * t)
 	const spans = []
 	const pans = [[0, 0]]
 
+	// A pan ends with an item column `edge` pixels from the left edge of the window, in the gap
+	// before it, so a resting frame never shows a part of an item.
+	const edge = 15
 	const layOut = () => {
 		let left = 16
+		const lefts = []
 		for (const step of track.querySelectorAll('.step')) {
 			step.style.left = `${left}px`
+			lefts.push(left)
 			const records = [...track.querySelectorAll(`.record[data-of="${step.id}"]`)]
 			const right = Math.max(step.offsetWidth, ...records.map((record) => record.offsetWidth))
 			const end = left + right
 			left = end + 30
 			const shown = pans[pans.length - 1][1]
 			const time = Number(step.dataset.t)
-			if (end + 24 > shown + 795) pans.push([time - 0.7, shown], [time, end - 500])
+			if (end + 24 > shown + 795) {
+				const rest = lefts.find((start) => start - edge >= end - 500)
+				pans.push([time - 0.7, shown], [time, rest - edge])
+			}
 		}
 		for (const iteration of track.querySelectorAll('.iteration'))
 			iteration.style.left = `${document.getElementById(iteration.dataset.at).offsetLeft - 10}px`
@@ -241,6 +250,16 @@
 			if (time < end) return from + (to - from) * ease(ramp(time, start, end - start))
 		}
 		return pans[pans.length - 1][1]
+	}
+
+	// 0 at rest, 1 in the middle of a pan: the fade at the left edge grows while the lane moves.
+	const movingAt = (time) => {
+		for (let index = 1; index < pans.length; index++) {
+			const [start, from] = pans[index - 1]
+			const [end, to] = pans[index]
+			if (time < end) return from === to ? 0 : 4 * ramp(time, start, end - start) * (1 - ramp(time, start, end - start))
+		}
+		return 0
 	}
 
 	const row = (html) => {
@@ -282,6 +301,9 @@
 	}
 	window.renderFrame = (time) => {
 		track.style.transform = `translateX(${-panAt(time)}px)`
+		const moving = movingAt(time)
+		const dissolve = Math.min(12, panAt(time)) + 90 * moving
+		viewport.style.maskImage = `linear-gradient(to right, transparent ${40 * moving}px, #000 ${dissolve}px)`
 		for (const element of document.querySelectorAll('[data-from]')) {
 			const from = Number(element.dataset.from)
 			const to = Number(element.dataset.to)

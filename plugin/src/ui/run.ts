@@ -321,8 +321,8 @@ function cleanup(detail: Detail) {
 			</dd>
 		</div>
 		<div>
-			<dt>Browser session</dt>
-			<dd class="mono">${detail.browserSession}</dd>
+			<dt>Tool session</dt>
+			<dd class="mono">${detail.toolSession}</dd>
 		</div>
 		<div>
 			<dt>Target</dt>

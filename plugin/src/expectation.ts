@@ -33,6 +33,11 @@ export function expectationError(expected: string): string | undefined {
 	if (/^(matches|one-of|type|at least|at most|contains|absent):/.test(value)) return undefined
 	if (/^not\s/i.test(value))
 		return `The expected value "${expected}" states an absence in words. Write it as absent:<text>, for example absent:${value.replace(/^not\s+/i, '')}.`
+	const presence = /^(.+?)(?:\s+is)?\s+(absent|present)[.!?]?$/i.exec(value)
+	if (presence) {
+		const matcher = presence[2].toLowerCase() === 'absent' ? 'absent' : 'contains'
+		return `The expected value "${expected}" states presence or absence in words. Write it as ${matcher}:<text>, for example ${matcher}:${presence[1]}.`
+	}
 	const placeholder = value.replaceAll(markerPlaceholder, '')
 	if (/[<>]/.test(placeholder) || /[{}]/.test(placeholder))
 		return `The expected value "${expected}" holds a placeholder. Only ${markerPlaceholder} is a placeholder: write ${markerPlaceholder}-T1 for a value with the run marker, not qa-<runId>-T1.`
@@ -124,6 +129,38 @@ export function expectationMatches(observed: string, expected: string, marker: s
 	if (rule.startsWith('absent:')) return !loose(value).includes(loose(rule.slice('absent:'.length)))
 	const plain = expected.replaceAll(markerPlaceholder, marker)
 	return amountSame(value, plain) ?? plainSame(value, plain)
+}
+
+export function presenceContradiction(
+	observed: string | null,
+	expected: string,
+	marker: string,
+	attachments: Iterable<string>
+) {
+	const rule = /^(absent|contains):([\s\S]+)$/.exec(expected.trim().replaceAll(markerPlaceholder, marker))
+	if (!rule) return
+	const value = rule[2].trim()
+	if (!value) return
+	const reportsAbsence =
+		observed === null ||
+		loose(observed).replace(/[.!?]$/, '') === loose(`${value} absent`) ||
+		expectationMatches(observed, expected, marker) === (rule[1] === 'absent')
+	const occurrence = new RegExp(`(?<![\\p{L}\\p{N}_])${RegExp.escape(value)}(?![\\p{L}\\p{N}_])`, 'iu')
+	let hasText = false
+	for (const text of attachments) {
+		hasText = true
+		const match = occurrence.exec(text)
+		if (!match) continue
+		if (!reportsAbsence) return
+		const end = match.index + match[0].length
+		const nextLine = text.indexOf('\n', end)
+		const start = Math.max(text.lastIndexOf('\n', match.index - 1) + 1, match.index - 100)
+		const stop = Math.min(nextLine === -1 ? text.length : nextLine, end + 100)
+		const line = text.slice(start, stop).trim()
+		return `Observation contradicts the evidence: "${value}" was reported absent. Found in attached text: ${line}`
+	}
+	if (hasText && !reportsAbsence)
+		return `Observation contradicts the evidence: "${value}" was reported present. It was not found in the attached text.`
 }
 
 // A shell path where a value was expected: the shell expanded a $ or a backtick inside double quotes.

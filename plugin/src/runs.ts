@@ -1,4 +1,5 @@
-import type { Gap, Plan, Result } from './types.ts'
+import type { Actions, Gap, Plan, Result } from './types.ts'
+import actionSchema from '../contracts/actions.schema.json' with { type: 'json' }
 import type { Store } from './store.ts'
 import { all, canonical, completed, digest, execute, one, removeTemporaryDirectory, ulid, write } from './store.ts'
 import type { AssertionResult, ResultTest, Test } from './contracts.ts'
@@ -10,6 +11,7 @@ import {
 	refusalReasons,
 	requireChoice,
 	requireCondition,
+	requireBuild,
 	requireIdentifier,
 	requireText,
 	requireWellFormed,
@@ -32,14 +34,7 @@ import {
 	planRunGaps,
 	recordApproval,
 } from './plans.ts'
-import {
-	correctedEntryText,
-	findInstance,
-	instanceForBuildHint,
-	readinessHint,
-	runInstance,
-	targetRevision,
-} from './targets.ts'
+import { correctedEntryText, findInstance, readinessHint, runInstance, targetRevision } from './targets.ts'
 import { changesData, markerFor, owe, runPrepare, settleCleanups } from './resets.ts'
 import { addPlanBuild } from './journal.ts'
 import { permanentSelection } from './permanent.ts'
@@ -53,10 +48,12 @@ import {
 	unitNotObserved,
 	looksShellExpanded,
 	looksTruncatedMoney,
+	presenceContradiction,
 	repeatsExpectation,
 	wrappedValue,
 } from './expectation.ts'
 import { checkRequest, requestMatches } from './routes.ts'
+import { choiceText, evidenceChoices, evidenceKindOfFile, givenBy, requireValidRecipes } from './recipes.ts'
 
 export type RunRow = {
 	run_id: string
@@ -69,7 +66,7 @@ export type RunRow = {
 	application_build: string
 	request: string
 	started_at: string
-	browser_session: string
+	tool_session: string
 	deadline_seconds: number
 }
 export type RunRequest = {
@@ -125,26 +122,8 @@ type Assertion = Test['assertions'][number]
 // The observed value of a check whose text or element was not on the page after the action.
 export const absentObservation = '(absent)'
 
-export type CheckInput = {
-	runId: string
-	testId: string
-	assertionId: string
-	result?: string
-	observed?: string
-	// The text or element the check names is not on the page after the action, and the page was read.
-	absent?: boolean
-	request?: string
-	reason?: string
-	evidence?: EvidenceInput[]
-}
-export type CloseInput = {
-	runId: string
-	testId: string
-	outcome?: string
-	cause?: string
-	reason?: string
-	evidence?: EvidenceInput[]
-}
+export type CheckInput = NonNullable<Actions['record_check']>
+export type CloseInput = NonNullable<Actions['close_test']>
 export type FinishInput = {
 	runId: string
 	completion: string
@@ -157,23 +136,15 @@ export type ResumeInput = { runId: string; error?: string[]; reason?: string }
 export type ResultVerdict = { runId: string; rationale: string; expectSha256?: string; expectDecision?: string }
 
 export const maxEvidenceBytes = 32 * 1024 * 1024
-export const assertionResults = ['passed', 'failed', 'inconclusive', 'not_checked'] as const
-export const closeOutcomes = ['blocked', 'not_run', 'error'] as const
+export const assertionResults = actionSchema.properties.record_check.properties.result.enum
+export const closeOutcomes = actionSchema.properties.close_test.properties.outcome.enum
 export const completions = ['completed', 'interrupted', 'operational_error'] as const
 export const cleanupStatuses = ['completed', 'failed', 'not_applicable'] as const
 export const newBlockerPolicies = ['continue_independent', 'return_to_oracle'] as const
 export const stoppedReason = 'Run stopped before the test closed. Actions may have occurred.'
-export const closeCauses = ['deadline'] as const
+export const closeCauses = actionSchema.properties.close_test.properties.cause.enum
 export const interruptCauses = ['deadline', 'host_stopped', 'tool_unavailable'] as const
 export const deadlineShare = 0.9
-const kindByExtension: Record<string, EvidenceRow['kind']> = {
-	'.png': 'screenshot',
-	'.jpg': 'screenshot',
-	'.jpeg': 'screenshot',
-	'.webp': 'screenshot',
-	'.zip': 'trace',
-	'.trace': 'trace',
-}
 const mediaTypes: Record<string, string> = {
 	'.png': 'image/png',
 	'.jpg': 'image/jpeg',
@@ -183,6 +154,7 @@ const mediaTypes: Record<string, string> = {
 	'.json': 'application/json',
 	'.xml': 'application/xml',
 	'.csv': 'text/csv',
+	'.mp4': 'video/mp4',
 	'.txt': 'text/plain',
 	'.log': 'text/plain',
 	'.md': 'text/markdown',
@@ -406,6 +378,7 @@ function begin(
 		},
 		(operationId, at, actor) => {
 			const runId = requireIdentifier(input.runId, 'run ID')
+			const build = requireBuild(input.build)
 			requireCondition(
 				!one(store, 'SELECT 1 FROM runs WHERE run_id = ?', runId),
 				`Run ${runId} exists. Use a new run ID.`
@@ -430,12 +403,7 @@ function begin(
 						permanent: selection.reference,
 					}
 				: input
-			const instance = runInstance(store, plannedTarget(store, requested.reference), input.instance)
-			requireCondition(
-				!instance.build || instance.build === input.build,
-				`Instance ${instance.targetId}/${instance.instanceId} serves build ${instance.build}, not ${input.build}. A run names the build its instance serves.`,
-				instanceForBuildHint(store, instance.targetId, input.build)
-			)
+			const instance = runInstance(store, plannedTarget(store, requested.reference), input.instance, build)
 			const checked = gate(store, { ...requested, instance: instance.instanceId })
 			if (checked.reply.status !== 'completed') {
 				const reasons = [refusalReasons.prohibited, ...checked.reply.reasons]
@@ -445,6 +413,10 @@ function begin(
 				}
 			}
 			const { plan, sha256 } = checked.revision
+			requireValidRecipes(
+				store.workspace,
+				targetRevision(store, plan.target.targetId, plan.target.revision).profile.tools.map((tool) => tool.name)
+			)
 			const dataProfile = targetRevision(store, plan.target.targetId).profile
 			const marker = markerFor(store, runId)
 			const facts = runPrepare(store.workspace, dataProfile.reset, marker)
@@ -468,10 +440,10 @@ function begin(
 						}
 					: {}),
 			}
-			const browserSession = `cm-${randomUUID()}`
+			const toolSession = `cm-${randomUUID()}`
 			execute(
 				store,
-				'INSERT INTO runs (run_id, plan_id, plan_revision, plan_sha256, target_id, target_revision, instance_id, application_build, request, started_at, browser_session, deadline_seconds, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+				'INSERT INTO runs (run_id, plan_id, plan_revision, plan_sha256, target_id, target_revision, instance_id, application_build, request, started_at, tool_session, deadline_seconds, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
 				runId,
 				plan.planId,
 				plan.revision,
@@ -482,7 +454,7 @@ function begin(
 				checked.build,
 				canonical(request),
 				at,
-				browserSession,
+				toolSession,
 				timeoutSeconds,
 				operationId
 			)
@@ -502,7 +474,7 @@ function begin(
 					tests: checked.tests,
 					leftOut: checked.reply.data.leftOut,
 					startedAt: at,
-					browserSession,
+					toolSession,
 					deadlineSeconds: timeoutSeconds,
 					deadline: new Date(Date.parse(at) + timeoutSeconds * 1000).toISOString(),
 					evidenceDirectory: evidenceDirectory(runId),
@@ -525,10 +497,33 @@ function plannedTarget(store: Store, text: string) {
 
 type EvidenceFile = { path: string | null; name: string; kind: string; mediaType: string; bytes: Buffer }
 
-const evidenceKinds = ['observation', 'http_exchange', 'screenshot', 'trace'] as const
+function evidenceKinds(store: Store, runId: string) {
+	const run = one<RunRow>(store, 'SELECT * FROM runs WHERE run_id = ?', runId)!
+	const profile = targetRevision(store, run.target_id, run.target_revision).profile
+	const tools = profile.tools.map((tool) => tool.name)
+	return {
+		workspace: store.workspace,
+		targetId: profile.targetId,
+		tools,
+		choices: evidenceChoices(store.workspace, tools),
+	}
+}
 
-function textEvidence(input: { text: string; kind?: string }, name: string): EvidenceFile {
-	requireWellFormed(typeof input.text === 'string' && input.text.trim().length > 0, 'Missing evidence text')
+function requireEvidenceKind(kind: string, allowed: ReturnType<typeof evidenceKinds>) {
+	if (!allowed.choices.some((choice) => choice.value === kind))
+		requireWellFormed(
+			false,
+			`Evidence kind ${kind} is not given by a tool of target ${allowed.targetId} (${givenBy(allowed.workspace, kind)}). Allowed kinds: ${choiceText(allowed.choices)}.`,
+			'Give an allowed kind. For an observation, use observation or leave the kind out for inline text.'
+		)
+	return kind
+}
+
+function textEvidence(
+	input: { text: string; kind?: string },
+	name: string,
+	allowed: ReturnType<typeof evidenceKinds>
+): EvidenceFile {
 	const bytes = Buffer.from(input.text, 'utf8')
 	requireWellFormed(bytes.length <= maxEvidenceBytes, 'Evidence text exceeds 32 MiB')
 	let json = true
@@ -540,7 +535,7 @@ function textEvidence(input: { text: string; kind?: string }, name: string): Evi
 	return {
 		path: null,
 		name: `${name}.${json ? 'json' : 'txt'}`,
-		kind: requireChoice(input.kind ?? 'observation', evidenceKinds, 'evidence kind'),
+		kind: requireEvidenceKind(input.kind ?? 'observation', allowed),
 		mediaType: json ? 'application/json' : 'text/plain',
 		bytes,
 	}
@@ -549,7 +544,8 @@ function textEvidence(input: { text: string; kind?: string }, name: string): Evi
 function readEvidence(
 	store: Store,
 	runId: string,
-	{ file: name, kind }: { file: string; kind?: string }
+	{ file: name, kind }: { file: string; kind?: string },
+	allowed: ReturnType<typeof evidenceKinds>
 ): EvidenceFile {
 	requireWellFormed(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`)
 	const directory = evidenceDirectory(runId)
@@ -578,7 +574,10 @@ function readEvidence(
 	return {
 		path,
 		name: basename(name),
-		kind: requireChoice(kind ?? kindByExtension[extension] ?? 'observation', evidenceKinds, 'evidence kind'),
+		kind: requireEvidenceKind(
+			kind ?? evidenceKindOfFile(store.workspace, allowed.tools, extension) ?? 'observation',
+			allowed
+		),
 		mediaType: mediaTypes[extension] ?? 'application/octet-stream',
 		bytes: readFileSync(real),
 	}
@@ -620,10 +619,26 @@ function storeEvidence(
 }
 
 function evidenceFiles(store: Store, runId: string, name: string, specs: EvidenceInput[] = []) {
-	const files = specs.map((spec) => ('file' in spec ? readEvidence(store, runId, spec) : textEvidence(spec, name)))
+	const allowed = evidenceKinds(store, runId)
+	const files = specs.map((spec) =>
+		'file' in spec ? readEvidence(store, runId, spec, allowed) : textEvidence(spec, name, allowed)
+	)
 	const paths = files.flatMap((file) => file.path ?? [])
 	requireWellFormed(new Set(paths).size === paths.length, 'An evidence file is listed twice')
 	return files
+}
+
+function* textAttachments(files: EvidenceFile[]) {
+	const decoder = new TextDecoder('utf-8', { fatal: true })
+	for (const file of files) {
+		if (!file.mediaType.startsWith('text/') && !['application/json', 'application/xml'].includes(file.mediaType))
+			continue
+		try {
+			yield decoder.decode(file.bytes)
+		} catch {
+			continue
+		}
+	}
 }
 
 function removeFiles(files: EvidenceFile[]) {
@@ -640,8 +655,8 @@ function requireOpen(store: Store, runId: string, testId: string) {
 }
 
 // A legacy assertion (no expected value) keeps the child's result and the number guard.
-function checkedResult(given: string | undefined, assertion: Assertion, observed: string | null) {
-	const result = requireChoice(given, assertionResults, 'result (--result)')
+function checkedResult(result: CheckInput['result'], assertion: Assertion, observed: string | null) {
+	requireWellFormed(result, 'This assertion needs a result.')
 	const unseen = (assertion.check.match(/\d+(\.\d+)?/g) ?? []).filter((value) => !observed?.includes(value))
 	requireCondition(
 		result !== 'passed' || !unseen.length,
@@ -740,17 +755,12 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			)
 		}
 		requireWellFormed(
-			!input.absent || input.observed === undefined,
-			'--absent and --observed do not go together',
-			'Use --absent when the page was read and the text or element is not on it. Use --observed with the value when it is there.'
-		)
-		requireWellFormed(
 			!input.absent || assertion.expected !== undefined,
 			`--absent applies to a structured check. ${test.id}.${assertion.id} has no expected value.`,
 			'Record the result with --result and --observed.'
 		)
 		// The page was read and the value is not on it: the observed value is absent, and the code compares it.
-		const observed = input.absent ? absentObservation : optionalText(input.observed, 'observation (--observed)')
+		const observed = input.absent ? absentObservation : (input.observed ?? null)
 		const evidenceText = (input.evidence ?? []).map((item) => ('text' in item ? item.text : item.file)).join('\n')
 		requireWellFormed(
 			observed === null || !looksTruncatedMoney(observed, assertion.expected, evidenceText),
@@ -762,31 +772,42 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			`The observed value "${observed}" looks like a shell path, not the value. The shell expanded it before Checkmate got it.`,
 			"Record --observed in single quotes, for example --observed '$0', so the shell passes the value unchanged."
 		)
-		const reason = optionalText(input.reason, 'reason (--reason)')
-		const result =
+		const reason = input.reason ?? null
+		const compared =
 			assertion.expected === undefined
 				? checkedResult(input.result, assertion, observed)
 				: structuredResult(input, test, assertion, observed, run.request.marker ?? '')
 		files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence)
-		if (result !== 'not_checked')
+		if (compared !== 'not_checked')
 			requireWellFormed(
 				observed && files.length > 0,
-				`${result === 'inconclusive' ? 'An' : 'A'} ${result} result needs an observation (--observed) and one or more evidence items (--evidence)`,
+				`${compared === 'inconclusive' ? 'An' : 'A'} ${compared} result needs an observation (--observed) and one or more evidence items (--evidence)`,
 				`Add --observed "<what you saw>" and --evidence <file in ${evidenceDirectory(input.runId)}>, or --evidence - with the text on standard input.`
 			)
-		if (result === 'inconclusive')
+		if (compared === 'inconclusive')
 			requireWellFormed(
 				reason,
 				'An inconclusive result needs a reason (--reason) that says what the evidence cannot show'
 			)
-		if (result === 'not_checked')
+		if (compared === 'not_checked')
 			requireWellFormed(reason, 'A not_checked result needs a reason (--reason) that says why it was not checked')
+		const contradiction =
+			observed !== null && assertion.expected !== undefined
+				? presenceContradiction(
+						input.absent ? null : observed,
+						assertion.expected,
+						run.request.marker ?? '',
+						textAttachments(files)
+					)
+				: undefined
+		const result = contradiction ? 'inconclusive' : compared
 		// The amounts match, but the observed value has no unit the expected value names. The record says so.
 		const unit =
 			result === 'passed' && observed !== null && assertion.expected !== undefined
 				? unitNotObserved(observed, assertion.expected)
 				: undefined
-		const recorded = reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null)
+		const recorded =
+			contradiction ?? reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null)
 		// The first result goes to assertion_results, which keeps it. A correction goes to assertion_corrections.
 		const table = prior ? 'assertion_corrections' : 'assertion_results'
 		execute(
@@ -809,6 +830,7 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 				testId: test.id,
 				assertionId: assertion.id,
 				result,
+				...(contradiction ? { reason: contradiction } : {}),
 				evidenceIds,
 			}),
 			subjects: [`run:${input.runId}`],
@@ -830,9 +852,6 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 		let outcome: ResultTest['outcome']
 		let reason: string | null
 		if (input.outcome === undefined) {
-			requireWellFormed(input.reason === undefined, '--reason applies only with --outcome')
-			requireWellFormed(input.cause === undefined, '--cause applies only with --outcome not_run or blocked')
-			requireWellFormed(!input.evidence?.length, '--evidence applies only with --outcome error')
 			const missing = test.assertions.filter((assertion) => !results.has(`${test.id}.${assertion.id}`))
 			requireCondition(
 				!missing.length,
@@ -846,20 +865,12 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 					? `Assertions not checked: ${unchecked.map((row) => `${test.id}.${row.assertion_id}`).join(', ')}`
 					: null
 		} else {
-			outcome = requireChoice(input.outcome, closeOutcomes, 'outcome (--outcome)')
-			reason = requireText(input.reason, `reason (--reason) for outcome ${outcome}`)
-			if (input.cause !== undefined) {
-				requireWellFormed(outcome !== 'error', '--cause applies only with --outcome not_run or blocked')
-				requireChoice(input.cause, closeCauses, 'cause (--cause)')
-				refuseEarlyDeadline(store, run.row, at)
-			}
+			outcome = input.outcome
+			reason = input.reason!
+			if (input.cause) refuseEarlyDeadline(store, run.row, at)
 			requireCondition(
 				outcome === 'error' || !recorded.length,
 				`Test ${test.id} has assertion results. Record the remaining assertions, or close it as error.`
-			)
-			requireWellFormed(
-				outcome === 'error' || !input.evidence?.length,
-				'--evidence applies only with --outcome error'
 			)
 			requireCondition(
 				outcome !== 'error' || input.evidence?.length || recorded.length,
@@ -1367,7 +1378,7 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 			reply: completed(input.runId, {
 				runId: input.runId,
 				attempt,
-				browserSession: run.row.browser_session,
+				toolSession: run.row.tool_session,
 				deadlineSeconds: run.row.deadline_seconds,
 				deadline: new Date(Date.parse(at) + run.row.deadline_seconds * 1000).toISOString(),
 				evidenceDirectory: evidenceDirectory(input.runId),

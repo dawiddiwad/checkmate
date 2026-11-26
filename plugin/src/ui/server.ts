@@ -6,7 +6,7 @@ import type { FormState } from './forms.ts'
 import type { EditState } from './edit.ts'
 import { createServer } from 'node:http'
 import { randomBytes } from 'node:crypto'
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openReadOnlyStore, openStore } from '../store.ts'
 import type { Approval } from '../plans.ts'
@@ -25,6 +25,7 @@ import { exportExploration, exportPlan, exportRun } from '../render.ts'
 import { decideClaim, explorationRow, handOffClaims } from '../journal.ts'
 import { claimPage, explorationPage, explorerFile, explorerFilePage, questionPage } from './exploration.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
+import { declaredEntryPoints, recipes } from '../recipes.ts'
 import {
 	addInstance,
 	instanceList,
@@ -79,10 +80,11 @@ import { chatModelOrder, discoverModelCatalog } from '../model-catalog.ts'
 import { launchPlan } from '../explorers.ts'
 import { maxAreaCharacters, outsideRule, planRules, ticketFile } from '../rules.ts'
 import { ruleMap } from '../rulemap.ts'
-import { requireCondition, requireIdentifier, unusedId } from '../contracts.ts'
+import { requireCondition, requireIdentifier, unusedId, validate } from '../contracts.ts'
+import { actionInput } from '../actions.ts'
 import { harvestExploration, storableDefects } from '../harvest.ts'
 import { developerText } from '../developer.ts'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import {
 	changesAfter,
@@ -118,6 +120,7 @@ import type { AdoptError } from './run.ts'
 import { runPage } from './run.ts'
 import type { InstanceForm } from './settings.ts'
 import { harnessPage, instanceFromForm, targetPage, targetsPage } from './settings.ts'
+import { invalidRecipePage, recipePage, recipesPage } from './recipes.ts'
 import type { HookOptions } from './hooks.ts'
 import { createHooks, sameSecret } from './hooks.ts'
 import { emptyRecord, nextOpen, permissionPage, requestHref } from './permissions.ts'
@@ -174,6 +177,7 @@ const routes = {
 	report: new RegExp(`^/runs/(${id})/report\\.(html|md|json|junit)$`),
 	evidence: /^\/evidence\/([0-9A-Z]{26})$/,
 	target: new RegExp(`^/settings/targets/(${id})$`),
+	recipe: new RegExp(`^/settings/recipes/(${id})$`),
 	addInstance: new RegExp(`^/settings/targets/(${id})/instances$`),
 	retireInstance: new RegExp(`^/settings/targets/(${id})/instances/(${id})/retire$`),
 	exploration: new RegExp(`^/explorations/(${id})$`),
@@ -392,6 +396,28 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		hooks.release()
 		for (const client of clients) client.res.write('data: *\n\n')
 	}, 1000)
+	const recipeFolder = join(workspace, '.checkmate', 'recipes')
+	const recipeFiles = () => {
+		try {
+			return readdirSync(recipeFolder)
+				.sort()
+				.map((name) => {
+					const file = statSync(join(recipeFolder, name), { throwIfNoEntry: false })
+					return `${name}:${file?.size}:${file?.mtimeMs}`
+				})
+				.join(',')
+		} catch {
+			return ''
+		}
+	}
+	let recipeState = recipeFiles()
+	const recipeWatch = setInterval(() => {
+		const current = recipeFiles()
+		if (current === recipeState) return
+		recipeState = current
+		for (const client of clients)
+			if (client.subjects.has('recipes') || client.subjects.has('*')) client.res.write('data: recipes\n\n')
+	}, 1000)
 	const heartbeat = setInterval(() => {
 		for (const client of clients) client.res.write(': heartbeat\n\n')
 	}, 15_000)
@@ -576,7 +602,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const shown = context(request)
 		if (pathname === '/' && searchParams.has('item')) return redirect(request.res, oldItem(searchParams))
 		if (pathname === '/') return render(request, startOfHome(shown))
-		if (pathname === '/setup') return render(request, firstRunPage(shown, false, cameFrom(request)))
+		if (pathname === '/setup')
+			return render(request, firstRunPage(store.workspace, shown, false, cameFrom(request)))
 		if (pathname === '/new')
 			return render(request, newChangePage(shown, changeDefaults(searchParams.get('target')), false))
 		if (pathname === '/inbox' || pathname === '/plans') return redirect(request.res, '/')
@@ -601,6 +628,20 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
 		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
 		if (pathname === '/settings/targets') return render(request, targetsPage(store))
+		if (pathname === '/settings/recipes') return render(request, recipesPage(options.workspace))
+		if (pathname === '/settings/invalid-recipes') {
+			const file = searchParams.get('file') ?? ''
+			const page = invalidRecipePage(options.workspace, file)
+			if (!page)
+				return errorPage(request, 404, 'Recipe not found', `Checkmate has no invalid recipe file ${file}.`)
+			return render(request, page)
+		}
+		const recipe = routes.recipe.exec(pathname)
+		if (recipe) {
+			const page = recipePage(options.workspace, recipe[1])
+			if (!page) return errorPage(request, 404, 'Recipe not found', `Checkmate has no recipe ${recipe[1]}.`)
+			return render(request, page)
+		}
 		const target = routes.target.exec(pathname)
 		if (target) {
 			const revision = searchParams.get('revision')
@@ -700,6 +741,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		return errorPage(request, 404, 'Page not found', `Checkmate has no page at ${pathname}. Start from Needs you.`)
 	}
 
+	// The address of an instance: the value of its first url entry. A target without one has no address.
+	function addressOf(targetId: string, entries: Record<string, string>) {
+		const entry = targetRequest(store, targetId).entryPoints.find((item) => item.kind === 'url')
+		return entry ? entries[entry.name] : undefined
+	}
+
 	function changeDefaults(target: string | null) {
 		const where = (address: string | undefined) => ({
 			address: address ? hostOf(address) : null,
@@ -709,16 +756,21 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			const active = activeInstances(item.targetId)
 			return {
 				targetId: item.targetId,
-				...where(active[0]?.entries.web),
+				...where(active[0] && addressOf(item.targetId, active[0].entries)),
 				instances:
-					active.length < 2 ? [] : active.map((one) => ({ id: one.instanceId, ...where(one.entries.web) })),
+					active.length < 2
+						? []
+						: active.map((one) => ({
+								id: one.instanceId,
+								...where(addressOf(item.targetId, one.entries)),
+							})),
 			}
 		})
 		return { build: defaultBuild(store.workspace), target: target ?? '', targets }
 	}
 
 	function startOfHome(shown: Context) {
-		if (!targetList(store).length) return firstRunPage(shown, true)
+		if (!targetList(store).length) return firstRunPage(store.workspace, shown, true)
 		if (!planList(store).length) return newChangePage(shown, changeDefaults(null), true)
 		return homePage(store)
 	}
@@ -1224,8 +1276,6 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (!actor) return refuse('Enter your name. Checkmate records it with the test.')
 		if (form.has('harness') && form.get('harness') !== selectedHarness(launchEnv()))
 			return refuse('The coding harness changed. Reload the page and try again.')
-		if (!build) return refuse('Write the build name.', 'build')
-		if (!(levelNames as string[]).includes(level)) return refuse('Choose the level smoke, normal, or deep.')
 		if (until && !typedSince) return refuse('Until needs Since. Fill in Since, or leave Until empty.', 'until')
 		const chosen = instanceFrom(form, planRequest(store, planId).target.profile.targetId)
 		if (chosen.error) return refuse(chosen.error, 'instance')
@@ -1237,18 +1287,22 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				`A stop of ${stopping.explorationId} is in progress. Wait until it ends, then start the test.`
 			)
 		try {
+			const input = validate('exploration', {
+				planId,
+				build,
+				level,
+				instance: chosen.instance,
+				since: typedSince,
+				until,
+				repo,
+			})
 			const since = typedSince ?? upstreamBase(resolve(store.workspace, repo ?? '.'))
 			const started = startExploration(
 				store,
 				actor,
 				{
-					planId,
-					build,
-					level,
-					instance: chosen.instance,
+					...input,
 					since,
-					until,
-					repo,
 					mode: autoMode(store, planId),
 					allow: ruleTokens(form.get('rules') ?? ''),
 					claudeArgs: [],
@@ -1854,7 +1908,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 
 	function setupChoice(form: URLSearchParams, url: string) {
 		const typed = form.get('operations') ?? ''
-		const local = isLocalAddress(url)
+		const local = url === '' || isLocalAddress(url)
 		const yes = typed === 'yes' || (typed === '' && local)
 		return { yes, chosen: typed === 'yes' || typed === 'no' || local, local }
 	}
@@ -1863,23 +1917,38 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		return /^https?:\/\/[^\s/]+/i.test(url) ? URL.parse(url) : null
 	}
 
+	// The entries of an application that is not a web application: one form field for each entry that a recipe declares.
+	const otherEntries = () =>
+		[...declaredEntryPoints(recipes(store.workspace)).values()].filter((entry) => entry.name !== 'web')
+
+	function otherEntryValues(form: URLSearchParams) {
+		return Object.fromEntries(
+			otherEntries()
+				.map((entry) => [entry.name, (form.get(`entry.${entry.name}`) ?? '').trim()])
+				.filter(([, value]) => value)
+		) as Record<string, string>
+	}
+
 	function previewSetup(request: Request, form: URLSearchParams) {
 		const url = (form.get('url') ?? '').trim()
+		const others = otherEntryValues(form)
 		const address = setupAddress(url)
 		const reply = (body: Record<string, unknown>) =>
 			send(request.res, 200, 'application/json; charset=utf-8', JSON.stringify(body))
-		if (!address) return reply({ error: 'Give a full address, for example http://localhost:3000.' })
+		if (!address && !Object.keys(others).length)
+			return reply({ error: 'Give a full address, for example http://localhost:3000.' })
 		try {
-			const choice = setupChoice(form, url)
-			const planned = setupAssumptions({
-				url,
+			const choice = setupChoice(form, address ? url : '')
+			const input = actionInput('setup', {
+				...(address ? { url } : {}),
+				entries: Object.keys(others).length ? others : undefined,
 				targetId: form.get('target')?.trim() || undefined,
 				environment: form.get('environment')?.trim() || undefined,
 				operations: choice.yes ? undefined : [readOnlyOperation],
-				env,
 			})
+			const planned = setupAssumptions(store.workspace, { ...input, env })
 			reply({
-				address: address.host,
+				address: address ? address.host : Object.values(others).join(' '),
 				local: choice.local,
 				targetId: planned.targetId,
 				assumed: assumedRows(planned.assumed.filter((line) => !line.startsWith('target='))),
@@ -1893,35 +1962,46 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const back = '/setup'
 		const { actor, cookies } = actorFrom(request, form)
 		const refuse = (message: Html | string, field = '') => actionRefusal(request, back, message, field)
-		const url = (form.get('url') ?? '').trim()
+		const typedUrl = (form.get('url') ?? '').trim()
+		const others = otherEntryValues(form)
 		if (!actor) return refuse('Enter your name. Checkmate records it with the target.')
-		const address = setupAddress(url)
-		if (!address) {
+		const address = setupAddress(typedUrl)
+		const url = address ? typedUrl : ''
+		if (!address && (typedUrl || !Object.keys(others).length)) {
 			const onHome = !targetList(store).length
-			const submitted = values(form, ['url', 'target', 'environment', 'operations'])
-			return render(request, firstRunPage(context(request), onHome, cameFrom(request), submitted), cookies)
+			const submitted = values(form, [
+				'url',
+				'target',
+				'environment',
+				'operations',
+				...otherEntries().map((entry) => `entry.${entry.name}`),
+			])
+			return render(
+				request,
+				firstRunPage(store.workspace, context(request), onHome, cameFrom(request), submitted),
+				cookies
+			)
 		}
 		const choice = setupChoice(form, url)
 		if (!choice.chosen)
 			return refuse(
-				`${address.host} is not a local address. Choose whether testers may change data there.`,
+				`${address?.host} is not a local address. Choose whether testers may change data there.`,
 				'operations'
 			)
 		if (!choice.local && form.get('confirmed') !== '1')
-			return refuse(`Confirm that Checkmate may test ${address.host}, an address that is not local.`, 'url')
+			return refuse(`Confirm that Checkmate may test ${address?.host}, an address that is not local.`, 'url')
 		const typedTarget = form.get('target')?.trim() || undefined
 		const environment = form.get('environment')?.trim() || undefined
 		try {
-			if (typedTarget) requireIdentifier(typedTarget, 'target name')
-			requireAnswer(await urlReachable(url), url)
-			const reply = setupTarget(store, actor, {
-				url,
+			const input = actionInput('setup', {
+				url: address ? url : undefined,
+				entries: Object.keys(others).length ? others : undefined,
 				targetId: typedTarget,
 				environment,
 				operations: choice.yes ? undefined : [readOnlyOperation],
-				env,
-				answered: true,
 			})
+			if (address) requireAnswer(await urlReachable(url), url)
+			const reply = setupTarget(store, actor, { ...input, answered: address ? true : undefined, env })
 			if (reply.status !== 'completed') return refuse(reply.reasons.join(' '), 'target')
 			if (!reply.data.ready) {
 				const targetId = String(reply.data.targetId)
@@ -1943,7 +2023,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			const text = engineText(error)
 			refuse(
 				text,
-				/target name/.test(text)
+				/\/targetId/.test(text)
 					? 'target'
 					: /production/.test(text)
 						? 'environment'
@@ -1978,30 +2058,35 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		} catch (error) {
 			return refuse(engineText(error), 'file')
 		}
-		if (!planId) return refuse('Write the name of the plan.', 'plan')
-		try {
-			requireIdentifier(planId, 'plan ID')
-		} catch (error) {
-			return refuse(engineText(error), 'plan')
-		}
 		if (hasRequest(store, planId))
 			return refuse(`A plan ${planId} exists already. Give another name, or test it from its page.`, 'plan')
 		if (!targetList(store).some((item) => item.targetId === targetId))
 			return refuse('Choose a target, or set one up.', 'target')
-		if (!build) return refuse('Write the build name.', 'build')
-		if (!(levelNames as string[]).includes(level)) return refuse('Choose the level smoke, normal, or deep.')
 		if (until && !since) return refuse('Until needs Since. Fill in Since, or leave Until empty.', 'until')
 		const chosen = instanceFrom(form, targetId)
 		if (chosen.error) return refuse(chosen.error, 'instance')
-		const address = (
+		const instance =
 			activeInstances(targetId).find((item) => item.instanceId === chosen.instance) ??
 			activeInstances(targetId)[0]
-		)?.entries.web
+		const address = instance && addressOf(targetId, instance.entries)
 		if (address && URL.canParse(address) && !isLocalAddress(address) && form.get('confirmed') !== '1')
 			return refuse(`Confirm that Checkmate may test ${hostOf(address)}, an address that is not local.`, 'target')
 		const childEnv = launchEnv()
 		const harness = selectedHarness(childEnv)
+		const kept = text.trim() ? `.checkmate/sources/${planId}.md` : ''
+		let input
 		try {
+			input = actionInput('start_test', {
+				planId,
+				target: targetId,
+				sources: [kept || source],
+				build,
+				level,
+				instance: chosen.instance,
+				since,
+				until,
+				repo,
+			})
 			requireChild(childEnv, harness)
 			launchPlan(
 				targetRevision(store, targetId).profile,
@@ -2010,7 +2095,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					build,
 					allow,
 					claudeArgs: [],
-					level,
+					level: input.level,
 					testerModels: testerChoicesFrom(form, 'testerModel'),
 					testerEfforts: testerChoicesFrom(form, 'testerEffort'),
 				},
@@ -2022,7 +2107,6 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			const message = engineText(error)
 			return refuse(message, /tool rules/.test(message) ? 'rules' : '')
 		}
-		const kept = text.trim() ? `.checkmate/sources/${planId}.md` : ''
 		try {
 			if (kept) {
 				mkdirSync(resolve(store.workspace, '.checkmate', 'sources'), { recursive: true })
@@ -2032,15 +2116,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				store,
 				actor,
 				{
-					planId,
-					target: targetId,
-					sources: [kept || source],
-					build,
-					level,
-					instance: chosen.instance,
-					since,
-					until,
-					repo,
+					...input,
 					allow,
 					claudeArgs: [],
 					testerModels: testerChoicesFrom(form, 'testerModel'),
@@ -2507,6 +2583,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		clearInterval(poll)
 		clearInterval(heartbeat)
 		clearInterval(supervisorWatch)
+		clearInterval(recipeWatch)
 		for (const client of clients) client.res.end()
 		clients.clear()
 		await new Promise<void>((resolve) => {

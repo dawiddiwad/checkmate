@@ -2,14 +2,25 @@ import { delegate, type Stage } from '../../cli/src/launcher.ts'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { defaultActor, requestOfEnv } from './actor.ts'
-import { actionInput, actionRecovery, performAction, type ActionName } from './actions.ts'
+import { actionInput, actionRecovery, dispatchAction, type ActionName } from './actions.ts'
+import { actionOfTool, toolName } from './tool-names.ts'
+import type { Actions } from './types.ts'
 import { Refusal, refused } from './contracts.ts'
 import { explorationStatus } from './explorers.ts'
 import { settleEnded } from './cleanups.ts'
 import { selectedHarness } from './pi.ts'
 import { ruleTokens, testerRulesText, workspaceEnv } from './settings.ts'
 import { pluginRoot, type Env } from './sessions.ts'
-import { busyReason, closeStore, isBusy, openReadOnlyStore, openStore, completed, type Reply } from './store.ts'
+import {
+	busyReason,
+	closeStore,
+	isBusy,
+	openReadOnlyStore,
+	openStore,
+	completed,
+	type Reply,
+	type Store,
+} from './store.ts'
 
 const readActions: ActionName[] = [
 	'list_targets',
@@ -91,12 +102,77 @@ export function actionToolDefinitions(env: Env = process.env) {
 		const { description, ...input } = schema
 		return [
 			{
-				name: `checkmate_${name}`,
+				name: toolName(name),
 				description: description ?? name,
 				inputSchema: inlineSchema(input, file, read),
 			},
 		]
 	})
+}
+
+// A tool call with the input fields to give. TypeScript checks the tool and the fields against the action schema.
+function call<Name extends ActionName>(name: Name, ...fields: Array<keyof NonNullable<Actions[Name]> & string>) {
+	return `${toolName(name)} with ${fields.join(', ')}`
+}
+
+type NextAction = { action: ActionName; instruction: string }
+
+const untilFinished = `The exploration is finished only when ${toolName('next_tester_steps')} returns finished.`
+const nextSteps: NextAction = {
+	action: 'next_tester_steps',
+	instruction: `Call ${call('next_tester_steps', 'explorationId')} and dispatch its actions with the Agent tool. A session exploration runs only when you dispatch its steps. ${untilFinished}`,
+}
+const stepDone: NextAction = {
+	action: 'tester_step_done',
+	instruction: `When a started agent finishes, call ${call('tester_step_done', 'explorationId', 'name', 'step', 'agentId')}. Then call ${call('next_tester_steps', 'explorationId')} again. ${untilFinished}`,
+}
+const stepsStarted: NextAction = {
+	action: 'tester_steps_started',
+	instruction: `Dispatch these actions with the Agent tool. Then call ${call('tester_steps_started', 'explorationId', 'names')} with the names that you started.`,
+}
+const finished: NextAction = {
+	action: 'test_status',
+	instruction: `The exploration is finished. Call ${call('test_status', 'explorationId', 'report')} with report true.`,
+}
+const processWait: NextAction = {
+	action: 'test_status',
+	instruction: `Call ${call('test_status', 'explorationId', 'waitSeconds')} until the exploration ends or needs a decision.`,
+}
+
+// The replies of the exploration flow name the next CLI command. A host session calls tools,
+// so it gets the next tool instead, and a step reply says that only the step ended.
+function hostReply(store: Store, name: ActionName, reply: Reply): Reply | undefined {
+	const id = reply.data.explorationId
+	if (typeof id !== 'string') return
+	const status = () => explorationStatus(store, id)
+	const done = reply.status === 'completed'
+	const answered = (next: NextAction) => ({
+		...next,
+		instruction: `Get the answer from the person. Then call ${toolName(next.action)}. ${untilFinished}`,
+	})
+	let next: NextAction | undefined
+	let data = reply.data
+	if (name === 'next_tester_steps' && done) {
+		const [first] = reply.data.actions as Array<{ action: string }>
+		next = first.action === 'finished' ? finished : first.action === 'wait' ? stepDone : stepsStarted
+	} else if (name === 'tester_steps_started' && done) next = stepDone
+	else if (name === 'tester_step_done' && done) {
+		const { event, state, ...rest } = reply.data
+		data = { ...rest, stepEvent: event, stepState: state, explorationState: status().state }
+		next = {
+			action: 'next_tester_steps',
+			instruction: `This records one step of ${String(reply.data.name)}. The exploration is not finished. Call ${call('next_tester_steps', 'explorationId')} now. ${untilFinished}`,
+		}
+	} else if ((name === 'start_test' || name === 'follow_test') && done)
+		next = status().path === 'session' ? nextSteps : processWait
+	else if (name === 'pause_test' && done) next = answered(status().path === 'session' ? nextSteps : processWait)
+	else if (name === 'test_status' && reply.data.outcome === 'timeout') next = processWait
+	else if (name === 'test_status' && reply.status === 'needs_decision' && status().paused)
+		next = answered(status().path === 'session' ? nextSteps : processWait)
+	if (!next) return
+	const { next: _commands, ...rest } = data
+	const { hint: _hint, ...envelope } = reply
+	return { ...envelope, data: { ...rest, nextAction: next } }
 }
 
 export function actionOutput(reply: Reply) {
@@ -112,21 +188,17 @@ async function startWorker(
 	subject: string
 ): Promise<Reply> {
 	try {
-		const { status, reasons, data, operation, usageWarning, costUsd, costPartial, observedModels } = await delegate(
-			workspace,
-			stage,
-			subject,
-			{
+		const { status, reasons, data, operation, usageWarning, costUsd, costPartial, observedModels, modelFallback } =
+			await delegate(workspace, stage, subject, {
 				env,
 				allowedTools,
 				nativeTools: true,
-			}
-		)
+			})
 		return {
 			status,
 			subject,
 			reasons,
-			data: { ...data, operation, usageWarning, costUsd, costPartial, observedModels },
+			data: { ...data, operation, usageWarning, costUsd, costPartial, observedModels, modelFallback },
 		}
 	} catch (error) {
 		return refused('rejected', subject, error)
@@ -134,7 +206,7 @@ async function startWorker(
 }
 
 export async function callActionTool(tool: string, input: unknown, workspace: string, env: Env) {
-	const name = tool.replace(/^checkmate_/, '') as ActionName
+	const name = actionOfTool(tool)
 	if (!allowed(name, env) || !actionToolDefinitions(env).some((definition) => definition.name === tool))
 		return actionOutput(
 			actionRecovery(
@@ -166,10 +238,11 @@ export async function callActionTool(tool: string, input: unknown, workspace: st
 			return actionOutput(
 				actionRecovery(name, refused('rejected', tool, Error(`This session is assigned to test ${test}.`)))
 			)
+		const parsed = actionInput(name, input)
 		store = readActions.includes(name) ? openReadOnlyStore(workspace) : openStore(workspace)
 		store.via = requestOfEnv(env)
 		if (name === 'delegate_work') {
-			const request = actionInput(name, input)
+			const request = parsed as NonNullable<Actions['delegate_work']>
 			const harness = selectedHarness(workspaceEnv(store, env))
 			const tools = harness === 'claude' ? ruleTokens(testerRulesText(store, harness)) : []
 			closeStore(store)
@@ -179,7 +252,7 @@ export async function callActionTool(tool: string, input: unknown, workspace: st
 			)
 		}
 		if (name === 'test_status') {
-			const { explorationId, waitSeconds } = actionInput(name, input)
+			const { explorationId, waitSeconds } = parsed as NonNullable<Actions['test_status']>
 			if (waitSeconds !== undefined) {
 				const status = explorationStatus(store, explorationId)
 				if (
@@ -190,17 +263,16 @@ export async function callActionTool(tool: string, input: unknown, workspace: st
 					return actionOutput(
 						completed(explorationId, {
 							...status,
-							nextAction: {
-								action: 'next_tester_steps',
-								instruction:
-									'Call checkmate_next_tester_steps and dispatch its actions with the Agent tool. A session exploration runs only when you dispatch its steps.',
-							},
+							nextAction: nextSteps,
 						})
 					)
 			}
 		}
 		if (name === 'begin_run' || name === 'start_test') settleEnded(store)
-		const reply = performAction(store, name, input, { actor: defaultActor(workspace, env), env })
+		const reply = dispatchAction(store, name, parsed as NonNullable<Actions[typeof name]>, {
+			actor: defaultActor(workspace, env),
+			env,
+		})
 		if (name === 'answer_gap' && reply.status === 'completed' && reply.data.decisionId) {
 			const harness = selectedHarness(workspaceEnv(store, env))
 			const tools = harness === 'claude' ? ruleTokens(testerRulesText(store, harness)) : []
@@ -212,7 +284,8 @@ export async function callActionTool(tool: string, input: unknown, workspace: st
 				data: { ...reply.data, revision: actionOutput(actionRecovery('delegate_work', revision)) },
 			})
 		}
-		return actionOutput(actionRecovery(name, reply))
+		const hosted = hostReply(store, name, reply)
+		return actionOutput(hosted ?? actionRecovery(name, reply))
 	} catch (error) {
 		const reply: Reply = isBusy(error)
 			? { status: 'operational_error', subject: tool, reasons: [busyReason], data: {} }

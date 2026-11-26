@@ -44,6 +44,8 @@ When `target request`, `plan request`, or `run show` refuses with `Unknown ...`,
   checkmate setup --url <url>
   ```
 
+  For an application that is not a web application, give each entry that its tool needs, for example `checkmate setup --entry app=<app ID> --entry device=<device ID>`. The refusal names the entries that are missing. To record only the data policy of a target that is set up, run `checkmate setup --target <id> --reset "<command>"`, or `--data environment|isolation --policy "<text>"`.
+
   Report the `assumed:` lines. Use `target open` below only when the oracle names the operations, the tools, or other choices:
 
   ```sh

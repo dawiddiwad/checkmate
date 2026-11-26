@@ -58,9 +58,10 @@ export function endProcessesIn(workspace: string) {
 		} catch {}
 	}
 }
-// Setup asks for a Chrome config when a browser tool is on PATH. A browser tool beside npm or node
-// on a developer PATH would then fail every setup, so the e2e files link the other tools into one folder.
-export function pathWithoutBrowserTool() {
+// Setup records each recipe tool that is on PATH, and asks for a Chrome config when a browser tool is there.
+// A browser or mobile tool beside npm or node on a developer PATH would then change every setup, so the e2e
+// files link the other tools into one folder. A test that needs such a tool adds its own stub.
+export function pathWithoutRecipeTools() {
 	const folder = directory()
 	const linked = new Set<string>()
 	for (const dir of (process.env.PATH ?? '').split(delimiter)) {
@@ -69,7 +70,7 @@ export function pathWithoutBrowserTool() {
 			names = readdirSync(dir)
 		} catch {}
 		for (const name of names) {
-			if (name === 'playwright-cli' || linked.has(name)) continue
+			if (name === 'playwright-cli' || name === 'maestro' || linked.has(name)) continue
 			linked.add(name)
 			symlinkSync(join(dir, name), join(folder, name))
 		}

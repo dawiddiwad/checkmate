@@ -25,19 +25,28 @@ import {
 	resumeRun,
 	runState,
 } from './runs.ts'
-import { inbox, planStatus, runDetail, runGate } from './views.ts'
+import { inbox, planStatus, rejectionLines, runDetail, runGate } from './views.ts'
 import { selectedHarness } from './pi.ts'
 import { ruleTokens, testerRulesText, workspaceEnv } from './settings.ts'
 import { runTest } from './modes.ts'
 import { explorationReport, explorationStatus, startFollow, waitExploration } from './explorers.ts'
 import { nextActions, pauseRun, stepDone, stepsStarted } from './agents.ts'
 import { dataRules } from './resets.ts'
+import { toolName } from './tool-names.ts'
 
 export type ActionName = keyof Actions
+
 type ActionContext = {
 	actor: string | undefined
 	env: Env
 	launch?: { allow: string[]; claudeArgs: string[]; session?: boolean }
+}
+
+// A begun or resumed run tells its agent why an earlier run that holds the tests of this run was rejected.
+function withRejections(store: Store, reply: Reply): Reply {
+	if (reply.status !== 'completed') return reply
+	const rejections = rejectionLines(store, reply.subject)
+	return rejections.length ? { ...reply, data: { ...reply.data, rejections } } : reply
 }
 
 const handlers: {
@@ -98,13 +107,16 @@ const handlers: {
 	begin_run: (store, input, { actor }) => {
 		const reference = revisionReference(input.reference, 'plan reference')
 		const revision = reference.revision ?? planRevision(store, reference.id).plan.revision
-		return beginRun(store, actor, {
-			...input,
-			reference: `${reference.id}@${revision}`,
-			retestOf: input.retestOf ?? null,
-		})
+		return withRejections(
+			store,
+			beginRun(store, actor, {
+				...input,
+				reference: `${reference.id}@${revision}`,
+				retestOf: input.retestOf ?? null,
+			})
+		)
 	},
-	resume_run: (store, input, { actor }) => resumeRun(store, actor, input),
+	resume_run: (store, input, { actor }) => withRejections(store, resumeRun(store, actor, input)),
 	read_run: (store, input) => {
 		const detail = runDetail(store, input.runId)
 		for (const id of input.tests ?? [])
@@ -151,6 +163,10 @@ const handlers: {
 }
 
 export function actionInput<Name extends ActionName>(name: Name, input: unknown) {
+	if (name === 'setup' || name === 'start_test') {
+		const fields = input as { build?: unknown } | null
+		if (typeof fields?.build === 'string') input = { ...fields, build: fields.build.trim() }
+	}
 	const problems = schemaProblems('actions', { [name]: input }, 'input').map((problem) => problem.text)
 	if (problems.length) {
 		const fields = input as { planId?: string; observed?: string; absent?: boolean } | null
@@ -170,7 +186,7 @@ export function actionInput<Name extends ActionName>(name: Name, input: unknown)
 			name === 'record_check' || name === 'close_test'
 				? 'Use evidence: [{text: "the actual response or observation", kind: "http_exchange"}]. For a fresh file in the run evidence directory, give {file, kind}. Correct any other named fields and retry.'
 				: name === 'tester_step_done'
-					? 'Give agentId from the Agent receipt and replyLine from its last line. Omit failure when the agent completed. Record product defects in the tester report.'
+					? 'Use the assigned Agent receipt. Record product defects in the tester report.'
 					: 'Correct the named fields and retry the action.'
 		throw new Refusal('malformed', problems.join('. '), repair)
 	}
@@ -183,7 +199,16 @@ export function performAction<Name extends Exclude<ActionName, 'delegate_work'>>
 	input: unknown,
 	context: ActionContext
 ) {
-	return handlers[name](store, actionInput(name, input), context)
+	return dispatchAction(store, name, actionInput(name, input), context)
+}
+
+export function dispatchAction<Name extends Exclude<ActionName, 'delegate_work'>>(
+	store: Store,
+	name: Name,
+	input: NonNullable<Actions[Name]>,
+	context: ActionContext
+) {
+	return handlers[name](store, input, context)
 }
 
 export function actionRecovery(name: ActionName, reply: Reply) {
@@ -217,7 +242,7 @@ export function actionRecovery(name: ActionName, reply: Reply) {
 				instruction:
 					recovery ??
 					(next !== name
-						? `Read the current record with checkmate_${next} before retrying. Use the record ID in the request.`
+						? `Read the current record with ${toolName(next)} before retrying. Use the record ID in the request.`
 						: 'Resolve the condition in reasons before retrying. Ask the oracle for any missing decision.'),
 			},
 		},

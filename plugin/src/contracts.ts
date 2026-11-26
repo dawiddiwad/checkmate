@@ -1,5 +1,6 @@
 import type {
 	Finding,
+	Exploration,
 	Gap,
 	Instance,
 	Plan,
@@ -12,16 +13,19 @@ import type {
 	Result,
 } from './types.ts'
 import type { Reply } from './store.ts'
-import { canonical } from './store.ts'
+import { canonical, WorkspaceSchemaError } from './store.ts'
 import { expectationError, expectationExample, expectationHint } from './expectation.ts'
 import * as validators from './validators.js'
+import buildSchema from '../contracts/build.schema.json' with { type: 'json' }
 import { operationAllowed } from './targets.ts'
+import { choiceText, givenBy, observeFromChoices, observeReading } from './recipes.ts'
 
 export type Test = Plan['tests'][number]
 export type Assertion = Test['assertions'][number]
 export type ResultTest = Result['tests'][number]
 export type AssertionResult = ResultTest['assertions'][number]['result']
 export type Documents = {
+	exploration: Exploration
 	profile: Profile
 	'plan-request': PlanRequest
 	'plan-candidate': PlanCandidate
@@ -36,7 +40,21 @@ export type Documents = {
 }
 export type PlanDraft = Omit<Plan, 'coverage' | 'tests'> & { tests: Array<Omit<Test, 'readiness' | 'gapIds'>> }
 
-const identifier = /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/
+function buildText(label: string, value: unknown) {
+	const shown = JSON.stringify(String(value).slice(0, 60))
+	return `${label} ${shown} must be nonblank text on one line, with no control characters and at most ${buildSchema.maxLength} characters.`
+}
+
+export function requireBuild(value: unknown, name = 'application build (--build)'): string {
+	const build = typeof value === 'string' ? value.trim() : value
+	requireWellFormed(typeof build === 'string' && validators.build(build), buildText(name, value))
+	return build
+}
+
+// A word of a command line that a person or an agent copies. A word with a special character is quoted.
+export function shellWord(word: string) {
+	return /^[\w./:@-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`
+}
 
 export type RefusalKind = 'malformed' | 'prohibited'
 
@@ -58,10 +76,11 @@ export const refusalReasons: Record<RefusalKind, string> = {
 export function refused(status: 'invalid_request' | 'rejected', subject: string, error: unknown): Reply {
 	const refusal = status === 'invalid_request' ? 'malformed' : error instanceof Refusal ? error.kind : 'prohibited'
 	const hint = error instanceof Refusal ? error.hint : undefined
+	const reason = error instanceof Error ? error.message : String(error)
 	return {
 		status,
 		subject,
-		reasons: [refusalReasons[refusal], error instanceof Error ? error.message : String(error)],
+		reasons: error instanceof WorkspaceSchemaError ? [reason] : [refusalReasons[refusal], reason],
 		refusal,
 		...(hint ? { hint } : {}),
 		data: {},
@@ -94,7 +113,7 @@ export function schemaProblems(name: string, value: unknown, prefix = name): Sch
 					error.params.additionalProperty ??
 					''
 			),
-			text: schemaError(`${prefix}${error.instancePath}`, error),
+			text: schemaError(`${prefix}${error.instancePath}`, error, value),
 			unknown: error.keyword === 'additionalProperties',
 			...(error.keyword === 'enum' ? { choices: (error.params.allowedValues ?? []).map(String) } : {}),
 		}))
@@ -137,7 +156,19 @@ function typeList(types: string[]) {
 	return `${types.slice(0, -1).join(', ')}, or ${types.at(-1)}`
 }
 
-function schemaError(path: string, error: SchemaError) {
+function valueAt(document: unknown, instancePath: string) {
+	return instancePath
+		.split('/')
+		.slice(1)
+		.reduce<unknown>((value, key) => (value as Record<string, unknown> | undefined)?.[key], document)
+}
+
+function schemaError(path: string, error: SchemaError, document?: unknown) {
+	if (
+		['pattern', 'maxLength'].includes(error.keyword) &&
+		['build', 'applicationBuild'].includes(path.split('/').at(-1)!)
+	)
+		return buildText(path, valueAt(document, error.instancePath))
 	if (error.keyword === 'type') return `${path} must be ${typeList([error.params.type ?? []].flat())}`
 	if (error.keyword === 'additionalProperties')
 		return `${path} has unknown field "${error.params.additionalProperty}"`
@@ -159,7 +190,7 @@ export function slugId(text: string) {
 
 export function requireIdentifier(value: unknown, name: string): string {
 	requireWellFormed(
-		typeof value === 'string' && identifier.test(value),
+		typeof value === 'string' && validators.identifier(value),
 		`Invalid ${name}: ${String(value)}. Use 1 to 96 letters, digits, _ or -, starting with a letter or digit.`
 	)
 	return value
@@ -175,7 +206,7 @@ export function requireNotInputWord(value: string | undefined, name: string, hin
 }
 
 export function requireText(value: unknown, name: string): string {
-	requireWellFormed(typeof value === 'string' && value.trim().length > 0, `Missing ${name}`)
+	requireWellFormed(typeof value === 'string' && validators.text(value), `Missing ${name}`)
 	return value
 }
 
@@ -188,12 +219,8 @@ export function requireChoice<T extends string>(value: unknown, choices: readonl
 }
 
 export function revisionReference(text: string, name: string) {
-	const [id, revision, ...rest] = text.split('@')
-	requireIdentifier(id, name)
-	requireWellFormed(
-		!rest.length && (revision === undefined || /^[1-9][0-9]*$/.test(revision)),
-		`Invalid ${name}: ${text}. Use <id> or <id>@<revision>.`
-	)
+	requireWellFormed(validators.revisionReference(text), `Invalid ${name}: ${text}. Use <id> or <id>@<revision>.`)
+	const [id, revision] = text.split('@')
 	return { id, revision: revision === undefined ? null : Number(revision) }
 }
 
@@ -336,11 +363,19 @@ export function rangeWithoutInput(check: string) {
 }
 
 // A state-changing action is shown only by a check that reads the state from its source. A test whose checks are all
-// explicitly page-only is flagged; a test that does not say observeFrom is left alone.
-export function pageOnlyStateChange(test: { action: string; assertions: Array<{ observeFrom?: string }> }) {
+// explicitly view-only (page, or a view value of a recipe) is flagged; a test that does not say observeFrom is left alone.
+export function pageOnlyStateChange(
+	workspace: string,
+	test: { action: string; assertions: Array<{ observeFrom?: string }> }
+) {
 	const changes = /\b(add|apply|clear|delete|remove|save|update)\b/i.test(test.action)
 	return (
-		changes && test.assertions.length > 0 && test.assertions.every((assertion) => assertion.observeFrom === 'page')
+		changes &&
+		test.assertions.length > 0 &&
+		test.assertions.every(
+			(assertion) =>
+				assertion.observeFrom !== undefined && observeReading(workspace, assertion.observeFrom) === 'view'
+		)
 	)
 }
 
@@ -380,7 +415,7 @@ export function uncoveredRequirements(plan: Pick<Plan, 'requirements' | 'tests' 
 }
 
 // The soft rules refuse a first save and save the test as not ready on the next attempt. Each names its reason.
-export function softProblems(test: Plan['tests'][number], requirements: Plan['requirements']) {
+export function softProblems(workspace: string, test: Plan['tests'][number], requirements: Plan['requirements']) {
 	const problems: Array<{
 		id: string
 		reason: 'needs_control' | 'needs_source_check' | 'needs_input' | 'needs_required' | 'needs_split'
@@ -388,7 +423,7 @@ export function softProblems(test: Plan['tests'][number], requirements: Plan['re
 	}> = []
 	const refusal = uncontrolledRefusal(test)
 	if (refusal) problems.push({ id: refusal.id, reason: 'needs_control', check: refusal.check })
-	if (pageOnlyStateChange(test))
+	if (pageOnlyStateChange(workspace, test))
 		problems.push({ id: test.assertions[0].id, reason: 'needs_source_check', check: test.action })
 	for (const assertion of test.assertions)
 		if (rangeWithoutInput(assertion.check))
@@ -405,10 +440,14 @@ export function softProblems(test: Plan['tests'][number], requirements: Plan['re
 }
 
 // A check that code cannot decide yet, named by its assertion ID and reason: legacy checks and soft problems.
-export function unverifiedAssertions(test: Plan['tests'][number], requirements: Plan['requirements']) {
+export function unverifiedAssertions(
+	workspace: string,
+	test: Plan['tests'][number],
+	requirements: Plan['requirements']
+) {
 	return [
 		...test.assertions.filter((assertion) => unverifiedCheck(assertion)).map((assertion) => assertion.id),
-		...softProblems(test, requirements).map((problem) => `${problem.id} ${problem.reason}`),
+		...softProblems(workspace, test, requirements).map((problem) => `${problem.id} ${problem.reason}`),
 	]
 }
 
@@ -514,8 +553,22 @@ export function planCheck(value: unknown): Plan {
 	return plan
 }
 
-export function planTargetCheck(plan: Plan, profile: Profile) {
-	for (const test of plan.tests.filter((test) => test.readiness === 'ready')) {
+export function planTargetCheck(workspace: string, plan: Plan, profile: Profile) {
+	const observeFrom = observeFromChoices(
+		workspace,
+		profile.tools.map((tool) => tool.name)
+	)
+	for (const test of plan.tests) {
+		for (const { id, observeFrom: value } of test.assertions)
+			if (value !== undefined && !observeFrom.some((choice) => choice.value === value))
+				requireWellFormed(
+					false,
+					`Test ${test.id} assertion ${id} observes from ${value}, which no tool of target ${profile.targetId} gives (${givenBy(workspace, value)}). Allowed values: ${choiceText(observeFrom)}.`,
+					observeFrom.length
+						? `Use an allowed value, omit observeFrom, or add the tool that gives ${value} to the target.`
+						: `Omit observeFrom or add the tool that gives ${value} to the target.`
+				)
+		if (test.readiness !== 'ready') continue
 		requireCondition(
 			profile.capabilities.includes(test.capability),
 			`Test ${test.id} needs capability ${test.capability}, which the target lacks. Record a planning gap.`

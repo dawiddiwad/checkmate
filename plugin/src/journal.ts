@@ -400,7 +400,7 @@ function checkedEntry(
 			kind: entryKinds.join('|'),
 		})
 	const given = raw as Fix
-	const draft: Fix = { ...given, build }
+	const draft: Fix = { ...given }
 	if (typeof draft.supersedes === 'string' && draft.supersedes.startsWith(`${shortName(actor)}/`))
 		draft.supersedes = bareOf(draft.supersedes)
 	const problems = schemaProblems('journal-entry', draft, path)
@@ -418,7 +418,7 @@ function checkedEntry(
 			fix
 		)
 	}
-	const entry = draft as Omit<Entry, 'evidence'> & { evidence?: string | string[] }
+	const entry = { ...draft, build } as Omit<Entry, 'evidence'> & { evidence?: string | string[] }
 	if (recorded && entry.kind === 'criterion' && entry.verdict && !entry.saw?.trim())
 		throw new EntryRefusal(
 			`${path}.saw`,

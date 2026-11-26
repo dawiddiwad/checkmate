@@ -1,0 +1,28 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "verification.schema.json",
+	"type": "object",
+	"properties": {
+		"id": {
+			"$ref": "actions.schema.json#/definitions/text",
+			"description": "The ID of the problem."
+		},
+		"seen": {
+			"type": "boolean",
+			"description": "Whether the problem occurred again."
+		},
+		"saw": {
+			"$ref": "actions.schema.json#/definitions/text",
+			"description": "The behavior you observed."
+		}
+	},
+	"required": ["id", "seen", "saw"],
+	"additionalProperties": false,
+	"examples": [
+		{
+			"id": "a1/D1",
+			"seen": false,
+			"saw": "The order total matched the cart."
+		}
+	]
+}

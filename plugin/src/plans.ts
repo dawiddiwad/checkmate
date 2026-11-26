@@ -4,10 +4,11 @@ import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profi
 import type { Change, Reply, Store } from './store.ts'
 import { answerQuestion } from './journal.ts'
 import { patchRules, requireHeldRules } from './rules.ts'
-import { operationAllowed, readinessHint, targetWebUrl } from './targets.ts'
+import { dataFlags, operationAllowed, readinessHint } from './targets.ts'
 import { dataSummary, requireDataFor } from './resets.ts'
+import { observeFromValues } from './recipes.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
-import { softProblems, uncoveredRequirements, unverifiedAssertions } from './contracts.ts'
+import { requireBuild, softProblems, uncoveredRequirements, unverifiedAssertions } from './contracts.ts'
 import type { PlanDraft, Test } from './contracts.ts'
 import {
 	approvalPolicy,
@@ -204,7 +205,7 @@ export function notReadyReasons(store: Store, planId: string) {
 	const plan = JSON.parse(row.body) as Plan
 	const lines = [
 		...plan.tests.flatMap((test) =>
-			unverifiedAssertions(test, plan.requirements).map((id) => `Not ready: ${test.id}.${id}`)
+			unverifiedAssertions(store.workspace, test, plan.requirements).map((id) => `Not ready: ${test.id}.${id}`)
 		),
 		...uncoveredRequirements(plan).map((id) => `Not ready: ${id} has no test`),
 	]
@@ -260,6 +261,10 @@ export function showPlanRequest(store: Store, planId: string) {
 		sourceContext: request.sourceContext ?? [],
 		context: request.context ?? { sources: [] },
 		tools: planTools(request, target.profile),
+		observeFrom: observeFromValues(
+			store.workspace,
+			planTools(request, target.profile).map((tool) => tool.name)
+		),
 		capabilities: target.profile.capabilities,
 		allowedOperations: target.profile.allowedOperations,
 		data: dataSummary(store.workspace, target.profile.reset),
@@ -377,7 +382,7 @@ function requireChangedChecks(store: Store, plan: Plan, previous: Plan | undefin
 		)
 	})
 	const problems = changed.flatMap((test) =>
-		softProblems(test, plan.requirements).map((problem) => ({ test, problem }))
+		softProblems(store.workspace, test, plan.requirements).map((problem) => ({ test, problem }))
 	)
 	const uncovered = uncoveredRequirements(plan)
 	const covered = plan.requirements.length - uncovered.length
@@ -413,7 +418,7 @@ function requireChangedChecks(store: Store, plan: Plan, previous: Plan | undefin
 
 function checkedRevision(store: Store, draft: PlanDraft) {
 	const plan = planCheck(derivePlan(draft))
-	planTargetCheck(plan, targetRevision(store, plan.target.targetId, plan.target.revision).profile)
+	planTargetCheck(store.workspace, plan, targetRevision(store, plan.target.targetId, plan.target.revision).profile)
 	const others = latestPlans(store)
 	requireChangedChecks(store, plan, others.get(plan.planId))
 	others.delete(plan.planId)
@@ -1569,7 +1574,7 @@ export function gate(store: Store, input: GateInput) {
 	const target = permanent
 		? targetRevision(store, plan.target.targetId, plan.target.revision)
 		: executionTarget(store, plan.planId, plan.target.targetId, plan.target.revision)
-	const build = requireText(input.build, 'application build (--build)')
+	const build = requireBuild(input.build)
 	const partial = requireChoice(input.partial ?? 'ready_only', partialModes, 'partial execution (--partial)')
 	const tests = index(plan.tests, 'id', 'test')
 	const ready =
@@ -1583,7 +1588,7 @@ export function gate(store: Store, input: GateInput) {
 		targetRevision(store, target.profile.targetId).profile,
 		selected.flatMap((id) => tests.get(id)?.operations ?? []),
 		`Run ${subject}`,
-		targetWebUrl(store, target.profile.targetId)
+		dataFlags(store, target.profile.targetId)
 	)
 	if (input.retestOf) retestCheck(store, input.retestOf, plan, build, input.instance)
 	const earlier = input.retestOf ? retestDefects(store, input.retestOf) : []

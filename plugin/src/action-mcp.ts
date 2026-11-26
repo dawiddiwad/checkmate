@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline'
 import { resolve } from 'node:path'
 import { actionToolDefinitions, callActionTool } from './action-tools.ts'
+import { isActionTool } from './tool-names.ts'
 
 const protocols = ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']
 
@@ -49,7 +50,7 @@ export async function serveActions() {
 		else if (method === 'tools/list') send(id, { result: { tools } })
 		else if (method === 'tools/call') {
 			const name = params?.name
-			if (!name?.startsWith('checkmate_')) {
+			if (!name || !isActionTool(name)) {
 				send(id, { error: { code: -32602, message: 'Choose a Checkmate tool from tools/list' } })
 				continue
 			}

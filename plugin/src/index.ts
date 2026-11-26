@@ -20,6 +20,7 @@ export {
 	addInstance,
 	retireInstance,
 	instanceList,
+	findInstance,
 } from './targets.ts'
 export {
 	openPlan,
@@ -63,6 +64,7 @@ export {
 	runList,
 	runDetail,
 	openRejections,
+	rejectionLines,
 	operationLog,
 	changesAfter,
 	evidenceBytes,
@@ -75,3 +77,4 @@ export { developerText } from './developer.ts'
 export { planPromotions, promotePlan } from './promotion.ts'
 export { renderPlan, renderRun, runReport, exportPlan, exportRun } from './render.ts'
 export { run, main, formatReply } from './cli.ts'
+export { listRecipes, type InvalidRecipe, type Recipe, type RecipeCatalog, type RecipeEntry } from './recipes.ts'

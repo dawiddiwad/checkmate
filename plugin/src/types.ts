@@ -1,6 +1,7 @@
 export type Actions = {
 	setup?: {
-		url: string
+		url?: string
+		entries?: Record<string, string>
 		targetId?: string
 		instanceId?: string
 		operations?: Array<string>
@@ -89,7 +90,7 @@ export type Actions = {
 					observe?: string
 					expected?: string
 					request?: string
-					observeFrom?: 'page' | 'reload' | 'api'
+					observeFrom?: string
 				}>
 				metadata?: Record<string, string | number | boolean>
 			}>
@@ -136,7 +137,7 @@ export type Actions = {
 							observe?: string
 							expected?: string
 							request?: string
-							observeFrom?: 'page' | 'reload' | 'api'
+							observeFrom?: string
 						} | null
 					>
 					metadata?: Record<string, string | number | boolean>
@@ -177,7 +178,7 @@ export type Actions = {
 					observe?: string
 					expected?: string
 					request?: string
-					observeFrom?: 'page' | 'reload' | 'api'
+					observeFrom?: string
 				}>
 				metadata?: Record<string, string | number | boolean>
 			}>
@@ -226,7 +227,7 @@ export type Actions = {
 						observe?: string
 						expected?: string
 						request?: string
-						observeFrom?: 'page' | 'reload' | 'api'
+						observeFrom?: string
 					}>
 				}
 			>
@@ -267,6 +268,7 @@ export type Actions = {
 		until?: string
 		scope?: Array<string>
 		url?: string
+		entries?: Record<string, string>
 		reset?: string
 		data?: 'environment' | 'isolation'
 		policy?: string
@@ -309,11 +311,11 @@ export type Actions = {
 		evidence?: Array<
 			| {
 					text: string
-					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace'
+					kind?: string
 			  }
 			| {
 					file: string
-					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace'
+					kind?: string
 			  }
 		>
 	}
@@ -326,11 +328,11 @@ export type Actions = {
 		evidence?: Array<
 			| {
 					text: string
-					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace'
+					kind?: string
 			  }
 			| {
 					file: string
-					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace'
+					kind?: string
 			  }
 		>
 	}
@@ -387,7 +389,6 @@ export type Actions = {
 		name: string
 		step: 'study' | 'test' | 'record' | 'follow' | 'rules' | 'merge' | 'verify'
 		activity?: string
-		replyLine?: string
 		failure?: 'agent_unavailable' | 'agent_interrupted' | 'host_error'
 		failureDetail?: string
 		agentId?: string
@@ -409,6 +410,22 @@ export type Actions = {
 		stage: 'setup' | 'plan' | 'revise' | 'execute'
 		subject: string
 	}
+}
+
+export type Build = string
+
+export type Exploration = {
+	planId: string
+	build: string
+	mode?: 'exploratory' | 'regression'
+	level?: 'smoke' | 'normal' | 'deep'
+	explorers?: number
+	minutes?: number
+	instance?: string
+	timeoutSeconds?: number
+	since?: string
+	until?: string
+	repo?: string
 }
 
 export type Finding = {
@@ -436,6 +453,8 @@ export type Gap = {
 	decisionId: string | null
 }
 
+export type Identifier = string
+
 export type Instance = {
 	entries: Record<string, string>
 	environment?: string
@@ -446,7 +465,6 @@ export type Instance = {
 export type JournalCriterion = {
 	kind: 'criterion'
 	id?: string
-	build?: string
 	supersedes?: string
 	rule?: string
 	text: string
@@ -459,7 +477,6 @@ export type JournalCriterion = {
 export type JournalDefect = {
 	kind: 'defect'
 	id?: string
-	build: string
 	supersedes?: string
 	rule?: string
 	title: string
@@ -480,14 +497,12 @@ export type JournalDefect = {
 export type JournalEntry = {
 	kind: 'criterion' | 'observation' | 'defect' | 'question' | 'verdict' | 'note' | 'issue' | 'topic'
 	id?: string
-	build?: string
 	supersedes?: string
 }
 
 export type JournalIssue = {
 	kind: 'issue'
 	id?: string
-	build?: string
 	supersedes?: string
 	title: string
 	severity: 'critical' | 'high' | 'medium' | 'low'
@@ -498,7 +513,6 @@ export type JournalIssue = {
 export type JournalNote = {
 	kind: 'note'
 	id?: string
-	build?: string
 	supersedes?: string
 	text: string
 	about?: string
@@ -509,7 +523,6 @@ export type JournalNote = {
 export type JournalObservation = {
 	kind: 'observation'
 	id?: string
-	build: string
 	supersedes?: string
 	about?: string
 	steps?: string | Array<string>
@@ -526,7 +539,6 @@ export type JournalObservation = {
 export type JournalQuestion = {
 	kind: 'question'
 	id?: string
-	build?: string
 	supersedes?: string
 	rule?: string
 	question: string
@@ -538,7 +550,6 @@ export type JournalQuestion = {
 export type JournalTopic = {
 	kind: 'topic'
 	id?: string
-	build?: string
 	supersedes?: string
 	question: string
 	label?: string
@@ -548,7 +559,6 @@ export type JournalTopic = {
 export type JournalVerdict = {
 	kind: 'verdict'
 	id?: string
-	build: string
 	supersedes?: string
 	defect: string
 	result: 'fixed' | 'not_fixed' | 'not_retested'
@@ -580,7 +590,7 @@ export type PlanCandidate = {
 			observe?: string
 			expected?: string
 			request?: string
-			observeFrom?: 'page' | 'reload' | 'api'
+			observeFrom?: string
 		}>
 		metadata?: Record<string, string | number | boolean>
 	}>
@@ -623,7 +633,7 @@ export type PlanDelta = {
 				observe?: string
 				expected?: string
 				request?: string
-				observeFrom?: 'page' | 'reload' | 'api'
+				observeFrom?: string
 			}>
 		}
 	>
@@ -665,7 +675,7 @@ export type PlanPatch = {
 					observe?: string
 					expected?: string
 					request?: string
-					observeFrom?: 'page' | 'reload' | 'api'
+					observeFrom?: string
 				} | null
 			>
 			metadata?: Record<string, string | number | boolean>
@@ -746,7 +756,7 @@ export type Plan = {
 			observe?: string
 			expected?: string
 			request?: string
-			observeFrom?: 'page' | 'reload' | 'api'
+			observeFrom?: string
 		}>
 		metadata?: Record<string, string | number | boolean>
 	}>
@@ -916,7 +926,7 @@ export type Result = {
 		id: string
 		testId: string
 		assertionId: string | null
-		kind: 'observation' | 'http_exchange' | 'screenshot' | 'trace'
+		kind: string
 		name: string
 		mediaType: string
 		sha256: string
@@ -935,4 +945,22 @@ export type Result = {
 			reason: string | null
 		}>
 	}
+}
+
+export type RevisionReference = string
+
+export type TestLevel = 'smoke' | 'normal' | 'deep'
+
+export type Text = string
+
+export type Verification = {
+	id: string
+	seen: boolean
+	saw: string
+}
+
+export type WorkerRule = {
+	text: string
+	source: string
+	area: string
 }

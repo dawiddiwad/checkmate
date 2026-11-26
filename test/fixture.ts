@@ -1,7 +1,7 @@
 import type { AddressInfo } from 'node:net'
 import { createServer } from 'node:http'
 
-export async function fixture() {
+export async function fixture({ fixedQuoteFee }: { fixedQuoteFee?: number } = {}) {
 	let fixed = false
 	let actions = 0
 	let writes = 0
@@ -14,7 +14,7 @@ export async function fixture() {
 			const promotion = url.searchParams.get('promotion') === 'true'
 			const loyalty = url.searchParams.get('loyalty') === 'true'
 			const totalPLN = promotion ? (loyalty && !fixed ? 220 : 240) : loyalty ? 380 : 400
-			return response.end(JSON.stringify({ totalPLN }))
+			return response.end(JSON.stringify({ totalPLN, feePLN: fixed ? fixedQuoteFee : undefined }))
 		}
 		if (url.pathname === '/order' && request.method === 'POST') {
 			actions++

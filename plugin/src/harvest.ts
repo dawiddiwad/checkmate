@@ -7,6 +7,7 @@ import { explorationRow, journal, planClaims } from './journal.ts'
 import { planCandidate, planRequest, planRevision, storeEdit, storeRevision } from './plans.ts'
 import type { Rule } from './rules.ts'
 import { outsideRule, planRules, saveRules } from './rules.ts'
+import { markerPlaceholder } from './expectation.ts'
 
 type Candidate = Required<PlanCandidate>
 type Draft = {
@@ -162,7 +163,7 @@ function harvested(
 			capability: capabilityOf(item.via, capabilities),
 			operations,
 			dependsOn: [],
-			preconditions: [`Make new test data that starts with qa-<runId>-${id}.`],
+			preconditions: [`Make new test data that starts with ${markerPlaceholder}-${id}.`],
 			action: item.action,
 			assertions: [
 				...item.checks.map((check, index) => ({

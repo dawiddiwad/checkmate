@@ -19,7 +19,9 @@ export type Store = { db: DatabaseSync; workspace: string; path: string; via?: s
 export type Operation = { actor: string | undefined; command: string; subject: string; input: unknown }
 
 export const contractVersion = 'toolkit-2'
-const schemaVersion = '7'
+const schemaVersion = '8'
+
+export class WorkspaceSchemaError extends Error {}
 
 const operationReference = 'REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED'
 const tables = `
@@ -117,7 +119,7 @@ CREATE TABLE runs (
 	application_build TEXT NOT NULL,
 	request TEXT NOT NULL,
 	started_at TEXT NOT NULL,
-	browser_session TEXT NOT NULL,
+	tool_session TEXT NOT NULL,
 	deadline_seconds INTEGER NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference},
 	FOREIGN KEY (plan_id, plan_revision) REFERENCES plan_revisions(plan_id, revision),
@@ -189,8 +191,6 @@ CREATE TABLE results (
 	body TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
 ) STRICT;
-`
-const explorationTables = `
 CREATE TABLE explorations (
 	exploration_id TEXT PRIMARY KEY,
 	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
@@ -224,20 +224,13 @@ CREATE TABLE journal_entries (
 	actor TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
 ) STRICT;
-`
-const addedTables = [
-	{
-		ddl: `CREATE TABLE target_request_corrections (
+CREATE TABLE target_request_corrections (
 	target_id TEXT NOT NULL REFERENCES target_requests(target_id),
 	body TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference},
 	PRIMARY KEY (target_id, operation_id)
-) STRICT;`,
-		fill: '',
-	},
-	{
-		// A correction of a recorded check. The first result stays in assertion_results; the last correction counts.
-		ddl: `CREATE TABLE assertion_corrections (
+) STRICT;
+CREATE TABLE assertion_corrections (
 	run_id TEXT NOT NULL REFERENCES runs(run_id),
 	test_id TEXT NOT NULL,
 	assertion_id TEXT NOT NULL,
@@ -247,10 +240,8 @@ const addedTables = [
 	reason TEXT NOT NULL,
 	recorded_at TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
-) STRICT;`,
-	},
-	{
-		ddl: `CREATE TABLE plan_promotions (
+) STRICT;
+CREATE TABLE plan_promotions (
 	plan_id TEXT NOT NULL,
 	source_revision INTEGER NOT NULL,
 	promoted_revision INTEGER NOT NULL,
@@ -264,11 +255,8 @@ const addedTables = [
 	CHECK (promoted_revision = source_revision + 1),
 	FOREIGN KEY (plan_id, source_revision) REFERENCES plan_revisions(plan_id, revision),
 	FOREIGN KEY (plan_id, promoted_revision) REFERENCES plan_revisions(plan_id, revision)
-) STRICT;`,
-		fill: '',
-	},
-	{
-		ddl: `CREATE TABLE exploration_event_costs (
+) STRICT;
+CREATE TABLE exploration_event_costs (
 	source_operation_id TEXT NOT NULL REFERENCES operations(id),
 	step TEXT NOT NULL,
 	explorer TEXT NOT NULL,
@@ -276,55 +264,34 @@ const addedTables = [
 	partial INTEGER NOT NULL CHECK(partial IN (0, 1)),
 	operation_id TEXT NOT NULL ${operationReference},
 	PRIMARY KEY (source_operation_id, step, explorer)
-) STRICT;`,
-		fill: '',
-	},
-	{
-		ddl: `CREATE TABLE plan_rules (
+) STRICT;
+CREATE TABLE plan_rules (
 	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
 	origin TEXT NOT NULL,
 	body TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
-) STRICT;`,
-		fill: '',
-	},
-	{
-		ddl: `CREATE TABLE plan_builds (
+) STRICT;
+CREATE TABLE plan_builds (
 	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
 	build TEXT NOT NULL,
 	first_tested_at TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference},
 	PRIMARY KEY (plan_id, build)
-) STRICT;`,
-		fill: `INSERT OR IGNORE INTO plan_builds (plan_id, build, first_tested_at, operation_id)
-	SELECT plan_id, build, at, operation_id FROM (
-		SELECT plan_id, build, started_at AS at, operation_id, 0 AS kind, rowid AS position FROM explorations
-		UNION ALL
-		SELECT plan_id, application_build, started_at, operation_id, 1, rowid FROM runs
-	) ORDER BY at, kind, position;`,
-	},
-	{
-		ddl: `CREATE TABLE handoffs (
+) STRICT;
+CREATE TABLE handoffs (
 	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
 	claim_id TEXT NOT NULL,
 	target TEXT,
 	actor TEXT NOT NULL,
 	at TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
-) STRICT;`,
-		fill: '',
-	},
-	{
-		ddl: `CREATE TABLE workspace_settings (
+) STRICT;
+CREATE TABLE workspace_settings (
 	name TEXT NOT NULL,
 	value TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
-) STRICT;`,
-		fill: '',
-	},
-
-	{
-		ddl: `CREATE TABLE requests (
+) STRICT;
+CREATE TABLE requests (
 	request_id TEXT PRIMARY KEY,
 	text TEXT NOT NULL,
 	context TEXT NOT NULL,
@@ -332,21 +299,16 @@ const addedTables = [
 	conversation TEXT NOT NULL,
 	asked_at TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
-) STRICT;`,
-		fill: '',
-	},
-	{
-		ddl: `CREATE TABLE request_events (
+) STRICT;
+CREATE TABLE request_events (
 	request_id TEXT NOT NULL REFERENCES requests(request_id),
 	at TEXT NOT NULL,
 	step TEXT NOT NULL,
 	status TEXT NOT NULL,
 	detail TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
-) STRICT;`,
-		fill: '',
-	},
-]
+) STRICT;
+`
 const views = `
 CREATE VIEW latest_plans AS
 	SELECT p.* FROM plan_revisions p
@@ -400,39 +362,6 @@ CREATE TRIGGER ${table}_delete BEFORE DELETE ON ${table}
 		)
 		.join('\n')
 
-function setSchemaVersion(db: DatabaseSync, version: string) {
-	db.exec('DROP TRIGGER meta_update')
-	db.prepare("UPDATE meta SET value = ? WHERE key = 'schemaVersion'").run(version)
-	db.exec(updateTrigger('meta'))
-}
-
-function addExplorationTables(db: DatabaseSync) {
-	db.exec(explorationTables)
-	db.exec(triggersOf(explorationTables))
-	setSchemaVersion(db, '4')
-}
-
-function hasViaColumn(db: DatabaseSync) {
-	return Boolean(db.prepare("SELECT 1 FROM pragma_table_info('operations') WHERE name = 'via'").get())
-}
-
-function hasTable(db: DatabaseSync, name: string) {
-	return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name))
-}
-
-function addMissingTables(db: DatabaseSync) {
-	for (const { ddl, fill } of addedTables) {
-		const [name] = tableNamesOf(ddl)
-		if (hasTable(db, name)) continue
-		db.exec(ddl)
-		db.exec(triggersOf(ddl))
-		if (fill) db.exec(fill)
-	}
-	db.exec(`CREATE TRIGGER IF NOT EXISTS promoted_plan_update BEFORE UPDATE ON plan_revisions
-	WHEN EXISTS (SELECT 1 FROM plan_promotions WHERE plan_id = OLD.plan_id AND promoted_revision = OLD.revision)
-	BEGIN SELECT RAISE(ABORT, 'Rows of promoted plan revisions are immutable'); END;`)
-}
-
 export function completed(subject: string, data: Record<string, unknown> = {}): Reply {
 	return { status: 'completed', subject, reasons: [], data }
 }
@@ -482,22 +411,19 @@ function openStoreOnce(workspace: string): Store {
 	const db = new DatabaseSync(path)
 	try {
 		db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`)
+		hasCurrentSchema(db, path)
 		db.exec('PRAGMA journal_mode = WAL')
 		db.exec('PRAGMA foreign_keys = ON')
 		db.exec('BEGIN IMMEDIATE')
-		if (!hasTable(db, 'meta')) {
-			db.exec(tables + explorationTables + views)
-			db.exec(triggersOf(tables + explorationTables))
+		if (!hasCurrentSchema(db, path)) {
+			db.exec(tables + views)
+			db.exec(triggersOf(tables))
+			db.exec(`CREATE TRIGGER promoted_plan_update BEFORE UPDATE ON plan_revisions
+ WHEN EXISTS (SELECT 1 FROM plan_promotions WHERE plan_id = OLD.plan_id AND promoted_revision = OLD.revision)
+ BEGIN SELECT RAISE(ABORT, 'Rows of promoted plan revisions are immutable'); END;`)
 			const insert = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
 			insert.run('contractVersion', contractVersion)
 			insert.run('schemaVersion', schemaVersion)
-		}
-		const version = String(versionOf(db))
-		if (version === '3') addExplorationTables(db)
-		if (['3', '4', '5', '6'].includes(version)) setSchemaVersion(db, schemaVersion)
-		if (['3', '4', '5', '6', schemaVersion].includes(version)) {
-			addMissingTables(db)
-			if (!hasViaColumn(db)) db.exec('ALTER TABLE operations ADD COLUMN via TEXT')
 		}
 		db.exec('COMMIT')
 	} catch (error) {
@@ -505,22 +431,15 @@ function openStoreOnce(workspace: string): Store {
 		db.close()
 		throw error
 	}
-	return checkedStore(db, workspace, path)
+	return { db, workspace, path }
 }
 
 export function openReadOnlyStore(workspace: string): Store {
 	const path = databasePath(workspace)
 	if (existsSync(path)) {
-		const db = new DatabaseSync(path, { readOnly: true })
+		const db = openReadOnlyDatabase(path)
 		try {
-			db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`)
-			if (
-				hasTable(db, 'meta') &&
-				versionOf(db) === schemaVersion &&
-				hasViaColumn(db) &&
-				addedTables.every(({ ddl }) => hasTable(db, tableNamesOf(ddl)[0]))
-			)
-				return { db, workspace, path }
+			if (hasCurrentSchema(db, path)) return { db, workspace, path }
 		} catch (error) {
 			db.close()
 			throw error
@@ -528,22 +447,33 @@ export function openReadOnlyStore(workspace: string): Store {
 		db.close()
 	}
 	closeStore(openStore(workspace))
+	return { db: openReadOnlyDatabase(path), workspace, path }
+}
+
+function openReadOnlyDatabase(path: string) {
 	const db = new DatabaseSync(path, { readOnly: true })
-	db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`)
-	return checkedStore(db, workspace, path)
-}
-
-function versionOf(db: DatabaseSync) {
-	return db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value
-}
-
-function checkedStore(db: DatabaseSync, workspace: string, path: string): Store {
-	const version = versionOf(db)
-	if (version !== schemaVersion) {
+	try {
+		db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`)
+		return db
+	} catch (error) {
 		db.close()
-		throw new Error(`Database ${path} has schema version ${version ?? 'none'}. Expected ${schemaVersion}.`)
+		throw error
 	}
-	return { db, workspace, path }
+}
+
+function hasCurrentSchema(db: DatabaseSync, path: string) {
+	const first = db
+		.prepare("SELECT name, type FROM sqlite_schema ORDER BY name = 'meta' AND type = 'table' DESC LIMIT 1")
+		.get()
+	if (!first) return false
+	const version =
+		first.name === 'meta' && first.type === 'table'
+			? db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value
+			: undefined
+	if (version === schemaVersion) return true
+	throw new WorkspaceSchemaError(
+		`Database ${path} was created by an older version of Checkmate. Move the .checkmate folder aside, then run setup to start fresh.`
+	)
 }
 
 export function closeStore(store: Store) {

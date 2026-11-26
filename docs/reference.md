@@ -1,5 +1,7 @@
 # CLI and record reference
 
+If Checkmate reports that the workspace database came from an older version, move the `.checkmate` folder aside. Run setup to start a fresh workspace.
+
 Use `checkmate --help` for the complete command list from the installed version. Add `--json` for structured output. Add `--workspace <path>` to use another project directory.
 
 ## Common sequence
@@ -7,6 +9,8 @@ Use `checkmate --help` for the complete command list from the installed version.
 | Purpose                                            | Command                                                                                                                                           |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Set up a URL and local instance                    | `checkmate setup --url <url>`                                                                                                                     |
+| Set up an app that is not a web app                | `checkmate setup --entry <name>=<value> [--entry <name>=<value>]` (for example `--entry app=<app ID> --entry device=<device ID>`)                 |
+| Record the data policy of a target                 | `checkmate setup --target <targetId> --reset "<command>"` or `--data environment\|isolation --policy "<text>"`                                    |
 | Correct the operations or endpoint of a web target | `checkmate setup --correct --target <targetId> --instance <instanceId> --url <url> [--operations <a,b>] [--environment <name>] [--build <build>]` |
 | Replace an instance                                | `checkmate target instance replace <targetId> <instanceId> --entry <name=value> [--environment <name>] [--build <build>]`                         |
 | Open a plan                                        | `checkmate plan open [planId] --target <targetId@revision> --objective <text> --source <file>`                                                    |
@@ -23,6 +27,87 @@ Use `checkmate --help` for the complete command list from the installed version.
 | Start or stop the review UI                        | `checkmate ui` or `checkmate ui --stop`                                                                                                           |
 
 The examples omit optional `--actor` and `--workspace` flags. Claude Code delegation needs `--allow <rule>` for each required tool. Pi delegation uses `CHECKMATE_HARNESS=pi` and omits `--allow` and `--claude-arg`. The host enforces its own permissions.
+
+Delegated workers use the models that you save on the Settings page of the review UI. The `delegate` command and the `delegate_work` tool use the same rules:
+
+- Execute workers and probes use the tester model and the tester effort.
+- Setup, plan, and revise workers use the chat model and the chat effort.
+- An empty model setting uses the default model of the harness.
+- An explicit model of the caller takes precedence over the setting and its effort: `--claude-arg --model <id>` for Claude Code, or `CHECKMATE_PI_MODEL` for Pi.
+- Checkmate sends a saved effort only when the host catalog advertises that effort for the model.
+
+If the host refuses the saved model before the worker writes, the worker runs again on the harness default. The other workers of the same delegate call also use the harness default. The reply then has a reason and `modelFallback`, with the saved model and the refusal of the host. The recorded attempt has the same `modelFallback`. `observedModels` gives the models that ran.
+
+## Targets that are not web applications
+
+A target has the entry points that the recipes of its tools declare. The web tools (`node`, `playwright-cli`) declare `web`, a URL that must start with `http://` or `https://`. The Maestro tool declares `app` and `device`. Quick setup takes the entries by name. `--url <url>` is the short form of `--entry web=<url>`. `checkmate test` takes the same flags for a first setup.
+
+```sh
+checkmate setup --entry app=com.example.shop --entry device=<device ID> --target shop-app
+checkmate setup --target shop-app --data environment --policy "The simulator is reset by hand."
+```
+
+Setup records the installed tools whose recipes fit the entries. A tool that needs an entry that you did not give is not recorded. Setup refuses an entry that no recipe declares, a value that does not match the pattern of its entry, and entries that no installed tool fits. The refusal names the entries that are missing. Setup runs the reachability checks that the recipes give. A recipe without a check leaves the instance not checked, and setup says so. A setup with only `--target` and a data flag records the data policy of a target that is set up and leaves its instances as they are.
+
+The prompts of delegated workers name the entries from the profile, for example "the app and device entries", and the plan prompt lists the `observeFrom` values of the target tools. `checkmate plan request <planId>` prints them.
+
+## Add a project tool recipe
+
+Put one JSON file in the project’s `.checkmate/recipes/` folder. Match the file name to the recipe name. Use the optional `usage` field for tester notes. If present, give a non-empty list of Markdown lines. The built-in recipes include usage notes. Edit the file to update the recipe. Delete the file to remove it.
+
+Run `checkmate recipe list --json` for built-in examples and for the `invalid` list with each file path and its validation problems. `checkmate recipe list` shows the same problems as text. Checkmate checks the files as it reads the catalog and refuses to use invalid recipes. Its refusal gives the file and what to edit. Built-in names are reserved. If custom names clash, Checkmate marks the later file invalid. Settings > Recipes shows the same catalog and reflects changes to the folder.
+
+Saved targets and plans keep their records. Future recipe lookups use the current file by name. If you change entry points or capabilities, set up a target that fits the recipe. Review the plans that use changed observation or evidence values.
+
+In `environment`, use literal values or the tester placeholders `{session}` and `{workFolder}`. To pass an instance entry such as `inventory` to a tool, use a command argument. A reachability command can use `{inventory}` in its argument list if the recipe declares that entry.
+
+Review and share recipes in Git as project code. With `detect: path`, Checkmate looks for the CLI recipe name or the MCP recipe’s `server.command` on PATH. A recipe can tell Checkmate to run a reachability command or start an MCP server. Setup reachability commands check that the instance responds. The target and its skills set what testers may do. The host controls tester tool permissions and file writes.
+
+### Salesforce CLI example
+
+Save this as `.checkmate/recipes/sf.json`. Setup looks for `sf` on `PATH` and checks the org with a read-only SOQL query. [Salesforce CLI command reference](https://developer.salesforce.com/docs/platform/salesforce-cli-reference/guide/cli_reference_data_query.html)
+
+```json
+{
+	"name": "sf",
+	"capability": "salesforce",
+	"kind": "cli",
+	"purpose": "Read records from a Salesforce org.",
+	"detect": "path",
+	"entryPoints": [{ "name": "org", "kind": "value", "purpose": "Salesforce org alias." }],
+	"reachable": [
+		{
+			"check": "command",
+			"run": [
+				"sf",
+				"data",
+				"query",
+				"--query",
+				"SELECT Id FROM Organization LIMIT 1",
+				"--target-org",
+				"{org}",
+				"--json"
+			]
+		}
+	],
+	"environment": {},
+	"workspaceFolders": [],
+	"observeFrom": { "soql": "state" },
+	"evidence": ["soql_result"],
+	"usage": [
+		"# Salesforce CLI",
+		"",
+		"Run sf data query --target-org <org entry> --query '<SOQL>' --json.",
+		"Record the relevant result as soql_result evidence."
+	]
+}
+```
+
+Use an org alias that your Salesforce CLI already knows:
+
+```sh
+checkmate setup --target salesforce --entry org=my-sandbox --operations read_records
+```
 
 ## Agent tools
 
@@ -45,11 +130,15 @@ Use the returned target, plan, and instance IDs for subsequent actions. To corre
 
 For a structured check, give only the observed item, for example `"400"` for HTTP status. Give `absent: true` after a successful read when the item is missing. Put the response and request details in `evidence: [{text, kind}]`. To attach a file, use `[{file, kind}]` with a fresh file from the run evidence directory. A successful call consumes the file. An incomplete test closed as an operational error keeps its observations without requiring a defect finding. A completed tester step can report a product defect. Give a step failure only for an agent or host failure.
 
+For a presence or absence check, attach the action output verbatim. Checkmate compares the observation with the text attachments from that check. It searches for the named text without regard to case and at word boundaries. A contradiction makes the check inconclusive. The run shows the reason and retains the observation and evidence. An inconclusive check does not create a defect finding. A check with only non-text attachments keeps the result of its comparison with the expected value.
+
 The CLI still serves scripts, factory stages, review UI chat, exports, permanent runs, approvals, permissions, and recovery operations. Checkmate's CLI and host tools validate supported actions with the same [action schemas](../plugin/contracts/actions.schema.json). Factory grants and target credentials stay with the host.
 
 ## Plans and contracts
 
 A plan revision contains requirements, tests, and gaps. A test names its rules, capability, operations, preconditions, action, and assertions. An assertion has a known expected value. An unknown expected value belongs in an open gap.
+
+Use `contains:TEXT` when the action output must include a value, or `absent:TEXT` when it must exclude one. For example, use `absent:NUT-2` to check that the output excludes that SKU. Plan save refuses prose expectations such as `NUT-2 absent` and `NUT-2 present`.
 
 Use the JSON Schemas as the contract:
 
@@ -57,6 +146,12 @@ Use the JSON Schemas as the contract:
 - [Plan](../plugin/contracts/plan.schema.json): stored revisions and computed fields.
 - [Target profile](../plugin/contracts/profile.schema.json) and [instance](../plugin/contracts/instance.schema.json).
 - [Run result](../plugin/contracts/result.schema.json), [finding](../plugin/contracts/finding.schema.json), and [gap](../plugin/contracts/gap.schema.json).
+- [Journal entries](../plugin/contracts/journal-entry.schema.json). Checkmate validates each entry before it adds the build from the exploration.
+- [Extracted rules](../plugin/contracts/worker-rule.schema.json) and [verification results](../plugin/contracts/verification.schema.json). Checkmate records valid items and reports refused items by index. It assigns rule IDs.
+
+An instance can declare which build it serves. A run or exploration can start on that instance only for that build.
+
+Setup and testing commands validate input shapes before they change records or contact the application. The CLI, review forms, and host actions use the same contracts for those inputs. Run checks and test closings use the action contract before they record evidence or outcomes.
 
 The planner saves only the candidate fields. Checkmate calculates readiness, coverage, decisions, and revision digests. Do not write those derived values into a candidate. The schemas are authoritative when an example differs.
 
@@ -94,7 +189,7 @@ checkmate run show <runId>
 checkmate run resume <runId>
 ```
 
-Resume checks the current instance, profile, and gate. It records a new attempt and lists the open tests. It does not run test actions. If you cannot safely continue a test that may have changed the application, close it as `error` and explain why. Read [Local human-oracle QA](local-qa.md#review-a-result-and-retry) for the full procedure.
+Resume checks the current instance, profile, and gate. It records a new attempt and lists the open tests. `run begin` and `run resume` also print a `rejection` line for each open rejection that covers a test of the run, with the reason of the oracle. A permanent run has none. It does not run test actions. If you cannot safely continue a test that may have changed the application, close it as `error` and explain why. Read [Local human-oracle QA](local-qa.md#review-a-result-and-retry) for the full procedure.
 
 ## Promotion and permanent runs
 
@@ -106,7 +201,7 @@ See [Factory workflows](factory.md) for the three complete paths and the ownersh
 
 ## Record and limits
 
-The record is `.checkmate/checkmate.db` in the workspace. Add `.checkmate/` to `.gitignore`. Export data when you need a file to share:
+The record is `.checkmate/checkmate.db` in the workspace. Ignore `.checkmate/checkmate.db*`, `.checkmate/tmp/`, and `.checkmate/ui.json` in Git. Keep `.checkmate/recipes/` trackable. Export data when you need a file to share:
 
 ```sh
 checkmate export plan <planId@revision> --format md --out plan.md

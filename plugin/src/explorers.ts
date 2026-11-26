@@ -1,12 +1,12 @@
 import type { Reply, Store } from './store.ts'
-import type { Profile } from './types.ts'
+import type { Exploration, Profile, Verification } from './types.ts'
 import type { ChildContext, ChildCall, Env } from './sessions.ts'
 import type { Charter, ExplorationEvent, OpenInput } from './explorations.ts'
 import type { TestLevel } from './levels.ts'
 import { explorationCost } from './costs.ts'
 import { hostSession } from './actor.ts'
 import { all, closeStore, completed, one, openStore, saveBlob, write } from './store.ts'
-import { Refusal, requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
+import { Refusal, shellWord, requireCondition, requireWellFormed, schemaProblems } from './contracts.ts'
 import { addEvent, exploration, explorationEvents, insertExploration, workFolder } from './explorations.ts'
 import type { Refused } from './journal.ts'
 import { firstRevision } from './testRevision.ts'
@@ -35,7 +35,7 @@ import {
 } from './settings.ts'
 import type { ModelCatalog } from './model-catalog.ts'
 import { discoverModelCatalog, effortArgs, resolvedEffort } from './model-catalog.ts'
-import { defaultLevel, levelNames, storedLevel, testLevels } from './levels.ts'
+import { defaultLevel, testLevels } from './levels.ts'
 import { explorerActor, lastEntry, launchContext, recordSession, defaultRecorderTimeout } from './recorder.ts'
 import {
 	explorerBrief,
@@ -49,11 +49,13 @@ import {
 	verifierRepairPrompt,
 } from './briefs.ts'
 import { checkedRules, ruleSources, rulesNeeded, saveRules } from './rules.ts'
-import { findInstance, targetRevision, targetWebUrl } from './targets.ts'
+import { dataFlags, findInstance, targetRevision } from './targets.ts'
 import { dataRules, markerFor, owe, requireDataFor, runPrepare, settleCleanups } from './resets.ts'
 import { isRecordedGroup, signalRecordedGroup, startOfGroup } from './processes.ts'
 import { storeFindingsRun } from './findingsRun.ts'
 import { changeOf, changedFiles } from './change.ts'
+import { requireValidRecipes, testerEnvironment, testerTools, toolFolders } from './recipes.ts'
+import { attachedServers } from './tool-servers.ts'
 import {
 	checkClaudeArgs,
 	checkmateScript,
@@ -90,21 +92,15 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 
-export type StartInput = OpenInput & {
-	level?: string
-	explorers?: number
-	minutes?: number
-	since?: string
-	until?: string
-	repo?: string
-	allow: string[]
-	claudeArgs: string[]
-	testerModels?: Record<string, string>
-	testerEfforts?: Record<string, string>
-	timeoutSeconds?: number
-	session?: boolean
-	inheritPiTools?: boolean
-}
+export type StartInput = OpenInput &
+	Pick<Exploration, 'level' | 'explorers' | 'minutes' | 'since' | 'until' | 'repo' | 'timeoutSeconds'> & {
+		allow: string[]
+		claudeArgs: string[]
+		testerModels?: Record<string, string>
+		testerEfforts?: Record<string, string>
+		session?: boolean
+		inheritPiTools?: boolean
+	}
 export type Launch = {
 	dataRules?: string[]
 	studySeconds: number
@@ -123,7 +119,8 @@ export type Launch = {
 	pluginHidden: boolean
 	path?: 'session'
 	inheritPiTools?: boolean
-	browserFolder?: boolean
+	toolIdentities: Record<string, { session: string; dataPrefix: string }>
+	toolFoldersBefore: string[]
 }
 
 export { running }
@@ -176,12 +173,8 @@ export function launchPlan(
 	savedModel = '',
 	preferSaved = false,
 	savedEffort = ''
-): Launch {
-	const level = requireChoice(
-		input.level ?? storedLevel(profile.explore?.level) ?? defaultLevel,
-		levelNames,
-		'test level (--level)'
-	)
+): Omit<Launch, 'toolIdentities' | 'toolFoldersBefore'> {
+	const level = input.level ?? profile.explore?.level ?? defaultLevel
 	const row = testLevels[level]
 	const explorers = input.explorers ?? profile.explore?.explorers ?? row.explorers
 	const testSeconds = input.minutes ? input.minutes * 60 : row.testSeconds
@@ -279,24 +272,40 @@ export function explorerNames(count: number) {
 	return Array.from({ length: count }, (_, index) => `a${index + 1}`)
 }
 
-function explorerWork(store: Store, explorationId: string, explorer: string, count: number) {
+function toolIdentity(marker: string, explorer: string) {
+	const session = `${marker}-${explorer}`
+	return { session, dataPrefix: `${session}-` }
+}
+
+function explorerWork(store: Store, explorationId: string, explorer: string, launch: Launch) {
 	const folder = workFolder(explorationId, explorer)
 	mkdirSync(join(store.workspace, folder), { recursive: true })
-	const others = explorerNames(count).filter((name) => name !== explorer)
+	const others = explorerNames(launch.explorers).filter((name) => name !== explorer)
+	const { session, dataPrefix } = launch.toolIdentities[explorer]
+	const values = { session, workFolder: join(store.workspace, folder) }
+	const tools = exploration(store, explorationId).charter.tools.map((tool) => tool.name)
 	return {
 		folder,
+		dataPrefix,
 		grant: [`Edit(/${folder}/**)`],
 		deny: workDenyRules(others.map((name) => workFolder(explorationId, name))),
-		extraEnv: {
-			PLAYWRIGHT_MCP_OUTPUT_DIR: join(store.workspace, folder),
-			PLAYWRIGHT_CLI_SESSION: `qa-${explorationId}-${explorer}`,
-		},
+		extraEnv: testerEnvironment(store.workspace, values, testerTools(store.workspace, tools, true)),
+		servers: attachedServers(
+			store.workspace,
+			tools,
+			values,
+			checkmateScript(),
+			Object.fromEntries(entryValues(store, explorationId).map((entry) => [entry.name, entry.value]))
+		),
 	}
 }
 
-const strayIgnored = ['.checkmate', '.playwright-cli']
+function explorationToolFolders(store: Store, explorationId: string) {
+	const tools = exploration(store, explorationId).charter.tools.map((tool) => tool.name)
+	return toolFolders(store.workspace, tools)
+}
 
-function topLevelNames(workspace: string) {
+function topLevelNames(workspace: string, ignored: string[]) {
 	const status = spawnSync('git', ['status', '--porcelain', '--untracked-files=normal'], {
 		cwd: workspace,
 		encoding: 'utf8',
@@ -308,7 +317,7 @@ function topLevelNames(workspace: string) {
 					.filter((line) => line.startsWith('?? '))
 					.map((line) => line.slice(3).replace(/^"|"$/g, ''))
 			: readdirSync(workspace)
-	return new Set(names.filter((name) => !strayIgnored.includes(name.replace(/\/$/, ''))))
+	return new Set(names.filter((name) => !ignored.includes(name.replace(/\/$/, ''))))
 }
 
 async function watchStray<T>(
@@ -319,9 +328,10 @@ async function watchStray<T>(
 	turn: string,
 	run: () => Promise<T>
 ) {
-	const before = topLevelNames(store.workspace)
+	const ignored = ['.checkmate', ...explorationToolFolders(store, explorationId)]
+	const before = topLevelNames(store.workspace, ignored)
 	const result = await run()
-	const stray = [...topLevelNames(store.workspace)].filter((name) => !before.has(name)).sort()
+	const stray = [...topLevelNames(store.workspace, ignored)].filter((name) => !before.has(name)).sort()
 	if (stray.length)
 		event(store, actor, explorationId, {
 			step: 'stray',
@@ -359,19 +369,21 @@ function removeIfEmpty(folder: string) {
 	if (existsSync(folder) && !readdirSync(folder).length) rmdirSync(folder)
 }
 
-const browserFolder = '.playwright-cli'
-
-export function keepBrowserFolder(store: Store, explorationId: string) {
-	const from = join(store.workspace, browserFolder)
-	if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false || !existsSync(from)) return
-	const to = join(store.workspace, workFolder(explorationId), browserFolder)
-	mkdirSync(join(to, '..'), { recursive: true })
-	rmSync(to, { recursive: true, force: true })
-	renameSync(from, to)
+export function keepToolFolders(store: Store, explorationId: string) {
+	const launch = startOf(explorationEvents(store, explorationId))
+	if (!launch) return
+	for (const name of explorationToolFolders(store, explorationId)) {
+		const from = join(store.workspace, name)
+		if (launch.toolFoldersBefore.includes(name) || !existsSync(from)) continue
+		const to = join(store.workspace, workFolder(explorationId), name)
+		mkdirSync(join(to, '..'), { recursive: true })
+		rmSync(to, { recursive: true, force: true })
+		renameSync(from, to)
+	}
 }
 
 export function removeWork(store: Store, explorationId: string) {
-	keepBrowserFolder(store, explorationId)
+	keepToolFolders(store, explorationId)
 	rmSync(join(store.workspace, workFolder(explorationId)), { recursive: true, force: true })
 	rmSync(join(store.workspace, '.checkmate', 'tmp', `explore-${explorationId}.log`), { force: true })
 	removeIfEmpty(join(store.workspace, '.checkmate', 'work'))
@@ -404,8 +416,17 @@ export function startExploration(
 ) {
 	if (!given.session) env = workspaceEnv(store, env)
 	const change = changeOf(store.workspace, given)
-	const input = { ...given, change, scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []) }
+	const input = {
+		...given,
+		change,
+		scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []),
+	}
 	const reply = write(store, { actor, command: 'explore start', subject: input.planId, input }, (operationId, at) => {
+		if (input.explorationId)
+			requireValidRecipes(
+				store.workspace,
+				exploration(store, input.explorationId).charter.tools.map(({ name }) => name)
+			)
 		if (!input.session) {
 			requireChild(env, selectedHarness(env))
 			for (const { exploration_id: id } of all<{ exploration_id: string }>(
@@ -424,12 +445,8 @@ export function startExploration(
 			exploredProfile,
 			exploredProfile.allowedOperations,
 			`Exploration ${row.exploration_id}`,
-			targetWebUrl(store, row.target_id)
+			dataFlags(store, row.target_id)
 		)
-		const marker = markerFor(store, opened.explorationId)
-		const facts = runPrepare(store.workspace, exploredProfile.reset, marker)
-		owe(store, opened.explorationId, exploredProfile.reset)
-		const rules = dataRules(store.workspace, exploredProfile.reset, marker, facts)
 		const savedModel = input.session ? '' : testerModelText(store, selectedHarness(env))
 		const savedEffort = input.session ? '' : testerEffortText(store, selectedHarness(env))
 		const launch = launchPlan(
@@ -440,7 +457,12 @@ export function startExploration(
 			preferSavedModel,
 			savedEffort
 		)
+		const marker = markerFor(store, opened.explorationId)
+		const facts = runPrepare(store.workspace, exploredProfile.reset, marker)
+		owe(store, opened.explorationId, exploredProfile.reset)
+		const rules = dataRules(store.workspace, exploredProfile.reset, marker, facts)
 		if (launch.inheritPiTools && !launch.allow.length) launch.allow = ruleTokens(testerRulesText(store, 'pi'))
+		const toolUsers = [...explorerNames(launch.explorers), ...(launch.verifier ? ['verify'] : [])]
 		addEvent(
 			store,
 			opened.explorationId,
@@ -451,7 +473,10 @@ export function startExploration(
 				detail: {
 					...launch,
 					dataRules: rules,
-					browserFolder: existsSync(join(store.workspace, browserFolder)),
+					toolIdentities: Object.fromEntries(toolUsers.map((name) => [name, toolIdentity(marker, name)])),
+					toolFoldersBefore: explorationToolFolders(store, opened.explorationId).filter((name) =>
+						existsSync(join(store.workspace, name))
+					),
 				},
 			},
 			operationId,
@@ -507,8 +532,7 @@ function event(store: Store, actor: string, explorationId: string, item: Omit<Ex
 }
 
 export function startOf(events: ExplorationEvent[]) {
-	const launch = events.find((item) => item.step === 'start')?.detail as Launch | undefined
-	return launch && { ...launch, level: storedLevel(launch.level) }
+	return events.find((item) => item.step === 'start')?.detail as Launch | undefined
 }
 
 function noteChild(store: Store, actor: string, explorationId: string, explorer: string | null) {
@@ -609,7 +633,14 @@ async function watchedTurns<T>(
 	const watch = watchWork(store, actor, explorationId, explorer, initialTurn)
 	const turn = (tester: ChildContext, own: string[], prompt: string, name: string) => {
 		const hook = childHook(store.workspace, explorationId, explorer)
-		const context = { ...tester, deny: work.deny, hook, work: work.folder, inheritPiTools: launch.inheritPiTools }
+		const context = {
+			...tester,
+			deny: work.deny,
+			hook,
+			work: work.folder,
+			inheritPiTools: launch.inheritPiTools,
+			servers: work.servers,
+		}
 		return watchStray(store, actor, explorationId, explorer, name, () =>
 			launchChild(
 				executable,
@@ -649,12 +680,13 @@ async function launchExplorers(
 			catalog,
 			launch.testerEfforts?.[explorer] ?? (model ? '' : (launch.effort ?? ''))
 		)
-		const work = explorerWork(store, explorationId, explorer, launch.explorers)
-		const { folder, grant } = work
+		const work = explorerWork(store, explorationId, explorer, launch)
+		const { folder, grant, dataPrefix } = work
 		const brief = explorerBrief(
+			store.workspace,
 			{ ...opened.charter, dataRules: launch.dataRules },
 			entries,
-			`qa-${explorationId}-${explorer}-`,
+			dataPrefix,
 			folder,
 			{
 				study: launch.studySeconds,
@@ -842,7 +874,7 @@ function deriveRules(store: Store, actor: string, explorationId: string, launch:
 	const opened = exploration(store, explorationId)
 	if (!rulesNeeded(store, opened.plan_id)) return
 	const sources = ruleSources(store, opened.plan_id)
-	const names = sources.map((source) => source.name)
+	const names = sources.filter((source) => source.text !== null).map((source) => source.name)
 	const session = randomUUID()
 	const call = (args: string[], prompt: string) => {
 		const hook = childHook(store.workspace, explorationId, 'rules')
@@ -875,7 +907,7 @@ function deriveRules(store: Store, actor: string, explorationId: string, launch:
 			calls: calls.length,
 			rules: checked.rules.length,
 			refused: checked.refusals.length,
-			...(checked.rules.length ? {} : { reason: failure?.[1] ?? checked.refusals.join(' ') }),
+			...(checked.refusals.length ? { reason: failure?.[1] ?? checked.refusals.join(' ') } : {}),
 			...(calls.some(authenticationFailed)
 				? { hint: launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint }
 				: {}),
@@ -891,12 +923,26 @@ function deriveRules(store: Store, actor: string, explorationId: string, launch:
 }
 
 export function verifiedEntries(reply: unknown[] | undefined, ids: Set<string>) {
-	return (reply ?? []).flatMap((raw) => {
-		const item = raw as { id?: unknown; seen?: unknown; saw?: unknown } | null
-		if (!item || typeof item.id !== 'string' || !ids.has(item.id) || typeof item.seen !== 'boolean') return []
-		const saw = typeof item.saw === 'string' && item.saw.trim() ? item.saw : item.seen ? 'Seen again.' : 'Not seen.'
-		return [{ kind: 'observation', saw, [item.seen ? 'confirms' : 'refutes']: item.id }]
-	})
+	const observations = []
+	const refusals = []
+	const missing = new Set(ids)
+	if (!reply) return { observations: [], refusals: ['Verification needs a JSON array.'] }
+	for (const [index, raw] of reply.entries()) {
+		const path = `verification[${index}]`
+		const problems = schemaProblems('verification', raw, path)
+		if (problems.length) {
+			refusals.push(...problems.map(({ text }) => `${text}.`))
+			continue
+		}
+		const { id, seen, saw } = raw as Verification
+		if (!missing.delete(id)) {
+			refusals.push(`${path}/id ${JSON.stringify(id)} must name a requested problem once.`)
+			continue
+		}
+		observations.push({ kind: 'observation', saw, [seen ? 'confirms' : 'refutes']: id })
+	}
+	if (missing.size) refusals.push(`Verification has no usable result for ${[...missing].join(', ')}.`)
+	return { observations, refusals }
 }
 
 export function verifyInput(store: Store, explorationId: string, after = 0) {
@@ -904,12 +950,13 @@ export function verifyInput(store: Store, explorationId: string, after = 0) {
 	const fresh = after ? newDefects(store, opened.plan_id, after) : undefined
 	const items = verifyItems(planClaims(store, opened.plan_id), opened.build, fresh)
 	if (!items.length) return null
+	const launch = startOf(explorationEvents(store, explorationId))!
 	return {
 		items,
 		entries: entryValues(store, explorationId),
 		operations: opened.charter.operations,
-		dataRules: startOf(explorationEvents(store, explorationId))?.dataRules ?? [],
-		dataPrefix: `qa-${explorationId}-verify-`,
+		dataRules: launch.dataRules ?? [],
+		dataPrefix: launch.toolIdentities.verify.dataPrefix,
 	}
 }
 
@@ -935,11 +982,12 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 	}
 	const ids = new Set(items.map((item) => item.id))
 	const calls = [await ask(['--session-id', session], brief)]
-	let observations = calls[0].failure ? [] : verifiedEntries(replyArray(calls[0].result), ids)
-	if (!calls[0].failure && !observations.length) {
+	let checked = verifiedEntries(replyArray(calls[0].failure ? undefined : calls[0].result), ids)
+	if (!calls[0].failure && !checked.observations.length) {
 		calls.push(await ask(['--resume', session], verifierRepairPrompt()))
-		observations = calls[1].failure ? [] : verifiedEntries(replyArray(calls[1].result), ids)
+		checked = verifiedEntries(replyArray(calls[1].failure ? undefined : calls[1].result), ids)
 	}
+	const { observations, refusals } = checked
 	if (observations.length) logEntries(store, verifierActor, { explorationId, entries: observations })
 	const failure = calls.find((call) => call.failure)?.failure
 	const stderr = calls.find((call) => call.stderr)?.stderr
@@ -951,13 +999,7 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 			session,
 			items: items.length,
 			verified: observations.length,
-			...(observations.length
-				? {}
-				: calls[0].failure
-					? { reason: calls[0].failure[1] }
-					: {
-							reason: `The verifier gave no result, also after one repair${failure ? ` (${failure[1]})` : ''}. The claims keep their states.`,
-						}),
+			...(refusals.length ? { reason: failure?.[1] ?? refusals.join(' ') } : {}),
 			...(stderr ? { stderr } : {}),
 			...(calls.some(authenticationFailed)
 				? { hint: launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint }
@@ -1037,7 +1079,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 				)
 			for (const { explorer } of ended) keepWorkFiles(store, actor, explorationId, explorer, 'test')
 			if (lastStop) {
-				keepBrowserFolder(store, explorationId)
+				keepToolFolders(store, explorationId)
 				event(store, actor, explorationId, {
 					step: 'done',
 					explorer: null,
@@ -1054,7 +1096,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 			mergeReports(store, actor, explorationId, launch, env)
 			if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env)
 			removeWork(store, explorationId)
-		} else keepBrowserFolder(store, explorationId)
+		} else keepToolFolders(store, explorationId)
 		const revision = ok
 			? firstRevision(store, actor, explorationRow(store, explorationId).plan_id, explorationId)
 			: null
@@ -1085,12 +1127,15 @@ export async function driveExploration(workspace: string, explorationId: string,
 			},
 		})
 	} catch (error) {
-		keepBrowserFolder(store, explorationId)
+		keepToolFolders(store, explorationId)
 		event(store, actor, explorationId, {
 			step: 'done',
 			explorer: null,
 			status: 'failed',
-			detail: { reason: error instanceof Error ? error.message : String(error) },
+			detail: {
+				reason: error instanceof Error ? error.message : String(error),
+				...(error instanceof Refusal && error.hint ? { hint: error.hint } : {}),
+			},
 		})
 	} finally {
 		settleCleanups(store, [explorationId])
@@ -1162,10 +1207,7 @@ function retryCommand(store: Store, id: string, launch: Launch | undefined) {
 	const harness = launch
 		? `CHECKMATE_HARNESS=${launch.context?.harness ?? 'claude'} ${launch.inheritPiTools ? 'CHECKMATE_HOST_SESSION=1 ' : ''}`
 		: ''
-	return (
-		harness +
-		command.map((word) => (/^[\w./:@-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`)).join(' ')
-	)
+	return harness + command.map(shellWord).join(' ')
 }
 
 export function followCount(store: Store, explorationId: string, knownAnswers?: ReadonlySet<string>) {
@@ -1293,13 +1335,12 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 		}
 		const sessions = followSessions(events)
 		const phase = `follow-${events.filter((item) => item.step === 'follow').length}`
-		const count = initial.explorers
 		const executable = requireChild(env, launch.context.harness)
 		const ended = await Promise.all(
 			sessions
 				.filter((item) => !item.skipped)
 				.map(async ({ explorer, session }) => {
-					const work = explorerWork(store, explorationId, explorer, count)
+					const work = explorerWork(store, explorationId, explorer, launch)
 					const { folder } = work
 					const model = plan.modelOverride ? undefined : initial.testerModels?.[explorer]
 					const resumed =
@@ -1376,7 +1417,7 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 			mergeReports(store, actor, explorationId, review, env, plan.after)
 			if (review.verifier) await verifyClaims(store, actor, explorationId, review, env, plan.after)
 			removeWork(store, explorationId)
-		} else keepBrowserFolder(store, explorationId)
+		} else keepToolFolders(store, explorationId)
 		const skipped = [
 			...sessions.flatMap((item) => (item.skipped ? [item.skipped] : [])),
 			...ended.flatMap((item) =>
@@ -1400,12 +1441,15 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 			},
 		})
 	} catch (error) {
-		keepBrowserFolder(store, explorationId)
+		keepToolFolders(store, explorationId)
 		event(store, actor, explorationId, {
 			step: 'followed',
 			explorer: null,
 			status: 'failed',
-			detail: { reason: error instanceof Error ? error.message : String(error) },
+			detail: {
+				reason: error instanceof Error ? error.message : String(error),
+				...(error instanceof Refusal && error.hint ? { hint: error.hint } : {}),
+			},
 		})
 	} finally {
 		closeStore(store)
@@ -1562,7 +1606,7 @@ export function endStopped(store: Store, explorationId: string, explorer?: strin
 	const events = explorationEvents(store, explorationId)
 	const { supervisor, children } = stoppedProcesses(events, explorer)
 	const left = [...endProcesses(supervisor), ...endProcesses(children)].map((item) => item.pid)
-	if (explorer === undefined) keepBrowserFolder(store, explorationId)
+	if (explorer === undefined) keepToolFolders(store, explorationId)
 	return left
 }
 

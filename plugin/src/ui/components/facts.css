@@ -1,44 +1,55 @@
-.facts,
-.sp-facts {
+.sc-facts {
 	display: grid;
-	grid-template-columns: 136px minmax(0, 1fr);
-	gap: 4px 12px;
+	grid-template-columns: 120px minmax(0, 1fr);
 	margin: 0;
-	font: 400 14px/20px var(--font-body);
+	border-top: var(--hairline) solid var(--hair);
+	font: 400 14px/20px var(--font-sans);
 }
-.facts dt,
-.sp-facts dt {
-	font: 600 13px/20px var(--font-body);
-	letter-spacing: 0;
+.sc-facts dt,
+.sc-facts dd {
+	margin: 0;
+	padding: var(--space-2) 0;
+	border-bottom: var(--hairline) solid var(--hair);
+}
+.sc-facts dt {
 	color: var(--muted);
+	font: 400 14px/20px var(--font-sans);
 }
-.facts dd,
-.sp-facts dd {
-	margin: 0;
+.sc-facts dd {
 	min-width: 0;
 	overflow-wrap: anywhere;
+	font: 400 14px/20px var(--font-sans);
 }
-.facts dd.path {
+.sc-facts dd code {
+	font: 500 13px/20px var(--font-mono);
+}
+.sc-facts dd.path {
 	overflow-wrap: break-word;
 	word-break: normal;
 }
-.facts dd.path code {
+.sc-facts dd.path code {
 	overflow-wrap: inherit;
 	word-break: inherit;
 }
-.kv {
+.sc-facts.is-cols {
+	grid-template-columns: 120px minmax(0, 1fr) 120px minmax(0, 1fr);
+}
+.sc-facts.is-wide {
+	grid-template-columns: 180px minmax(0, 1fr);
+}
+.sc-chips {
 	display: inline-flex;
 	flex-wrap: wrap;
 	gap: 4px;
 }
 @media (max-width: 760px) {
-	.facts,
-	.sp-facts {
+	.sc-facts,
+	.sc-facts.is-cols,
+	.sc-facts.is-wide {
 		grid-template-columns: minmax(0, 1fr);
-		gap: 0 12px;
 	}
-	.facts dd + dt,
-	.sp-facts dd + dt {
-		margin-top: 8px;
+	.sc-facts dt {
+		padding-bottom: 0;
+		border-bottom: 0;
 	}
 }

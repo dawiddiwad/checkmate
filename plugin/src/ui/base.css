@@ -1,34 +1,3 @@
-@font-face {
-	font-family: 'IBM Plex Sans';
-	src: url('/assets/fonts/ibm-plex-sans-400.woff2') format('woff2');
-	font-weight: 400;
-	font-display: swap;
-}
-@font-face {
-	font-family: 'IBM Plex Sans';
-	src: url('/assets/fonts/ibm-plex-sans-600.woff2') format('woff2');
-	font-weight: 500 700;
-	font-display: swap;
-}
-@font-face {
-	font-family: 'IBM Plex Mono';
-	src: url('/assets/fonts/ibm-plex-mono-400.woff2') format('woff2');
-	font-weight: 400;
-	font-display: swap;
-}
-@font-face {
-	font-family: 'IBM Plex Mono';
-	src: url('/assets/fonts/ibm-plex-mono-500.woff2') format('woff2');
-	font-weight: 500;
-	font-display: swap;
-}
-@font-face {
-	font-family: 'IBM Plex Mono';
-	src: url('/assets/fonts/ibm-plex-mono-600.woff2') format('woff2');
-	font-weight: 600 700;
-	font-display: swap;
-}
-
 *,
 *::before,
 *::after {
@@ -38,14 +7,14 @@
 html {
 	-webkit-text-size-adjust: 100%;
 	scroll-padding-top: 8px;
-	scroll-padding-bottom: calc(var(--sp-bar) + var(--dock-h, 0px) + 8px);
+	scroll-padding-bottom: calc(var(--bar-h) + var(--dock-h, 0px) + 8px);
 }
 body {
 	margin: 0;
 	min-height: 100vh;
 	background: var(--ground);
 	color: var(--ink);
-	font: 400 14px/20px var(--font-body);
+	font: 400 14px/20px var(--font-sans);
 	-webkit-font-smoothing: antialiased;
 	overflow-x: hidden;
 	overflow-wrap: anywhere;
@@ -56,7 +25,7 @@ a {
 	text-decoration-color: var(--edge);
 }
 a:hover {
-	text-decoration-color: currentColor;
+	color: var(--signal);
 }
 button,
 input,
@@ -66,14 +35,14 @@ textarea {
 	color: inherit;
 }
 :focus-visible {
-	outline: 2px solid var(--focus);
-	outline-offset: 1px;
+	outline: var(--focus-w) solid var(--focus);
+	outline-offset: var(--focus-gap);
 }
 h1,
 h2,
 h3 {
 	margin: 0;
-	font-family: var(--font-body);
+	font-family: var(--font-sans);
 	font-weight: 600;
 	letter-spacing: 0;
 }
@@ -95,7 +64,7 @@ p {
 	margin: 0;
 }
 code,
-.mono {
+.sc-mono {
 	font-family: var(--font-mono);
 	font-size: 12px;
 	letter-spacing: 0;
@@ -106,27 +75,21 @@ pre {
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 }
-.muted {
+.sc-muted {
 	color: var(--muted);
 }
-.small,
+.sc-note,
 small {
 	font-size: 12px;
 	line-height: 16px;
 }
-.ell {
+.sc-ell {
 	overflow: hidden;
 	white-space: nowrap;
 	text-overflow: ellipsis;
 	min-width: 0;
 }
-.att {
-	color: var(--signal);
-}
-.hl .att {
-	color: inherit;
-}
-.sr-only {
+.sc-sr {
 	position: absolute;
 	width: 1px;
 	height: 1px;
@@ -150,11 +113,9 @@ small {
 	top: 8px;
 }
 
-.sp-lbl,
-.sp-gh,
-.sp-nhead,
+.sc-group-h,
 th {
-	font-family: var(--font-body);
+	font-family: var(--font-sans);
 	font-weight: 600;
 	letter-spacing: 0;
 	text-transform: none;
@@ -209,18 +170,40 @@ dialog::backdrop {
 		display: inline-flex;
 		align-items: center;
 	}
-	main a:is(.mono, .id, .h-link, .pill, .ev-act, .rev) {
+	main a:is(.sc-mono, .id, .sc-h-link, .sc-chip, .sc-evidence-act, .rev) {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		min-width: 40px;
 		min-height: 40px;
 	}
-	main :is(td, dd, .sp-path, nav.chips, .crumbs, p.back) a {
+	main :is(td, dd, .sc-crumb, nav.sc-chips, .crumbs, p.back) a {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		min-width: 40px;
 		min-height: 40px;
 	}
+}
+.sc-mono {
+	font-family: var(--font-mono);
+	font-weight: 500;
+}
+.sc-muted {
+	color: var(--muted);
+}
+.sc-hot {
+	color: var(--signal);
+}
+.sc-sr {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+::selection {
+	background: var(--ink);
+	color: var(--on-ink);
 }

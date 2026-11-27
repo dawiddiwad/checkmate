@@ -52,7 +52,7 @@ function origin(request: RequestRecord) {
 				: page
 					? html`<a href="${page[1]}">${page[0]}</a>`
 					: ''
-	return start ? html`<p class="help">Started from ${start}.</p>` : ''
+	return start ? html`<p class="sc-help">Started from ${start}.</p>` : ''
 }
 
 function commandOf(input: unknown, tool: string) {
@@ -79,7 +79,7 @@ function turn(store: Store, request: RequestRecord, context: Context, number: nu
 }
 
 function chatList(chats: Chat[], href: (chat: Chat) => string, empty: Html, selected?: string) {
-	return html`<div class="${chats.length ? 'chat-list' : ''}" data-region="chat-list">
+	return html`<div class="${chats.length ? 'sc-chat-items' : ''}" data-region="chat-list">
 		${
 			chats.length
 				? chats.map((chat) => {
@@ -88,14 +88,14 @@ function chatList(chats: Chat[], href: (chat: Chat) => string, empty: Html, sele
 						const first = title(chat.turns[0].text)
 						const link = href(chat)
 						return html`<a
-							class="chat-list-item"
+							class="sc-chat-item"
 							id="chat-${chat.id}"
 							href="${link}"
 							${chatRow(`chat:${chat.id}`, link, first)}
 							${chat.id === selected ? html`aria-current="page"` : ''}
 							><strong>${first}</strong
 							><span>
-								${unread ? html`<span class="chat-unread">${unread} unread</span> · ` : ''}${last.state === 'answered' ? '' : html`${statusMark({ state: last.state })} · `}${ago(last.askedAt)}
+								${unread ? html`<span class="sc-chat-unread">${unread} unread</span> · ` : ''}${last.state === 'answered' ? '' : html`${statusMark({ state: last.state })} · `}${ago(last.askedAt)}
 								· ${chat.turns.length} ${chat.turns.length === 1 ? 'message' : 'messages'} ·
 								<span title="Chat cost">${costText(chat.costUsd, chat.costPartial)}</span></span
 							></a
@@ -113,15 +113,15 @@ function globalChatHref({ id, context }: Chat) {
 }
 
 function workspace(view: 'thread' | 'new' | 'list', newHref: string, list: Html, conversation?: Html) {
-	return html`<div class="chat-workspace" data-chat-view="${view}">
-		<aside class="chat-sidebar" aria-label="Conversations" data-chat-lane="list">
-			<div class="chat-sidebar-header">
+	return html`<div class="sc-chat" data-chat-view="${view}">
+		<aside class="sc-chat-list" aria-label="Conversations" data-chat-lane="list">
+			<div class="sc-chat-list-h">
 				<h2>Conversations</h2>
 				${formButton({ label: 'New chat', href: newHref, attrs: chatRowAttrs('chat:new', newHref, 'New chat') })}
 			</div>
 			${list}
 		</aside>
-		${conversation || html`<div class="chat-workspace-empty">${emptyNotice({ what: 'Choose a conversation.', next: 'Start a new chat to ask Checkmate.' })}</div>`}
+		${conversation || html`<div class="sc-chat-empty">${emptyNotice({ what: 'Choose a conversation.', next: 'Start a new chat to ask Checkmate.' })}</div>`}
 	</div>`
 }
 
@@ -137,7 +137,7 @@ export function chatsPage(store: Store, context: Context, params: URLSearchParam
 		${workspace(
 			fresh ? 'new' : 'list',
 			'/chats?new=1',
-			chatList(chats, globalChatHref, html`<p class="help">No chats yet.</p>`),
+			chatList(chats, globalChatHref, html`<p class="sc-help">No chats yet.</p>`),
 			fresh
 				? newThread(context, '/chats', chatPreferences(store, env), '/chats', params.get('screen') ?? '')
 				: undefined
@@ -156,7 +156,7 @@ function chatSelection(store: Store, env: Env, chat: Chat) {
 
 function history(store: Store, context: Context, chat: Chat, back: string) {
 	return html`<div
-		class="chat-history"
+		class="sc-turns"
 		data-region="chat-history"
 		data-chat-history
 		data-chat-lane="thread"
@@ -175,12 +175,14 @@ function thread(
 	chat: Chat,
 	options: { list: string; back: string; action: string; origin?: boolean }
 ) {
-	return html`<section class="chat-thread" aria-label="Current conversation">
-		<header class="chat-thread-header">
-			<a class="chat-mobile-back" href="${options.list}">${glyph('←')} All chats</a>
-			<div class="chat-thread-title">
+	return html`<section class="sc-chat-main" aria-label="Current conversation">
+		<header class="sc-chat-head">
+			<a class="sc-chat-back" href="${options.list}">${glyph('←')} All chats</a>
+			<div class="sc-chat-title">
 				<h2>${title(chat.turns[0].text)}</h2>
-				<p class="chat-cost" data-region="chat-cost">Chat cost ${costText(chat.costUsd, chat.costPartial)}</p>
+				<p class="sc-chat-cost" data-region="chat-cost">
+					Chat cost ${costText(chat.costUsd, chat.costPartial)}
+				</p>
 			</div>
 			${options.origin ? origin(chat.turns[0]) : ''}
 		</header>
@@ -197,9 +199,9 @@ function newThread(
 	screen = '',
 	back = ''
 ) {
-	return html`<section class="chat-thread" aria-label="New chat">
-		<header class="chat-thread-header">
-			<a class="chat-mobile-back" href="${list}">${glyph('←')} All chats</a>
+	return html`<section class="sc-chat-main" aria-label="New chat">
+		<header class="sc-chat-head">
+			<a class="sc-chat-back" href="${list}">${glyph('←')} All chats</a>
 			<h2>New chat</h2>
 		</header>
 		${composer({ csrf: context.csrf, action, selection, screen, back })}
@@ -228,15 +230,26 @@ export function planChat(
 	return {
 		back: chat || fresh ? list : address(),
 		body: html`<section
-			class="plan-chat"
+			class="sc-chat-plan"
 			aria-label="Plan chats"
 			data-plan-chat="${path.slice('/plans/'.length).split('@')[0]}"
 		>
-			${heading({ title: 'Plan chats', sub: html`<a href="${address()}">${glyph('←')} Plan</a> · ${decodeURIComponent(path.slice('/plans/'.length))}` })}
+			${heading({
+				title: 'Plan chats',
+				crumbs: [
+					['Plan', address()],
+					[decodeURIComponent(path.slice('/plans/'.length)), null],
+				],
+			})}
 			${workspace(
 				chat ? 'thread' : fresh ? 'new' : 'list',
 				newChat,
-				chatList(chats, (item) => address('chat', item.id), html`<p class="help">No chats yet.</p>`, chat?.id),
+				chatList(
+					chats,
+					(item) => address('chat', item.id),
+					html`<p class="sc-help">No chats yet.</p>`,
+					chat?.id
+				),
 				chat
 					? thread(store, context, env, chat, {
 							list,

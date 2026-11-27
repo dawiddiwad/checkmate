@@ -3,18 +3,18 @@
 		forced-color-adjust: none;
 		background: CanvasText;
 	}
-	:is(.sp-row, .sp-nrow, .sp-ct, .sp-dhead, .sp-file, .sp-mk).hl {
+	:is(.sc-row, .sc-rail-row, .sc-plan, .sc-drawer-top, .sc-file, .sc-cell).is-sel {
 		forced-color-adjust: none;
 		background: Highlight;
 		color: HighlightText;
 		outline: 2px solid HighlightText;
 		outline-offset: -2px;
 	}
-	.hl :is(*) {
+	.is-sel :is(*) {
 		color: HighlightText;
 		border-color: HighlightText;
 	}
-	.hl .glyph {
+	.is-sel .glyph {
 		background: HighlightText;
 	}
 }

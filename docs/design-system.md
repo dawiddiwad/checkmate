@@ -1,168 +1,102 @@
 # The Scoresheet design system
 
-The Scoresheet is the design system of the Checkmate review UI. The values come from the `:root` blocks in `plugin/src/ui/tokens.css`.
+The Scoresheet (A) is the design system of the Checkmate review UI. Its values are in `plugin/src/ui/tokens.css`. Each component has its stylesheet in `plugin/src/ui/components/`. The classes start with `sc-`.
 
 ## Idea
 
-A chess scoresheet records every move in plain ink. Only one move is yours to play. The UI is a calm record of what the testers did, with one clear mark for what needs a person.
+A chess scoresheet records every move in plain ink. Only one move is yours to play. The UI is a calm, exact record of what the testers did, with one clear mark for what needs a person.
 
 ## Rules
 
-1. **One colour means "you".** Use `--signal` (vermilion) only for what waits on a person. Use `--pass` (green) only for passed and accepted. Everything else is ink.
-2. **Words in sans, data in mono.** Use IBM Plex Sans for words. Use IBM Plex Mono only for IDs, counts, builds, paths, and keys. Never set a sentence in mono.
-3. **Shape before colour.** Every status has its own glyph. The status reads in grey, in dark mode, and for colour-blind people.
-4. **One primary action per view.** The next move is filled. Other actions are outlined or plain text. Fill with `--signal` when the action unblocks testing. Fill with `--ink` in all other cases.
-5. **Quiet selection.** The selected row gets `--surface-2` and a 3 px `--ink` bar on the left. Do not flood a row with colour.
-6. **Say less.** Use sentence case. Do not use uppercase labels. Only the brand word and `kbd` keys are uppercase. Show the number first, then the word.
+1. **One colour means "you".** Use `--signal` only for what waits on a person. Use `--pass` only for passed and accepted. Everything else is ink.
+2. **Words in sans, data in mono.** Use IBM Plex Sans for words. Use IBM Plex Mono for IDs, counts, builds, paths, times, and keys.
+3. **Shape before colour.** Every status has its own mark (`sc-mark`). It reads in grey, in dark mode, and for colour-blind people.
+4. **One primary action per view.** Fill the next move: `sc-btn is-you` when it unblocks testing, `sc-btn is-primary` in other cases. Other actions are outlined or quiet.
+5. **Quiet selection.** The selected row (`is-sel`) gets `--surface-2` and a 3 px `--ink` bar. A row that blocks testing (`is-block`) keeps a 3 px `--signal` bar.
+6. **Square and flat.** Corners are 0. Depth is a 1 px `--hair` line. There are no shadows.
+7. **Say less.** Use sentence case. Show the number first, then the word. Only the brand word and keys are uppercase.
+8. **One bar, at the bottom.** The status bar (`sc-bar`) is the only bar.
 
 ## Tokens
 
-### Colour tokens
+`plugin/src/ui/tokens.css` is the only place for colour, space, size, and font values. Two light values are darker than in the Scoresheet files so that every text and control border meets the contrast rules: `--signal` is `#be400c` (the files give `#c2410c`, 4.46:1 on `--surface-2`) and `--edge` is `#85888d` (the files give `#8c8f94`, 2.97:1 on `--surface` and 2.79:1 on `--surface-2`). `npm run lint:check` fails on a raw colour in another stylesheet. Light values are in `:root`. Dark values are in `:root[data-theme='dark']` and in the `prefers-color-scheme` block, with the same names.
 
-Light values are in `:root`. Dark values are in `:root[data-theme='dark']` and in the `prefers-color-scheme` block.
+| Group      | Tokens                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------- |
+| Ground     | `--ground`, `--surface`, `--surface-2`, `--row-hover`                                                   |
+| Text       | `--ink`, `--muted`, `--on-ink`                                                                          |
+| Lines      | `--hair`, `--edge`, `--edge-soft`                                                                       |
+| Needs you  | `--signal`, `--signal-soft`, `--on-signal`                                                              |
+| Result     | `--pass`, `--pass-soft`, `--on-pass`, `--fail`, `--fail-soft`                                           |
+| Focus      | `--focus`                                                                                               |
+| Overlay    | `--scrim`                                                                                               |
+| Space      | `--space-1` (4 px) to `--space-8` (64 px)                                                               |
+| Size       | `--bar-h`, `--ctl`, `--ctl-lg`, `--row-h`, `--rail-w`, `--drawer-w`, `--mark`, `--cell-sm`, `--cell-lg` |
+| Line width | `--hairline`, `--rule`, `--bar`, `--stroke`, `--focus-w`, `--focus-gap`                                 |
+| Font       | `--font-sans`, `--font-mono`                                                                            |
 
-| Token           | Role                                    | Light                    | Dark                 |
-| --------------- | --------------------------------------- | ------------------------ | -------------------- |
-| `--ground`      | Page background                         | `#f6f5f1`                | `#0f1012`            |
-| `--surface`     | Panels and cards                        | `#ffffff`                | `#16181b`            |
-| `--surface-2`   | Selected row and raised areas           | `#efeee9`                | `#1d2024`            |
-| `--ink`         | Text, filled buttons, selection bar     | `#14161a`                | `#eceae4`            |
-| `--on-ink`      | Text on `--ink`                         | `#f6f5f1`                | `#0f1012`            |
-| `--muted`       | Secondary text                          | `#5a5f68`                | `#a3a6ac`            |
-| `--hair`        | 1 px row dividers                       | `#e2e0d9`                | `#2a2d32`            |
-| `--edge`        | Outlines of controls                    | `#8c8f94`                | `#5c6066`            |
-| `--edge-soft`   | Soft borders, empty board cells         | `#c9c6bc`                | `#3a3e44`            |
-| `--row-hover`   | Row under the pointer                   | `#f3f2ee`                | `#1a1c20`            |
-| `--focus`       | Focus ring                              | `#2f5bd3`                | `#8fb0ff`            |
-| `--signal`      | What waits on a person                  | `#c2410c`                | `#ff8a4c`            |
-| `--signal-soft` | Soft fill behind `--signal`             | `#fbeadf`                | `#2c1a10`            |
-| `--on-signal`   | Text on `--signal`                      | `#ffffff`                | `#1a0c04`            |
-| `--fail`        | Failed and defect                       | `#b42318`                | `#ff7a6e`            |
-| `--fail-soft`   | Soft fill behind `--fail`               | `#fde6e3`                | `#2b1316`            |
-| `--pass`        | Passed and accepted                     | `#1f7a4d`                | `#5cc48a`            |
-| `--pass-soft`   | Soft fill behind `--pass`               | `#e3f1e9`                | `#12271b`            |
-| `--on-pass`     | Text on `--pass`                        | `#ffffff`                | `#0f1012`            |
-| `--scrim`       | Overlay behind the drawer               | `rgba(20, 22, 26, 0.35)` | `rgba(0, 0, 0, 0.6)` |
-| `--chevron`     | Select arrow image, drawn in ink colour | dark ink                 | light ink            |
+The UI loads IBM Plex Sans and IBM Plex Mono from Google Fonts. The font stacks fall back to system fonts, so the UI still renders offline.
 
-### Layout tokens
+## Status language
 
-| Token         | Value   | Use                       |
-| ------------- | ------- | ------------------------- |
-| `--sp-bar`    | `48px`  | Height of the status bar  |
-| `--sp-ctl`    | `32px`  | Height of a control       |
-| `--sp-ctl-lg` | `40px`  | Height of a large control |
-| `--sp-nav`    | `320px` | Width of the navigation   |
-| `--sp-drawer` | `560px` | Width of the drawer       |
+| State                | Class                 | Word                   |
+| -------------------- | --------------------- | ---------------------- |
+| Testing, running     | `sc-mark is-run`      | Testing                |
+| Passed, accepted     | `sc-mark is-pass`     | Passed, Accepted       |
+| Failed, defect       | `sc-mark is-fail`     | Failed, Defect         |
+| Blocks, waits on you | `sc-mark is-you`      | Blocks, Needs approval |
+| Approve              | `sc-mark is-approve`  | Approve                |
+| Finding, triage      | `sc-mark is-triage`   | Finding, Needs triage  |
+| Question, open       | `sc-mark is-question` | Question, Open         |
+| Not run              | `sc-mark is-none`     | Not run                |
+| Stopped, interrupted | `sc-mark is-stop`     | Stopped                |
+| Critical             | `sc-mark is-crit`     | Critical               |
 
-### Font tokens
-
-| Token         | Value                                          |
-| ------------- | ---------------------------------------------- |
-| `--font-body` | IBM Plex Sans, then the system sans fonts      |
-| `--font-mono` | IBM Plex Mono, then the system monospace fonts |
-
-## Type scale
-
-| Use                  | Size and line | Weight | Font |
-| -------------------- | ------------- | ------ | ---- |
-| Page title (`h1`)    | 32/36         | 600    | Sans |
-| Section title (`h2`) | 18/24         | 600    | Sans |
-| Row title            | 14/20         | 400    | Sans |
-| Body                 | 14/20         | 400    | Sans |
-| Small                | 12 to 13      | 400    | Sans |
-| Data                 | 12 to 13      | 500    | Mono |
-| Numbers              | 24/28         | 500    | Mono |
-| Key                  | 11            | 600    | Mono |
-
-## Space and shape
-
-- Space moves in 4 px steps: 4, 8, 12, 16, 24, 32, and 48.
-- Corners are 0 everywhere.
-- There are no shadows. The only exception is the inset selection bar.
-- Rows have a 1 px `--hair` divider.
-- A page heading (`.sp-h`) has a 2 px `--ink` rule under it.
+Board cells: `sc-cell k-pass`, `k-fail` (×), `k-run` (hatch), `k-q` (?), and `k-none`.
 
 ## Components
 
-### Status mark
+Each component is one function in `plugin/src/ui/components/<name>.ts`, with its rules in `<name>.css` and its catalogue examples in `<name>.catalogue.ts`.
 
-Class: `.sp-pill` with a tone class. Use it to show the status of a run, a result, or an item that waits.
+| Component      | Function                                       | Classes                                       |
+| -------------- | ---------------------------------------------- | --------------------------------------------- |
+| Status mark    | `statusMark`, `wordMark`, `statusCounts`       | `sc-mark is-*`, `sc-word`                     |
+| Board          | `boardCell`, `board`, `boardKey`, `resultCell` | `sc-cell k-*`, `sc-plan-board`, `sc-legend`   |
+| Button         | `button`, `optionButton`, `formButton`         | `sc-btn`, `is-primary`, `is-you`, `is-lg`     |
+| Key            | `key`                                          | `sc-key`, `sc-key-hint`                       |
+| List row       | `listRow`, `groupHeader`, `listPageRow`        | `sc-list`, `sc-row`, `sc-group-h`             |
+| Plan tile      | `planTile`, `newChangeTile`                    | `sc-plans`, `sc-plan`                         |
+| Metric         | `metrics`                                      | `sc-metrics`, `sc-metric is-hot`              |
+| Banner         | `blockingBanner`                               | `sc-banner`                                   |
+| Notice         | `notice`                                       | `sc-notice is-error`                          |
+| Nav rail       | `navRail`, `railRow`                           | `sc-rail`                                     |
+| Status bar     | `statusBar`                                    | `sc-bar`                                      |
+| Brand          | `brand`                                        | `sc-brand`                                    |
+| Drawer         | `drawer`, `drawerHead`                         | `sc-scrim`, `sc-drawer`, `sc-opts`            |
+| Page heading   | `heading`, `crumbBar`                          | `sc-h`, `sc-h-meta`, `sc-h-act`, `sc-crumb`   |
+| Facts          | `facts`, `recordFacts`                         | `sc-facts`                                    |
+| Field          | `field`, `textInput`, `textArea`               | `sc-field`, `sc-label`, `sc-input`, `sc-help` |
+| Radio group    | `radioGroup`                                   | `sc-radios`, `sc-radio`                       |
+| Data table     | `dataTable`, `tableRow`                        | `sc-table`, `sc-table-wrap`                   |
+| Tabs           | `pageTabs`, `jumpLinks`                        | `sc-tabs`, `sc-tab`                           |
+| Fold           | `fold`                                         | `sc-fold`                                     |
+| Empty state    | `emptyNotice`, `emptyLine`                     | `sc-empty`                                    |
+| Menu           | `downloadMenu`                                 | `menu`, `sc-btn`                              |
+| Find palette   | `findPalette`                                  | `sc-find`                                     |
+| Confirm dialog | `confirmDialog`                                | `sc-confirm`                                  |
+| Keys help      | `keysHelp`                                     | `sc-confirm is-keys`                          |
+| Bulk bar       | `bulkBar`                                      | `sc-bulk`                                     |
+| Evidence       | `evidenceFiles`, `evidencePreview`             | `sc-files`, `sc-file`                         |
+| Chat turn      | `chatTurn`                                     | `sc-turn`, `sc-turn-saved`                    |
+| Composer       | `composer`                                     | `sc-composer`                                 |
+| Tester card    | `testerCard`, `timeline`                       | `sc-tcard`, `sc-timeline`, `sc-event`         |
 
-| Tone class    | Mark                      | Use                                     |
-| ------------- | ------------------------- | --------------------------------------- |
-| `.run`        | Hatched ink square        | Testing, running                        |
-| `.pass`       | Filled green square       | Passed, accepted, allowed               |
-| `.fail`       | Red cross                 | Failed, denied, high severity           |
-| `.you`        | Filled vermilion square   | Blocks, asks, needs approval            |
-| `.you.triage` | Outlined vermilion square | Findings and needs triage: decide first |
-| `.crit`       | Filled red label          | Critical defect                         |
-| No tone       | Outlined grey square      | Questions, stopped, deferred            |
+## Keys
 
-The mark comes from CSS (`::before`). Its colours come from `--mark-edge` and `--mark-fill`, which each tone class sets. The word is in sentence case. A pill for a duration or a cost has no mark.
-
-### Board cell
-
-Class: `.sp-mk` with a state class. Use it in the rule by build board on the Plans page and in the plan rule map.
-
-| State class | Look                  |
-| ----------- | --------------------- |
-| `.k-pass`   | Green fill            |
-| `.k-fail`   | Red outline with ✗    |
-| `.k-run`    | Ink hatch             |
-| `.k-q`      | Vermilion fill with ? |
-| `.k-none`   | Empty, soft border    |
-
-### Buttons
-
-Classes: `.sp-btn` and `.btn`.
-
-- `.pri` or `.primary` makes a filled ink button. Use it for the one primary action of a view.
-- Add `.you` to fill the button with vermilion. Use it for an action that unblocks testing.
-- Other buttons stay outlined or plain.
-- On the Plans page, the first option of the selected plan is filled.
-
-### Rows and plan tiles
-
-Classes: `.sp-row` and `.sp-ct`. Add `.hl` to mark the selected item. A selected item gets `--surface-2` and the 3 px `--ink` bar.
-
-### Numbers
-
-Class: `.sp-nums`. Use it for a group of counts.
-
-- `b.att` marks a count that waits on a person. It is vermilion.
-- `b.zero` marks a count of zero. It is grey.
-
-### Status bar
-
-The status bar (`footer.statusbar`) is the only bar. It is at the bottom of the page. There is no top bar. It shows these items:
-
-1. The brand.
-2. The links: Plans, Activity, Chats, Runs, Log, Settings. The current page has a 2 px `--ink` line on top.
-3. The key hints, and the Find and Keys buttons.
-4. The items that wait for you, for example the "need you" counter. They are vermilion.
-5. The live state, the name, and the theme switch.
-
-The path to the current page is in the status bar for screen readers only. The page shows it above its title.
-
-### Blocking banner
-
-Class: `.sp-banner`. The Needs you view shows it when questions block testing. It shows the count, one sentence, and one vermilion button that opens the first blocking question. Blocking questions come first in the list, after permission requests.
-
-### Keys
-
-Element: `kbd`. Use it for a key name in a hint. Keys are uppercase mono.
-
-## Change the design
-
-1. Change the value in the `:root` blocks. Change it in both the light and the dark block.
-2. Do not write a raw colour in a component rule.
-3. Use an existing token.
-4. Add a token only when no existing token has the same meaning.
-5. Add the new token to this page.
+Every action has a key, shown as a cap before its word. The status bar shows at most three key hints.
 
 ## Accessibility
 
-- Text and background pairs meet a 4.5:1 contrast ratio.
-- Every interactive element shows the `--focus` ring on `:focus-visible`.
-- A status never relies on colour alone. It always has a glyph and a word.
+- Text and background pairs meet a 4.5:1 contrast ratio, and 3:1 for text of 24 px and larger. Control borders meet 3:1.
+- Every interactive element shows the 2 px `--focus` ring on `:focus-visible`.
+- A status never relies on colour alone. It always has a mark and a word.

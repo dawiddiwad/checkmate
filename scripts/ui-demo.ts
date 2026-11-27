@@ -398,7 +398,7 @@ function evidence(store: Store, runId: string, name: string, content: string | B
 	return `.checkmate/tmp/${runId}/${name}`
 }
 
-function check(
+export function check(
 	store: Store,
 	runId: string,
 	reference: string,
@@ -419,7 +419,7 @@ function check(
 	})
 }
 
-function json(value: unknown) {
+export function json(value: unknown) {
 	return JSON.stringify(value, null, 2) + '\n'
 }
 
@@ -754,7 +754,7 @@ function seedAll(store: Store) {
 	seedStartedRun(store)
 }
 
-const showcasePlans: Array<{ planId: string; request: PlanRequest; tests: Array<[string, string, string]> }> = [
+export const showcasePlans: Array<{ planId: string; request: PlanRequest; tests: Array<[string, string, string]> }> = [
 	{
 		planId: 'shipping',
 		request: {
@@ -840,7 +840,7 @@ function defect(id: string, rule: string, severity: string, title: string, expec
 	}
 }
 
-function acceptedPlan(store: Store, plan: (typeof showcasePlans)[number], minutes: number, runId: string) {
+export function acceptedPlan(store: Store, plan: (typeof showcasePlans)[number], minutes: number, runId: string) {
 	minutesAgo(minutes)
 	openPlan(store, agent, { planId: plan.planId, target: 'shop-local@1', request: plan.request })
 	savePlan(store, agent, {

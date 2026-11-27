@@ -201,7 +201,7 @@ export function showUndo() {
 	note.setAttribute('role', 'status')
 	note.dataset.undo = ''
 	note.innerHTML =
-		'<span></span><button type="button" class="sp-btn" data-undo-button><kbd>0</kbd><span>Undo</span></button>'
+		'<span></span><button type="button" class="sc-btn has-key" data-undo-button><kbd class="sc-key">0</kbd><span>Undo</span></button>'
 	const named = kept.claims.length === 1 ? kept.claims[0] : plural(kept.claims.length, 'defect')
 	note.querySelector('span').textContent = `Handed ${named} over to ${kept.to}`
 	document.querySelector('[data-toast]')?.remove()

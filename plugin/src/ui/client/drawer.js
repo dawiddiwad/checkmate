@@ -7,9 +7,9 @@ import { announce, showHints, tell } from './status-bar.js'
 
 export function optionsNow() {
 	if (state.level === 'detail')
-		return [...state.drawer.querySelectorAll('.sp-dhead [data-option], .sp-options [data-option]')]
+		return [...state.drawer.querySelectorAll('.sc-drawer-top [data-option], .sc-opt-section [data-option]')]
 	const row = state.level === 'list' ? current('list') : null
-	if (row?.classList.contains('many')) return detailOptions(row)
+	if (row?.classList.contains('is-many')) return detailOptions(row)
 	return row ? [...row.querySelectorAll('[data-option]')] : []
 }
 
@@ -58,7 +58,7 @@ export function showExtra(row, field) {
 	const extra = row.querySelector(`[data-extra="${CSS.escape(field)}"]`)
 	if (!extra) return
 	for (const other of row.querySelectorAll('[data-extra]')) other.hidden = other !== extra
-	row.classList.add('ext')
+	row.classList.add('is-ext')
 	const area = extra.querySelector('textarea')
 	area.focus()
 	area.setSelectionRange(area.value.length, area.value.length)
@@ -78,7 +78,7 @@ export function focusField(field) {
 
 export function hideExtra(row) {
 	for (const extra of row.querySelectorAll('[data-extra]')) extra.hidden = true
-	row.classList.remove('ext')
+	row.classList.remove('is-ext')
 }
 
 export function choose(n) {
@@ -95,7 +95,7 @@ export function choose(n) {
 	}
 	if (state.level === 'nav' && review) return chooseBuild(n)
 	const options = optionsNow()
-	if (state.level === 'list' && current('list')?.classList.contains('many') && !options.length)
+	if (state.level === 'list' && current('list')?.classList.contains('is-many') && !options.length)
 		return tell('The options do not fit in the row. Open the row to see them.')
 	if (!options.length) return tell('No options here.')
 	const option = options[n - 1]
@@ -109,7 +109,7 @@ function sendFailed(form) {
 	let message = form.querySelector('[data-send-error]')
 	if (!message) {
 		message = document.createElement('p')
-		message.className = 'form-error'
+		message.className = 'sc-error'
 		message.setAttribute('role', 'alert')
 		message.dataset.sendError = ''
 		form.append(message)
@@ -171,4 +171,28 @@ export function attachDrawer() {
 		tell('Sending…')
 		send(form, event.submitter)
 	})
+}
+
+export function trapDrawerFocus(event) {
+	if (event.key !== 'Tab' || !state.drawer || state.level !== 'detail') return false
+	const focusable = [
+		...state.drawer.querySelectorAll(
+			'a[href], button:not([disabled]), textarea, input:not([type="hidden"]), select, [tabindex="0"]'
+		),
+	].filter((element) => !element.closest('[hidden]') && element.getClientRects().length)
+	if (!focusable.length) return false
+	const first = focusable[0]
+	const last = focusable.at(-1)
+	const inside = state.drawer.contains(document.activeElement)
+	if (!inside || (event.shiftKey && document.activeElement === first)) {
+		event.preventDefault()
+		;(event.shiftKey ? last : first).focus()
+		return true
+	}
+	if (!event.shiftKey && document.activeElement === last) {
+		event.preventDefault()
+		first.focus()
+		return true
+	}
+	return false
 }

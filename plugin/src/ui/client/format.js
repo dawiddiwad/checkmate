@@ -17,7 +17,7 @@ const keyNames = { '↑': 'Up', '↓': 'Down', '←': 'Left', '→': 'Right' }
 
 export function glyphHtml(text) {
 	return text.replace(/[●○↑↓←→▸▾]/g, (symbol) => {
-		const name = keyNames[symbol] ? `<span class="sr-only">${keyNames[symbol]}</span>` : ''
+		const name = keyNames[symbol] ? `<span class="sc-sr">${keyNames[symbol]}</span>` : ''
 		return `<span class="glyph g-${glyphNames[symbol]}" aria-hidden="true"></span>${name}`
 	})
 }

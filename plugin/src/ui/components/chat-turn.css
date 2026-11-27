@@ -1,89 +1,125 @@
-.chat-cost {
-	margin: 0;
-	color: var(--muted);
-	font-size: 0.85rem;
+.sc-turn-pair {
+	display: flex;
+	flex-direction: column;
 }
-.chat-turn {
-	display: grid;
-	gap: 0;
+.sc-turn-pair:focus {
+	outline: none;
 }
-.chat-message {
-	min-width: 0;
-	padding: 0.65rem 0.75rem;
-	border: 1px solid var(--hair);
+.sc-turn-pair.is-sel > .sc-turn {
+	box-shadow: inset var(--bar) 0 0 var(--ink);
+}
+.sc-turn {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-4) var(--space-5);
+	border-bottom: var(--hairline) solid var(--hair);
 	background: var(--surface);
+}
+.sc-turn.is-ask {
+	background: var(--surface-2);
+}
+.sc-turn-h {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-3);
+	font: 600 13px/20px var(--font-sans);
+	color: var(--ink);
+}
+.sc-turn-h span,
+.sc-turn-h time {
+	font: 400 13px/20px var(--font-sans);
+	color: var(--muted);
+}
+.sc-turn-h time {
+	font: 500 12px/20px var(--font-mono);
+}
+.sc-turn-status {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-3);
+	margin-left: auto;
+}
+.sc-turn-b {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	max-width: 76ch;
+	font: 400 14px/22px var(--font-sans);
+	color: var(--ink);
 	overflow-wrap: anywhere;
 }
-.chat-user + .chat-assistant {
-	border-top: 0;
-}
-.chat-user > p {
-	margin: 0.25rem 0 0;
-}
-.chat-message p {
+.sc-turn-b > p[data-chat-content] {
 	white-space: pre-wrap;
 }
-.chat-markdown {
-	min-width: 0;
-	margin-top: 0.35rem;
-	overflow-wrap: anywhere;
+.sc-markdown ul,
+.sc-markdown ol {
+	padding-left: var(--space-5);
 }
-.chat-markdown :where(p, ul, ol, blockquote, pre, hr, h1, h2, h3, h4, h5, h6, .chat-table) {
-	margin: 0;
+.sc-markdown ul {
+	list-style: disc;
 }
-.chat-markdown > * + * {
-	margin-top: 0.65rem;
+.sc-markdown ol {
+	list-style: decimal;
 }
-.chat-markdown p {
-	white-space: normal;
-}
-.chat-markdown :is(ul, ol) {
-	padding-inline-start: 1.5rem;
-}
-.chat-markdown :is(h1, h2, h3, h4, h5, h6) {
-	font-size: 1.05em;
-}
-.chat-markdown blockquote {
-	padding-inline-start: 0.75rem;
-	border-inline-start: 3px solid var(--hair);
-	color: var(--muted);
-}
-.chat-markdown pre {
-	padding: 0.5rem 0.75rem;
-	overflow-x: auto;
-	border: 1px solid var(--hair);
+.sc-markdown pre {
+	padding: 12px var(--space-4);
 	background: var(--surface-2);
-	font: 400 13px/20px var(--font-mono);
+	border: var(--hairline) solid var(--hair);
+	overflow: auto;
 }
-.chat-markdown :not(pre) > code {
-	padding-inline: 0.2em;
-	background: var(--surface-2);
-}
-.chat-markdown .chat-table {
+.sc-md-table {
+	max-width: 100%;
 	overflow-x: auto;
 }
-.chat-markdown .chat-align-left {
+.sc-md-table table {
+	border-collapse: collapse;
+}
+.sc-md-table th,
+.sc-md-table td {
+	padding: 6px var(--space-3);
+	border: var(--hairline) solid var(--hair);
 	text-align: left;
 }
-.chat-markdown .chat-align-center {
-	text-align: center;
-}
-.chat-markdown .chat-align-right {
-	text-align: right;
-}
-.chat-markdown img {
-	display: block;
-	max-width: 100%;
-	max-height: 24rem;
-	object-fit: contain;
-}
-.chat-user {
+.sc-md-table th {
 	background: var(--surface-2);
-}
-.chat-meta {
 	font-weight: 600;
 }
-.chat-status {
-	display: inline-block;
-	white-space: nowrap;
+.sc-md-table .sc-align-center {
+	text-align: center;
+}
+.sc-md-table .sc-align-right {
+	text-align: right;
+}
+.sc-turn-saved {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding-top: var(--space-2);
+	border-top: var(--hairline) solid var(--hair);
+	font: 400 13px/20px var(--font-sans);
+}
+.sc-turn-saved b {
+	font-weight: 600;
+}
+.sc-turn-saved li {
+	display: flex;
+	gap: var(--space-2);
+}
+.sc-turn-saved li::before {
+	content: '+';
+	font: 600 13px/20px var(--font-mono);
+	color: var(--ink);
+}
+.sc-turn details > summary {
+	cursor: pointer;
+	font: 500 13px/20px var(--font-sans);
+	color: var(--muted);
+}
+.sc-activity {
+	margin: var(--space-2) 0 0;
+	padding-left: var(--space-5);
+	font: 400 13px/20px var(--font-mono);
+	color: var(--muted);
 }

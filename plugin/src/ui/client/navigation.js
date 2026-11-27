@@ -56,7 +56,7 @@ function showFile(row) {
 }
 
 export function current(where = state.level) {
-	return rowsAt(where).find((row) => row.classList.contains('hl')) ?? null
+	return rowsAt(where).find((row) => row.classList.contains('is-sel')) ?? null
 }
 
 export function currentView() {
@@ -66,7 +66,7 @@ export function currentView() {
 function keysOn() {
 	document
 		.querySelector('[data-navigator]')
-		?.classList.toggle('keys-on', state.level === 'nav' && canChoose(current('nav')?.dataset.target))
+		?.classList.toggle('is-keys-on', state.level === 'nav' && canChoose(current('nav')?.dataset.target))
 }
 
 const zones = { nav: '[data-nav]', list: '[data-row]', detail: '[data-sub]', viewer: '[data-vfile]' }
@@ -74,7 +74,7 @@ const zones = { nav: '[data-nav]', list: '[data-row]', detail: '[data-sub]', vie
 export function highlight(row, where = state.level) {
 	const rows = chatPage && where === 'list' ? listRows() : document.querySelectorAll(zones[where])
 	for (const other of rows) {
-		other.classList.toggle('hl', other === row)
+		other.classList.toggle('is-sel', other === row)
 		other.tabIndex = other === row ? 0 : -1
 	}
 	if (!row) return
@@ -100,10 +100,10 @@ export function reveal(row) {
 }
 
 export function padTitle(row) {
-	const options = row.querySelector(':scope > .sp-c-opts')
+	const options = row.querySelector(':scope > .sc-c-opts')
 	if (!options || window.getComputedStyle(options).position !== 'absolute')
 		return row.style.removeProperty('--title-pad')
-	const meta = row.querySelector(':scope > .sp-c-meta')
+	const meta = row.querySelector(':scope > .sc-c-meta')
 	const beside = meta && window.getComputedStyle(meta).display !== 'none' ? meta.offsetWidth + 12 : 0
 	row.style.setProperty('--title-pad', `${Math.max(0, options.offsetWidth + 12 - beside)}px`)
 }
@@ -115,7 +115,7 @@ function startRow() {
 	if (location.hash === '#last') return rows.at(-1)
 	return (
 		rows.find((row) => row.dataset.key === wanted) ??
-		rows.find((row) => row.classList.contains('cur')) ??
+		rows.find((row) => row.classList.contains('is-open')) ??
 		rows.find((row) => 'needs' in row.dataset) ??
 		(chatView === 'thread' ? rows.at(-1) : rows[0])
 	)
@@ -140,12 +140,12 @@ export function settle() {
 		const open = review?.dataset.open
 		const listed = open && listRows().find((row) => row.dataset.key === open)
 		if (listed) {
-			listed.classList.add('cur')
+			listed.classList.add('is-open')
 			listed.scrollIntoView({ block: 'nearest' })
 		}
 		const rows = rowsAt()
-		mark(rows.find((row) => row.classList.contains('hl')) ?? rows[0], state.level)
-		const field = state.drawer?.querySelector('.form-error')
+		mark(rows.find((row) => row.classList.contains('is-sel')) ?? rows[0], state.level)
+		const field = state.drawer?.querySelector('.sc-error')
 			? state.drawer.querySelector('[data-field-form] textarea')
 			: null
 		const asked = location.hash && state.drawer?.querySelector(`${CSS.escape(location.hash)} textarea`)
@@ -160,11 +160,11 @@ export function settle() {
 	if (state.level === 'nav') {
 		const wanted = chatNavigator ? 'chats' : (address.searchParams.get('nav') ?? currentView())
 		const row = navRows().find((each) => each.dataset.target === wanted) ?? navRows()[0]
-		for (const each of listRows()) each.classList.remove('hl')
+		for (const each of listRows()) each.classList.remove('is-sel')
 		mark(row, 'nav')
 	} else {
 		for (const each of navRows()) {
-			each.classList.remove('hl')
+			each.classList.remove('is-sel')
 			each.tabIndex = -1
 		}
 		const row = current('list') ?? startRow()
@@ -288,16 +288,16 @@ export function back(event) {
 }
 
 export function fitOptions(row) {
-	const opts = row.querySelector(':scope > .sp-c-opts[data-fit]')
+	const opts = row.querySelector(':scope > .sc-c-opts[data-fit]')
 	if (!opts) return
-	row.classList.remove('many')
+	row.classList.remove('is-many')
 	const absolute = window.getComputedStyle(opts).position === 'absolute'
 	opts.style.width = 'max-content'
 	const need = opts.offsetWidth
 	opts.style.removeProperty('width')
-	const title = row.querySelector(':scope > .sp-c-title')
+	const title = row.querySelector(':scope > .sc-c-title')
 	const room = absolute ? row.clientWidth - 24 - (title?.offsetLeft ?? 0) - 80 : opts.clientWidth
-	row.classList.toggle('many', need > room + 1)
+	row.classList.toggle('is-many', need > room + 1)
 }
 
 export function plainClick(event) {
@@ -325,7 +325,7 @@ export function attachNavigation() {
 			state.level = 'list'
 			if (chatNavigator) highlight(null, 'nav')
 			highlight(target, 'list')
-		} else if (chatNavigator && target.matches('[data-nav]:not(.hl)')) {
+		} else if (chatNavigator && target.matches('[data-nav]:not(.is-sel)')) {
 			state.level = 'nav'
 			highlight(target, 'nav')
 		}
@@ -346,7 +346,7 @@ export function attachNavigation() {
 				pick(row, box.checked)
 				state.anchor = row.dataset.key
 			}
-			if (review) for (const each of navRows()) each.classList.remove('hl')
+			if (review) for (const each of navRows()) each.classList.remove('is-sel')
 			mark(row, 'list')
 			showPath()
 			showHints()
@@ -384,7 +384,7 @@ export function attachNavigation() {
 			state.level = 'nav'
 			if (nav.getAttribute('aria-expanded') === 'false') expand(nav, true)
 			showView(nav.dataset.target)
-			for (const each of listRows()) each.classList.remove('hl')
+			for (const each of listRows()) each.classList.remove('is-sel')
 			mark(nav, 'nav')
 			state.chosenBuild = null
 			applyBuild()
@@ -417,7 +417,7 @@ export function attachNavigation() {
 		)
 			return
 		state.level = 'list'
-		if (review) for (const each of navRows()) each.classList.remove('hl')
+		if (review) for (const each of navRows()) each.classList.remove('is-sel')
 		mark(row, 'list')
 		remember()
 		open(row)

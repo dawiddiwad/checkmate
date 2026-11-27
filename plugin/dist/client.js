@@ -17,7 +17,7 @@
   var keyNames = { "\u2191": "Up", "\u2193": "Down", "\u2190": "Left", "\u2192": "Right" };
   function glyphHtml(text) {
     return text.replace(/[●○↑↓←→▸▾]/g, (symbol) => {
-      const name = keyNames[symbol] ? `<span class="sr-only">${keyNames[symbol]}</span>` : "";
+      const name = keyNames[symbol] ? `<span class="sc-sr">${keyNames[symbol]}</span>` : "";
       return `<span class="glyph g-${glyphNames[symbol]}" aria-hidden="true"></span>${name}`;
     });
   }
@@ -74,7 +74,7 @@
     document.documentElement.style.setProperty("--bulk-h", `${bulk2}px`);
     document.documentElement.style.setProperty("--say-h", `${message}px`);
     document.documentElement.style.setProperty("--dock-h", `${bulk2 + message + toast2}px`);
-    const row = document.querySelector(".hl[data-row]");
+    const row = document.querySelector(".is-sel[data-row]");
     if (row) reveal(row);
   }
   function showToast(text) {
@@ -127,7 +127,7 @@
   }
   function wrapViewer(on) {
     viewer.querySelector("[data-viewer-wrap]").checked = on;
-    viewerText.classList.toggle("nowrap", !on);
+    viewerText.classList.toggle("is-nowrap", !on);
   }
   async function viewerSource(link) {
     const inline = link.closest("figure")?.querySelector("[data-view-source]");
@@ -497,7 +497,7 @@
         if (state.level === "nav") return row.getAttribute("aria-expanded") === "false" ? "expand" : "enter list";
         if (state.level === "detail") return row.dataset.href ? "view" : null;
         if (state.level === "viewer") return null;
-        if (row.classList.contains("many") || row.querySelector(":scope > .asks")) return "options";
+        if (row.classList.contains("is-many") || row.querySelector(":scope > .asks")) return "options";
         return row.dataset.href ? "open" : null;
       }
     },
@@ -574,11 +574,11 @@
     { caps: ["\u2190", "\u2192"], help: "Move the caret. The arrows do not move the highlight while you type." }
   ];
   function keyCaps(caps) {
-    return caps.map((cap) => `<kbd>${glyphHtml(cap)}</kbd>`).join("");
+    return caps.map((cap) => `<kbd class="sc-key">${glyphHtml(cap)}</kbd>`).join("");
   }
   function keysTable() {
-    const row = (entry) => `<tr><th scope="row"><span class="sp-keyset">${keyCaps(entry.caps)}</span></th><td>${entry.help}</td></tr>`;
-    return `<table class="sp-ktable">${keyTable.map(row).join("")}<tr><th scope="row" colspan="2" class="sp-kexc">In a text field</th></tr>${fieldTable.map(row).join("")}</table><p class="sp-knote">Tab moves between the regions: the top bar, the navigator, the list, the record, and the status bar. Inside a region the arrows move. Each action also works with the mouse.</p>`;
+    const row = (entry) => `<tr><th scope="row"><span class="sc-keyset">${keyCaps(entry.caps)}</span></th><td>${entry.help}</td></tr>`;
+    return `<table class="sc-table sc-keys-table">${keyTable.map(row).join("")}<tr><th scope="row" colspan="2" class="sc-keys-sub">In a text field</th></tr>${fieldTable.map(row).join("")}</table><p class="sc-note">Tab moves between the regions: the top bar, the navigator, the list, the record, and the status bar. Inside a region the arrows move. Each action also works with the mouse.</p>`;
   }
   function typingIn(target) {
     return target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
@@ -623,6 +623,7 @@
         return;
       }
       if (confirmDialog.open) return confirmKey(event);
+      if (!actDialog() && !findDialog.open && !keysDialog.open && trapDrawerFocus(event)) return;
       if (!modifierKeys.includes(event.key) && moveOn()) return event.preventDefault();
       if (actDialog()) return actKey(event, actDialog());
       if (findDialog.open) return findKey(event);
@@ -691,7 +692,7 @@
     sayTimer = setTimeout(() => setSay(""), 4e3);
   }
   function fitPath() {
-    const list = document.querySelector(".sb-where ol");
+    const list = document.querySelector("[data-where] ol");
     if (!list) return;
     for (const item of list.children) item.hidden = false;
     list.querySelector("[data-more-path]")?.remove();
@@ -709,7 +710,7 @@
     while (list.scrollWidth > list.clientWidth && items.length - cut > keep) items[cut++].hidden = true;
   }
   function showPath() {
-    const list = document.querySelector(".sb-where ol");
+    const list = document.querySelector("[data-where] ol");
     if (!review || !list || state.drawer || viewerPane) return fitPath();
     const fixed = [...list.querySelectorAll("li")].slice(0, 2);
     const tail = [panel()?.dataset.title ?? ""];
@@ -726,6 +727,9 @@
     fitPath();
   }
   var hints = document.querySelector("[data-hints]");
+  function capsOf(cap) {
+    return /^[↑↓←→]+$/.test(cap) ? [...cap] : [cap];
+  }
   var hintOrder = ["?", "\u2191\u2193", "1", "\u2192", "\u2190", "0", "Space", "/"];
   function fitHints() {
     const rank = (hint) => hintOrder.findIndex((cap) => hint.dataset.cap.startsWith(cap));
@@ -766,8 +770,10 @@
         if (!hint) continue;
         list.push(Array.isArray(hint) ? hint : [entry.cap, hint]);
       }
-    const source2 = list.map(
-      ([cap, text]) => cap === "?" ? `<button type="button" class="sb-k" data-cap="?" data-keys-open><kbd>?</kbd><span class="sb-kt">${text}</span></button>` : `<span class="sb-k" data-cap="${cap}"><kbd>${glyphHtml(cap)}</kbd>${text}</span>`
+    const keys = list.find(([cap]) => cap === "?");
+    const shown2 = list.length > 3 ? [...list.filter(([cap]) => cap !== "?").slice(0, keys ? 2 : 3), ...keys ? [keys] : []] : list;
+    const source2 = shown2.map(
+      ([cap, text]) => cap === "?" ? `<button type="button" class="sc-key-hint" data-cap="?" data-keys-open><kbd class="sc-key">?</kbd><span class="sc-key-text">${text}</span></button>` : `<span class="sc-key-hint" data-cap="${cap}">${capsOf(cap).map((one) => `<kbd class="sc-key">${glyphHtml(one)}</kbd>`).join("")}${text}</span>`
     ).join("");
     if (hints.dataset.source !== source2) {
       hints.innerHTML = source2;
@@ -786,7 +792,7 @@
     window.addEventListener("resize", () => {
       dockRoom();
       showHints();
-      const row = document.querySelector(".hl[data-row]");
+      const row = document.querySelector(".is-sel[data-row]");
       if (row) {
         fitOptions(row);
         padTitle(row);
@@ -818,7 +824,7 @@
   }
   function expand(row, open2) {
     row.setAttribute("aria-expanded", open2 ? "true" : "false");
-    row.querySelector(".sp-nid").innerHTML = glyphHtml(open2 ? "\u25BE" : "\u25B8");
+    row.querySelector(".sc-rail-id").innerHTML = glyphHtml(open2 ? "\u25BE" : "\u25B8");
     for (const rule of areaRules(row)) rule.hidden = !open2;
   }
   function areaOf(row) {
@@ -861,9 +867,9 @@
     for (const row of document.querySelectorAll("[data-panel] [data-row]"))
       row.hidden = Boolean(build) && row.closest("[data-panel]").dataset.panel === view && !JSON.parse(row.dataset.builds ?? "[]").includes(build);
     const list = panel()?.querySelector("[data-list]");
-    for (const head of list?.querySelectorAll(".sp-gh") ?? []) {
+    for (const head of list?.querySelectorAll(".sc-group-h") ?? []) {
       let count = 0;
-      for (let next = head.nextElementSibling; next && !next.matches(".sp-gh"); next = next.nextElementSibling)
+      for (let next = head.nextElementSibling; next && !next.matches(".sc-group-h"); next = next.nextElementSibling)
         if (next.matches("[data-row]") && !next.hidden) count++;
       head.hidden = count === 0;
       const number = head.querySelector("span");
@@ -917,7 +923,6 @@
     }
     for (const row of document.querySelectorAll("[data-nav]")) {
       row.setAttribute("aria-selected", row.dataset.target === view ? "true" : "false");
-      row.classList.toggle("on", row.dataset.target === view);
     }
     const title = panel()?.dataset.title;
     if (title) document.title = `${title} \xB7 ${review.dataset.plan} \xB7 Checkmate`;
@@ -995,7 +1000,7 @@
     showBulk();
     for (const row of rows) {
       const on = picks.has(row.dataset.pick);
-      row.classList.toggle("sel", on);
+      row.classList.toggle("is-picked", on);
       const box = row.querySelector("[data-pick-box]");
       if (box) box.checked = on;
     }
@@ -1197,7 +1202,7 @@
     note.className = "toast";
     note.setAttribute("role", "status");
     note.dataset.undo = "";
-    note.innerHTML = '<span></span><button type="button" class="sp-btn" data-undo-button><kbd>0</kbd><span>Undo</span></button>';
+    note.innerHTML = '<span></span><button type="button" class="sc-btn has-key" data-undo-button><kbd class="sc-key">0</kbd><span>Undo</span></button>';
     const named = kept.claims.length === 1 ? kept.claims[0] : plural(kept.claims.length, "defect");
     note.querySelector("span").textContent = `Handed ${named} over to ${kept.to}`;
     document.querySelector("[data-toast]")?.remove();
@@ -1244,9 +1249,9 @@
   // plugin/src/ui/client/drawer.js
   function optionsNow() {
     if (state.level === "detail")
-      return [...state.drawer.querySelectorAll(".sp-dhead [data-option], .sp-options [data-option]")];
+      return [...state.drawer.querySelectorAll(".sc-drawer-top [data-option], .sc-opt-section [data-option]")];
     const row = state.level === "list" ? current("list") : null;
-    if (row?.classList.contains("many")) return detailOptions(row);
+    if (row?.classList.contains("is-many")) return detailOptions(row);
     return row ? [...row.querySelectorAll("[data-option]")] : [];
   }
   function detailOptions(row) {
@@ -1290,7 +1295,7 @@
     const extra = row.querySelector(`[data-extra="${CSS.escape(field)}"]`);
     if (!extra) return;
     for (const other of row.querySelectorAll("[data-extra]")) other.hidden = other !== extra;
-    row.classList.add("ext");
+    row.classList.add("is-ext");
     const area = extra.querySelector("textarea");
     area.focus();
     area.setSelectionRange(area.value.length, area.value.length);
@@ -1308,7 +1313,7 @@
   }
   function hideExtra(row) {
     for (const extra of row.querySelectorAll("[data-extra]")) extra.hidden = true;
-    row.classList.remove("ext");
+    row.classList.remove("is-ext");
   }
   function choose(n) {
     if (state.sending) return;
@@ -1324,7 +1329,7 @@
     }
     if (state.level === "nav" && review) return chooseBuild(n);
     const options = optionsNow();
-    if (state.level === "list" && current("list")?.classList.contains("many") && !options.length)
+    if (state.level === "list" && current("list")?.classList.contains("is-many") && !options.length)
       return tell("The options do not fit in the row. Open the row to see them.");
     if (!options.length) return tell("No options here.");
     const option = options[n - 1];
@@ -1337,7 +1342,7 @@
     let message = form.querySelector("[data-send-error]");
     if (!message) {
       message = document.createElement("p");
-      message.className = "form-error";
+      message.className = "sc-error";
       message.setAttribute("role", "alert");
       message.dataset.sendError = "";
       form.append(message);
@@ -1391,6 +1396,29 @@
       send(form, event.submitter);
     });
   }
+  function trapDrawerFocus(event) {
+    if (event.key !== "Tab" || !state.drawer || state.level !== "detail") return false;
+    const focusable = [
+      ...state.drawer.querySelectorAll(
+        'a[href], button:not([disabled]), textarea, input:not([type="hidden"]), select, [tabindex="0"]'
+      )
+    ].filter((element) => !element.closest("[hidden]") && element.getClientRects().length);
+    if (!focusable.length) return false;
+    const first = focusable[0];
+    const last2 = focusable.at(-1);
+    const inside = state.drawer.contains(document.activeElement);
+    if (!inside || event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      (event.shiftKey ? last2 : first).focus();
+      return true;
+    }
+    if (!event.shiftKey && document.activeElement === last2) {
+      event.preventDefault();
+      first.focus();
+      return true;
+    }
+    return false;
+  }
 
   // plugin/src/ui/client/navigation.js
   function shown(element) {
@@ -1425,19 +1453,19 @@
     window.history.replaceState(window.history.state, "", row.href);
   }
   function current(where = state.level) {
-    return rowsAt(where).find((row) => row.classList.contains("hl")) ?? null;
+    return rowsAt(where).find((row) => row.classList.contains("is-sel")) ?? null;
   }
   function currentView() {
     return panel()?.dataset.panel ?? null;
   }
   function keysOn() {
-    document.querySelector("[data-navigator]")?.classList.toggle("keys-on", state.level === "nav" && canChoose(current("nav")?.dataset.target));
+    document.querySelector("[data-navigator]")?.classList.toggle("is-keys-on", state.level === "nav" && canChoose(current("nav")?.dataset.target));
   }
   var zones = { nav: "[data-nav]", list: "[data-row]", detail: "[data-sub]", viewer: "[data-vfile]" };
   function highlight(row, where = state.level) {
     const rows = chatPage && where === "list" ? listRows() : document.querySelectorAll(zones[where]);
     for (const other of rows) {
-      other.classList.toggle("hl", other === row);
+      other.classList.toggle("is-sel", other === row);
       other.tabIndex = other === row ? 0 : -1;
     }
     if (!row) return;
@@ -1458,10 +1486,10 @@
     if (row.getBoundingClientRect().top < top) row.scrollIntoView({ block: "start" });
   }
   function padTitle(row) {
-    const options = row.querySelector(":scope > .sp-c-opts");
+    const options = row.querySelector(":scope > .sc-c-opts");
     if (!options || window.getComputedStyle(options).position !== "absolute")
       return row.style.removeProperty("--title-pad");
-    const meta = row.querySelector(":scope > .sp-c-meta");
+    const meta = row.querySelector(":scope > .sc-c-meta");
     const beside = meta && window.getComputedStyle(meta).display !== "none" ? meta.offsetWidth + 12 : 0;
     row.style.setProperty("--title-pad", `${Math.max(0, options.offsetWidth + 12 - beside)}px`);
   }
@@ -1469,7 +1497,7 @@
     const rows = listRows();
     const wanted = chatView === "list" ? state.chatListAt : address.searchParams.get("at") ?? address.searchParams.get("item");
     if (location.hash === "#last") return rows.at(-1);
-    return rows.find((row) => row.dataset.key === wanted) ?? rows.find((row) => row.classList.contains("cur")) ?? rows.find((row) => "needs" in row.dataset) ?? (chatView === "thread" ? rows.at(-1) : rows[0]);
+    return rows.find((row) => row.dataset.key === wanted) ?? rows.find((row) => row.classList.contains("is-open")) ?? rows.find((row) => "needs" in row.dataset) ?? (chatView === "thread" ? rows.at(-1) : rows[0]);
   }
   function focusTarget() {
     const target = location.hash.length > 1 && document.getElementById(decodeURIComponent(location.hash.slice(1)));
@@ -1487,12 +1515,12 @@
       const open2 = review?.dataset.open;
       const listed = open2 && listRows().find((row) => row.dataset.key === open2);
       if (listed) {
-        listed.classList.add("cur");
+        listed.classList.add("is-open");
         listed.scrollIntoView({ block: "nearest" });
       }
       const rows = rowsAt();
-      mark(rows.find((row) => row.classList.contains("hl")) ?? rows[0], state.level);
-      const field = state.drawer?.querySelector(".form-error") ? state.drawer.querySelector("[data-field-form] textarea") : null;
+      mark(rows.find((row) => row.classList.contains("is-sel")) ?? rows[0], state.level);
+      const field = state.drawer?.querySelector(".sc-error") ? state.drawer.querySelector("[data-field-form] textarea") : null;
       const asked = location.hash && state.drawer?.querySelector(`${CSS.escape(location.hash)} textarea`);
       const typing = field || asked;
       if (typing) {
@@ -1505,11 +1533,11 @@
     if (state.level === "nav") {
       const wanted = chatNavigator ? "chats" : address.searchParams.get("nav") ?? currentView();
       const row = navRows().find((each) => each.dataset.target === wanted) ?? navRows()[0];
-      for (const each of listRows()) each.classList.remove("hl");
+      for (const each of listRows()) each.classList.remove("is-sel");
       mark(row, "nav");
     } else {
       for (const each of navRows()) {
-        each.classList.remove("hl");
+        each.classList.remove("is-sel");
         each.tabIndex = -1;
       }
       const row = current("list") ?? startRow();
@@ -1626,16 +1654,16 @@
     tell("This is the first page.");
   }
   function fitOptions(row) {
-    const opts = row.querySelector(":scope > .sp-c-opts[data-fit]");
+    const opts = row.querySelector(":scope > .sc-c-opts[data-fit]");
     if (!opts) return;
-    row.classList.remove("many");
+    row.classList.remove("is-many");
     const absolute = window.getComputedStyle(opts).position === "absolute";
     opts.style.width = "max-content";
     const need = opts.offsetWidth;
     opts.style.removeProperty("width");
-    const title = row.querySelector(":scope > .sp-c-title");
+    const title = row.querySelector(":scope > .sc-c-title");
     const room = absolute ? row.clientWidth - 24 - (title?.offsetLeft ?? 0) - 80 : opts.clientWidth;
-    row.classList.toggle("many", need > room + 1);
+    row.classList.toggle("is-many", need > room + 1);
   }
   function plainClick(event) {
     return !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.button === 0;
@@ -1659,7 +1687,7 @@
         state.level = "list";
         if (chatNavigator) highlight(null, "nav");
         highlight(target, "list");
-      } else if (chatNavigator && target.matches("[data-nav]:not(.hl)")) {
+      } else if (chatNavigator && target.matches("[data-nav]:not(.is-sel)")) {
         state.level = "nav";
         highlight(target, "nav");
       }
@@ -1680,7 +1708,7 @@
           pick(row2, box.checked);
           state.anchor = row2.dataset.key;
         }
-        if (review) for (const each of navRows()) each.classList.remove("hl");
+        if (review) for (const each of navRows()) each.classList.remove("is-sel");
         mark(row2, "list");
         showPath();
         showHints();
@@ -1718,7 +1746,7 @@
         state.level = "nav";
         if (nav.getAttribute("aria-expanded") === "false") expand(nav, true);
         showView(nav.dataset.target);
-        for (const each of listRows()) each.classList.remove("hl");
+        for (const each of listRows()) each.classList.remove("is-sel");
         mark(nav, "nav");
         state.chosenBuild = null;
         applyBuild();
@@ -1747,7 +1775,7 @@
       if (!row || row.hasAttribute("data-chat-turn") || event.target.closest("a, button, input, textarea, label, select, form"))
         return;
       state.level = "list";
-      if (review) for (const each of navRows()) each.classList.remove("hl");
+      if (review) for (const each of navRows()) each.classList.remove("is-sel");
       mark(row, "list");
       remember();
       open(row);
@@ -1818,7 +1846,7 @@
     let message = field.form.querySelector("[data-field-error]");
     if (!message) {
       message = document.createElement("p");
-      message.className = "form-error";
+      message.className = "sc-error";
       message.setAttribute("role", "alert");
       message.dataset.fieldError = "";
     }
@@ -1846,7 +1874,7 @@
       if (message.dataset.field === field.name) message.remove();
   }
   function placeAlert() {
-    const alert = [...document.querySelectorAll('main .form-error[role="alert"]')].find(
+    const alert = [...document.querySelectorAll('main .sc-error[role="alert"]')].find(
       (element) => element.textContent.trim() && shown(element)
     );
     if (!alert) return false;
@@ -1858,7 +1886,7 @@
     const field = alert.dataset.field && document.getElementById(alert.dataset.field);
     if (field) {
       alert.id ||= `${field.id}-error`;
-      field.closest(".field-group, li, td")?.append(alert);
+      field.closest(".sc-field, li, td")?.append(alert);
       field.setAttribute("aria-invalid", "true");
       field.setAttribute(
         "aria-describedby",
@@ -1962,7 +1990,7 @@
       if (kept && (!field.value.trim() || field.value === field.defaultValue && kept !== field.value)) {
         field.value = kept;
         const note = document.createElement("p");
-        note.className = "help draft-note";
+        note.className = "sc-help draft-note";
         note.textContent = "Draft kept.";
         field.after(note);
       }
@@ -2337,7 +2365,7 @@
   function dirty(region) {
     if (region.querySelector("dialog[open]")) return true;
     if (region.querySelector("form[data-confirming]")) return true;
-    if (region.querySelector(".form-error")) return true;
+    if (region.querySelector(".sc-error")) return true;
     if (typingInside(region)) return true;
     for (const field of region.querySelectorAll("textarea, input, select")) {
       if (field.type === "hidden" || field.matches("[data-pick-box]")) continue;
@@ -2357,7 +2385,7 @@
     if (notice?.textContent === text) return;
     if (!notice) {
       notice = document.createElement("div");
-      notice.className = "banner warn";
+      notice.className = "sc-notice is-warn";
       notice.setAttribute("role", "status");
       notice.dataset.liveStale = "";
       slot.prepend(notice);
@@ -2556,15 +2584,15 @@
   var last = body.dataset.cursor ?? "0";
   function setLive(up) {
     live.hidden = false;
-    live.classList.toggle("down", !up);
-    live.innerHTML = `${glyphHtml(up ? "\u25CF" : "\u25CB")} ${up ? "Live" : "Reconnecting"}`;
+    live.classList.toggle("is-off", !up);
+    live.textContent = up ? "Live" : "Reconnecting";
   }
   function connect() {
     if (source || !body.dataset.subjects || !window.EventSource) return;
     const subjects = encodeURIComponent(body.dataset.subjects);
     source = new EventSource(`/events?subjects=${subjects}&after=${encodeURIComponent(last)}`);
     source.onopen = () => {
-      if (live.classList.contains("down")) renewToken().catch(() => {
+      if (live.classList.contains("is-off")) renewToken().catch(() => {
       });
       setLive(true);
     };
@@ -2630,7 +2658,7 @@
     link.setAttribute("role", "option");
     link.tabIndex = -1;
     const kind = document.createElement("span");
-    kind.className = "sp-pill";
+    kind.className = "sc-mark is-question";
     kind.textContent = "ask";
     const title = document.createElement("span");
     title.className = "t";
@@ -2651,7 +2679,7 @@
         link.setAttribute("role", "option");
         link.tabIndex = -1;
         const kind = document.createElement("span");
-        kind.className = "sp-pill";
+        kind.className = "sc-mark is-question";
         kind.textContent = entry.kind;
         const id = document.createElement("span");
         id.className = "k";
@@ -3098,7 +3126,7 @@
       const send2 = () => fetch(form.action, { method: "POST", body: new URLSearchParams(new FormData(form)) });
       const alertText = (message) => {
         const text = document.createElement("p");
-        text.className = "form-error";
+        text.className = "sc-error";
         text.setAttribute("role", "alert");
         text.textContent = message;
         return text;
@@ -3260,7 +3288,7 @@
     const edge = 8;
     const box = menu.getBoundingClientRect();
     const top = edge;
-    const bottom = document.querySelector(".statusbar").getBoundingClientRect().top - edge;
+    const bottom = document.querySelector(".sc-bar").getBoundingClientRect().top - edge;
     const above = Math.min(bottom, box.top - edge);
     const below = Math.max(top, box.bottom + edge);
     const roomAbove = Math.max(0, above - top);
@@ -3313,7 +3341,7 @@
     const button = form.querySelector('button[name="theme"]');
     button.value = theme === "dark" ? "light" : "dark";
     button.dataset.current = theme;
-    for (const frame of document.querySelectorAll(".ev-frame")) {
+    for (const frame of document.querySelectorAll(".sc-evidence-frame")) {
       const url = new URL(frame.src);
       url.searchParams.set("theme", theme);
       frame.src = url.href;

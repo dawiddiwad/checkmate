@@ -38,14 +38,12 @@ const stylesheets = [
 	'components/button.css',
 	'components/panel.css',
 	'components/facts.css',
-	'components/tag.css',
 	'components/fold.css',
 	'components/field.css',
 	'components/data-table.css',
 	'components/menu.css',
 	'components/nav-rail.css',
 	'components/board.css',
-	'components/timeline.css',
 	'components/evidence-viewer.css',
 	'components/drawer.css',
 	'components/bulk-bar.css',
@@ -74,6 +72,8 @@ const stylesheets = [
 	'components/chat-workspace.css',
 	'components/chat-turn.css',
 	'components/composer.css',
+	'components/tester-card.css',
+	'screens/catalogue.css',
 ]
 const ui = new URL('../plugin/src/ui/', import.meta.url)
 const found = (await readdir(ui, { recursive: true })).filter((name) => name.endsWith('.css')).sort()

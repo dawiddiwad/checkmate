@@ -1,14 +1,37 @@
+.sc-notice {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-3);
+	margin: 0 0 var(--space-4);
+	padding: 10px var(--space-4);
+	border: var(--hairline) solid var(--edge);
+	background: var(--surface);
+	color: var(--ink);
+	font: 400 14px/20px var(--font-sans);
+}
+.sc-notice > p {
+	flex: 1;
+	min-width: 0;
+}
+.sc-notice.is-ok {
+	background: var(--pass-soft);
+	border-color: var(--pass);
+}
+.sc-notice.is-error {
+	background: var(--fail-soft);
+	border-color: var(--fail);
+}
 .toast {
 	position: fixed;
 	z-index: 95;
 	left: 0;
 	right: 0;
-	bottom: calc(var(--sp-bar) + env(safe-area-inset-bottom, 0px) + var(--bulk-h, 0px) + var(--say-h, 0px));
+	bottom: calc(var(--bar-h) + env(safe-area-inset-bottom, 0px) + var(--bulk-h, 0px) + var(--say-h, 0px));
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
-	min-height: var(--sp-bar);
+	min-height: var(--bar-h);
 	padding: 4px max(16px, env(safe-area-inset-right, 0px)) 4px max(16px, env(safe-area-inset-left, 0px));
 	border-top: 1px solid var(--hair);
 	background: var(--surface);

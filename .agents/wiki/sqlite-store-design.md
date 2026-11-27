@@ -51,7 +51,7 @@ plugin/                Claude Code plugin. Self-contained. No npm dependencies.
   skills/              setup, plan, revise, execute, report, ui
   contracts/           JSON Schemas for toolkit-2 payloads
   src/                 core: store, rules, commands, views, export
-  src/ui/              review UI server, pages, assets (fonts, style), and client modules
+  src/ui/              review UI server, pages, assets, and client modules
   dist/checkmate.js    one bundled file, generated at release
   dist/client.js       the bundled review UI script
 cli/                   npm package @xoxoai/checkmate
@@ -532,7 +532,7 @@ The UI has one job: show the human what waits for a decision, and let them decid
 
 - **Mark.** Four squares in a row. The third square is filled. It appears in the top bar.
 - **Layout.** A top bar, a navigator at the left on the pages of a plan, the centre, and a status bar with the path and the keys of the current place. The design is "Spine in Console".
-- **Type.** IBM Plex Sans for headings and text, and IBM Plex Mono for rows, labels, IDs, builds, and code. Labels are uppercase. The plugin includes the WOFF2 files in `plugin/src/ui/assets/fonts/` with their licence files. Both fonts use the SIL Open Font License 1.1. A system font stack is the fallback. The UI does not load fonts from the internet, so it works offline and sends no request to another host.
+- **Type.** IBM Plex Sans for words and IBM Plex Mono for data. The UI loads both from Google Fonts, as the Scoresheet design system does. The Content-Security-Policy allows `fonts.googleapis.com` for styles and `fonts.gstatic.com` for fonts. A system font stack is the fallback, so the UI still renders offline.
 - **Color.** A near-black or a light-grey ground, one cyan or teal accent for the highlight, and colour only for status and for what needs attention. The UI follows the system light or dark setting. A switch in the top bar overrides it.
 - **Status in form and text.** Each status has an icon or a word and a color, for example `✓ passed`, `✗ failed`, and `? inconclusive`. Color is never the only signal.
 - **Restraint.** One border width (1 px), one radius (2 px), no shadows, no glass. The UI respects `prefers-reduced-motion`.
@@ -651,7 +651,7 @@ The skills keep their stages. The instructions change:
 4. Runs: begin, check, close, finding, gap, finish, resume, and evidence blobs.
 5. Export and the report views.
 6. Skills update.
-7. npm CLI: bundle and `delegate`. The review UI with local fonts and live updates is in the plugin.
+7. npm CLI: bundle and `delegate`. The review UI with live updates is in the plugin.
 8. Documentation: README, CONFIGURATION, CLI, EVIDENCE, architecture wiki.
 
 Each step keeps `npm run phase:verify` green. The JSON file code is removed when step 4 is complete.

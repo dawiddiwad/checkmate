@@ -99,7 +99,17 @@ The review UI follows [The Scoresheet design system](design-system.md). Read it 
 
 The UI serves one stylesheet, `/assets/style.css`. `npm run build` writes it to `plugin/dist/style.css`: `plugin/src/ui/tokens.css`, then the other stylesheets of `plugin/src/ui/` in the order that `scripts/build-plugin.ts` gives. `plugin/src/ui/components/` has one stylesheet for each component. `base.css`, `layout.css`, `print.css`, `forced-colors.css`, and `pressed.css` have the rules that are not for one component. The order keeps the cascade. Before you move a file in the list, make sure that no rule changes which rule wins. Run `npm run build` after you change a stylesheet.
 
-The markup of a component is in `plugin/src/ui/components/<name>.ts`, next to its stylesheet. It is one function with typed props, for example `statusMark({ state, label })`. A prop gives the meaning, for example the status, not a colour. Give other attributes as an object in `attrs`. Each page is in `plugin/src/ui/screens/`. A screen composes components. Do not write the markup of a component in a screen.
+The markup of a component is in `plugin/src/ui/components/<name>.ts`, next to its stylesheet. It is one function with typed props, for example `statusMark({ state, label })`. A prop gives the meaning, for example the status, not a colour. Give other attributes as an object in `attrs`. A stylesheet uses colours only through the tokens of `plugin/src/ui/tokens.css`. `npm run lint:check` runs `scripts/check-colours.ts`, which fails on a raw colour in any other stylesheet. Each page is in `plugin/src/ui/screens/`. A screen composes components. Do not write the markup of a component in a screen.
+
+The component catalogue shows each component in each state. Run `node scripts/ui-catalogue.ts` and open the URL that it prints. The script starts the UI with the `catalogue` start option of `startUi`. `checkmate ui` does not set this option, so the installed UI does not serve `/catalogue`. Each component has its examples in `plugin/src/ui/components/<name>.catalogue.ts`. An example calls the render function of the component with fixed props. `plugin/src/ui/screens/catalogue.ts` lists the catalogue files. When you add a component, add its catalogue file and list it in the screen. The catalogue test fails when a component has no entry.
+
+In CI the catalogue test also compares a screenshot of each entry, in light and dark, with `test/e2e/catalogue/<theme>/<name>.png`. CI sets `CHECKMATE_CATALOGUE_SCREENSHOTS=compare` and uses the Chromium build of the locked `playwright-core`. The comparison is exact: a changed pixel fails. Other machines render fonts differently, so a local run does not compare screenshots. To change the look of a component on purpose:
+
+1. Push the change. The CI `verify` job fails and uploads the new screenshots as the `catalogue-screenshots` artifact.
+2. Download the artifact, for example with `gh run download <run-id> -n catalogue-screenshots`.
+3. Copy the PNG files into `test/e2e/catalogue/`, look at each one, and commit them.
+
+Do not make baselines on your own computer.
 
 ## Documentation media
 

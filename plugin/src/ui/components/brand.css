@@ -1,41 +1,31 @@
-.brand {
+.sc-brand {
 	display: inline-flex;
 	align-items: center;
-	gap: 10px;
-	height: 28px;
+	gap: var(--space-3);
 	color: var(--ink);
-	font: 600 13px/1 var(--font-mono);
+	text-decoration: none;
+}
+.sc-brand-mark {
+	display: block;
+	width: 40px;
+	height: 10px;
+	flex: none;
+}
+.sc-brand-mark .o {
+	fill: none;
+	stroke: var(--ink);
+	stroke-width: 1;
+}
+.sc-brand-mark .f {
+	fill: var(--ink);
+}
+.sc-brand-word {
+	font: 600 13px/20px var(--font-mono);
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
-	text-decoration: none;
-	flex: none;
 }
-.mark {
-	display: inline-flex;
-	gap: 3px;
-}
-.mark i {
-	width: 10px;
-	height: 10px;
-	border: 1.5px solid currentColor;
-	border-radius: 0;
-}
-.mark i.on {
-	background: currentColor;
-}
-.brand {
-	flex: none;
-}
-.brand:hover {
-	color: var(--ink);
-}
-.brand:active {
-	color: var(--ink);
-}
-@media (max-width: 760px) {
-	.brand {
-		display: inline-flex;
-		align-items: center;
-		min-height: 40px;
+@media (max-width: 900px) {
+	.sc-brand-word {
+		display: none;
 	}
 }

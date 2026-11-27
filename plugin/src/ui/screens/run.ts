@@ -5,19 +5,18 @@ import type { EvidenceFile } from '../evidence.ts'
 import type { FormState } from '../forms.ts'
 import type { Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
-import { banner } from '../components/banner.ts'
 import { resultCell } from '../components/board.ts'
 import { formButton } from '../components/button.ts'
+import type { TableCell } from '../components/data-table.ts'
 import { dataTable, tableRow } from '../components/data-table.ts'
 import { evidenceList } from '../components/evidence-viewer.ts'
-import { groupHeader, listRow } from '../components/list-row.ts'
 import { downloadMenu } from '../components/menu.ts'
-import { crumbBar } from '../components/page-heading.ts'
+import { notice } from '../components/notice.ts'
 import { statusCounts, statusMark } from '../components/status-mark.ts'
 import { shownAsText } from '../evidence.ts'
 import { emptyState, recordPanel, returnFields, verdictPanel } from '../forms.ts'
-import { hasMetadata, html, join, metadataList, plural, short, time, words } from '../html.ts'
-import { runStatus, runUsageLine } from '../lists.ts'
+import { costText, hasMetadata, html, join, metadataList, plural, short, time, words } from '../html.ts'
+import { runStatus } from '../lists.ts'
 import { navigator, reviewOf } from '../review.ts'
 
 type Detail = ReturnType<typeof runDetail>
@@ -96,7 +95,7 @@ function assertionRow(store: Store, detail: Detail, test: RunTest, assertion: As
 			</summary>
 			<div class="asr-body">
 				${assertion.reason ? html`<p class="reason"><strong>Reason</strong> ${assertion.reason}</p>` : ''}
-				<p class="muted small">${words(assertion.checkKind)} · ${words(assertion.result)}</p>
+				<p class="sc-muted sc-note">${words(assertion.checkKind)} · ${words(assertion.result)}</p>
 				${runEvidence(store, assertion.evidence)}
 			</div>
 		</details>
@@ -144,12 +143,20 @@ function outcomeCounts(detail: Detail) {
 
 function strip(detail: Detail) {
 	const result = detail.result
-	return html`<div class="strip" data-region="summary">
-		<div><small>Completion</small><strong>${result ? words(result.completion) : 'running'}</strong></div>
-		<div><small>Coverage</small><strong>${result ? words(result.coverage.status) : '–'}</strong></div>
-		<div><small>Tests</small><strong>${statusCounts({ counts: outcomeCounts(detail) })}</strong></div>
-		<div><small>Cleanup</small><strong>${result ? words(result.cleanup.status) : '–'}</strong></div>
-	</div>`
+	return html`<dl class="sc-facts is-cols" data-region="summary">
+		<dt>Completion</dt>
+		<dd>${result ? words(result.completion) : 'running'}</dd>
+		<dt>Coverage</dt>
+		<dd>${result ? words(result.coverage.status) : '—'}</dd>
+		<dt>Tests</dt>
+		<dd>${statusCounts({ counts: outcomeCounts(detail) })}</dd>
+		<dt>Cleanup</dt>
+		<dd>${result ? words(result.cleanup.status) : '—'}</dd>
+		<dt>${detail.observedModels.length > 1 ? 'Models' : 'Model'}</dt>
+		<dd><code>${detail.observedModels.join(', ') || '—'}</code></dd>
+		<dt>Cost</dt>
+		<dd>${costText(detail.costUsd, detail.costPartial)}</dd>
+	</dl>`
 }
 
 function runItemHref(runId: string, key: string, hash = '') {
@@ -168,25 +175,27 @@ function findingCard(store: Store, detail: Detail, finding: Detail['findings'][n
 			<span class="count">${statusMark({ state: finding.severity })}</span>
 		</header>
 		<div class="test-b">
-			<div class="compare">
+			<div class="sc-compare">
 				<div>
-					<small>Expected</small>
+					<span class="sc-kicker">Expected</span>
 					<p>${finding.expected}</p>
 				</div>
 				<div>
-					<small>Observed</small>
+					<span class="sc-kicker">Observed</span>
 					<p>${finding.observed}</p>
 				</div>
 			</div>
 			${
 				finding.reproduction.length
-					? html`<h4 class="minor">Reproduction</h4>
-							<ol class="steps">
+					? html`<div>
+							<span class="sc-kicker">Reproduction</span>
+							<ol class="sc-steps">
 								${finding.reproduction.map((step) => html`<li>${step}</li>`)}
-							</ol>`
+							</ol>
+						</div>`
 					: ''
 			}
-			<p class="muted small">
+			<p class="sc-muted sc-note">
 				Assertions
 				${join(
 					finding.assertionIds.map((id) => assertionLink(detail.runId, id)),
@@ -204,7 +213,7 @@ function findingCard(store: Store, detail: Detail, finding: Detail['findings'][n
 
 function assertionLink(runId: string, reference: string) {
 	const testId = reference.split('.')[0]
-	return html`<a class="mono" href="${runItemHref(runId, `test:${testId}`, `#${reference}`)}" data-go
+	return html`<a class="sc-mono" href="${runItemHref(runId, `test:${testId}`, `#${reference}`)}" data-go
 		>${reference}</a
 	>`
 }
@@ -244,15 +253,15 @@ function gapCard(
 	)
 	return html`<div class="gap" id="${gap.id}" data-key="card:${gap.id}">
 		<div class="gap-h">
-			<span class="id mono">${gap.id}</span> ${statusMark({ state: gap.severity })}
+			<span class="id sc-mono">${gap.id}</span> ${statusMark({ state: gap.severity })}
 			${statusMark({ state: gap.status })}
-			<span class="gap-refs muted"
+			<span class="gap-refs sc-muted"
 				>affects ${[...gap.requirementIds, ...gap.testIds].join(', ') || 'the plan'}</span
 			>
 		</div>
 		<p class="gap-q">${gap.question}</p>
-		<p class="muted">${gap.consequence}</p>
-		<div class="actions">
+		<p class="sc-muted">${gap.consequence}</p>
+		<div class="sc-row-btns">
 			${
 				adopted
 					? html`${statusMark({ state: 'resolved', label: 'in plan' })}
@@ -261,13 +270,13 @@ function gapCard(
 						${adoptForm(context, detail, gap.id, revision.sha256)}`
 			}
 		</div>
-		${adoptError?.gapId === gap.id ? html`<p class="form-error" role="alert">${adoptError.message}</p>` : ''}
+		${adoptError?.gapId === gap.id ? html`<p class="sc-error" role="alert">${adoptError.message}</p>` : ''}
 	</div>`
 }
 
 function coverage(store: Store, detail: Detail) {
 	const result = detail.result
-	if (!result) return html`<p class="none">Coverage is known when the run finishes.</p>`
+	if (!result) return html`<p class="sc-empty is-line">Coverage is known when the run finishes.</p>`
 	const plan = planDetail(store, detail.planId, detail.revision).plan
 	const requirements = new Map(plan.requirements.map((item) => [item.id, item]))
 	return dataTable({
@@ -275,17 +284,17 @@ function coverage(store: Store, detail: Detail) {
 		rows: result.coverage.requirements.map((row) =>
 			tableRow({
 				cells: [
-					{ content: row.requirementId, attrs: { class: 'mono' } },
+					{ content: row.requirementId, attrs: { class: 'is-mono' } },
 					html`${requirements.get(row.requirementId)?.text ?? ''}
-					${row.reason ? html`<div class="muted small">${row.reason}</div>` : ''}
+					${row.reason ? html`<div class="sc-muted sc-note">${row.reason}</div>` : ''}
 					${
 						hasMetadata(requirements.get(row.requirementId)?.metadata)
-							? html`<div class="small">
+							? html`<div class="sc-note">
 									${metadataList(requirements.get(row.requirementId)?.metadata)}
 								</div>`
 							: ''
 					}`,
-					{ content: row.testIds.join(', ') || '–', attrs: { class: 'mono' } },
+					{ content: row.testIds.join(', ') || '–', attrs: { class: 'is-mono' } },
 					statusMark({ state: row.status }),
 				],
 			})
@@ -296,55 +305,52 @@ function coverage(store: Store, detail: Detail) {
 
 function cleanup(detail: Detail) {
 	const result = detail.result
-	return html`<dl class="facts">
-		<div>
-			<dt>Cleanup</dt>
-			<dd>
-				${result ? html`${statusMark({ state: result.cleanup.status })} ${result.cleanup.reason}` : html`<span class="muted">Not finished.</span>`}
-			</dd>
-		</div>
-		<div>
-			<dt>Attempts</dt>
-			<dd>
-				<ul class="plain">
-					${detail.attempts.map(
-						(attempt) =>
-							html`<li>
-								Attempt ${attempt.attempt} · ${time(attempt.startedAt)} · ${attempt.actor}
-								${
-									attempt.workerInterruptedAt
-										? html` · Delegated worker interrupted ${time(attempt.workerInterruptedAt)}`
-										: ''
-								}
-							</li>`
-					)}
-				</ul>
-			</dd>
-		</div>
-		<div>
-			<dt>Tool session</dt>
-			<dd class="mono">${detail.toolSession}</dd>
-		</div>
-		<div>
-			<dt>Target</dt>
-			<dd class="mono">${detail.target}</dd>
-		</div>
-		<div>
-			<dt>Instance</dt>
-			<dd>
-				<a
-					class="mono"
-					href="/settings/targets/${detail.instance.targetId}#instance-${detail.instance.instanceId}"
-					>${detail.instance.instanceId}</a
-				>${detail.instance.environment ? html` · ${detail.instance.environment}` : ''}${detail.instance.retired ? html` · ${statusMark({ state: 'retired' })}` : ''}
-			</dd>
-		</div>
+	return html`<dl class="sc-facts">
+		<dt>Cleanup</dt>
+		<dd>
+			${result ? html`${statusMark({ state: result.cleanup.status })} ${result.cleanup.reason}` : html`<span class="sc-muted">Not finished.</span>`}
+		</dd>
+
+		<dt>Attempts</dt>
+		<dd>
+			<ul class="sc-plain">
+				${detail.attempts.map(
+					(attempt) =>
+						html`<li>
+							Attempt ${attempt.attempt} · ${time(attempt.startedAt)} · ${attempt.actor}
+							${
+								attempt.workerInterruptedAt
+									? html` · Delegated worker interrupted ${time(attempt.workerInterruptedAt)}`
+									: ''
+							}
+						</li>`
+				)}
+			</ul>
+		</dd>
+
+		<dt>Tool session</dt>
+		<dd class="sc-mono">${detail.toolSession}</dd>
+
+		<dt>Target</dt>
+		<dd class="sc-mono">${detail.target}</dd>
+
+		<dt>Instance</dt>
+		<dd>
+			<a
+				class="sc-mono"
+				href="/settings/targets/${detail.instance.targetId}#instance-${detail.instance.instanceId}"
+				>${detail.instance.instanceId}</a
+			>${detail.instance.environment ? html` · ${detail.instance.environment}` : ''}${detail.instance.retired ? html` · ${statusMark({ state: 'retired' })}` : ''}
+		</dd>
+
 		${
 			detail.request.retestOf
-				? html`<div>
+				? html`
 						<dt>Retest of</dt>
-						<dd><a class="mono" href="/runs/${detail.request.retestOf}">${detail.request.retestOf}</a></dd>
-					</div>`
+						<dd>
+							<a class="sc-mono" href="/runs/${detail.request.retestOf}">${detail.request.retestOf}</a>
+						</dd>
+					`
 				: ''
 		}
 	</dl>`
@@ -360,19 +366,23 @@ function inconclusiveList(detail: Detail) {
 			}))
 	)
 	if (!rows.length) return ''
-	return html`<div class="field-group">
-		<p class="lab">Inconclusive · ${rows.length}</p>
-		<ul class="plist">
-			${rows.map((row) => html`<li>${assertionLink(detail.runId, row.reference)} ${row.reason}</li>`)}
-		</ul>
-	</div>`
+	return notice({
+		kind: 'warn',
+		content: html`<p>
+			${plural(rows.length, 'check')} ${rows.length === 1 ? 'is' : 'are'} inconclusive:
+			${join(
+				rows.map((row) => html`${assertionLink(detail.runId, row.reference)} ${row.reason}`),
+				'; '
+			)}
+		</p>`,
+	})
 }
 
 function retestList(detail: Detail) {
 	if (!detail.retest.length) return ''
 	const labels = { fixed: 'Fixed', not_fixed: 'Not fixed', not_retested: 'Not retested' }
-	return html`<div class="field-group">
-		<p class="lab">Retest verdicts</p>
+	return html`<div class="sc-field">
+		<p class="sc-label">Retest verdicts</p>
 		<ul class="plist retest-verdicts">
 			${detail.retest.map((item) => html`<li><a href="/runs/${encodeURIComponent(item.runId)}?item=finding%3A${encodeURIComponent(item.findingId)}">${item.runId}/${item.findingId}</a> · ${item.title} · ${labels[item.verdict]} · ${item.testIds.join(', ')}</li>`)}
 		</ul>
@@ -384,20 +394,22 @@ export function decisionPanel(
 	context: Context,
 	detail: Detail,
 	state: FormState | null,
-	extra: Html | null = null
+	extra: Html,
+	foot: Html
 ) {
 	const result = detail.result
 	if (!result)
 		return recordPanel(
 			'Decision',
 			html`<p class="subj">${detail.runId} is in progress.</p>
-				<p class="help">The decision opens when the run finishes. This page updates live.</p>`
+				<p class="sc-help">The decision opens when the run finishes. This page updates live.</p>
+				${foot}`
 		)
 	if (result.acceptance === 'not_required')
 		return recordPanel(
 			'Decision',
-			html`<p class="help">The target policy does not require result acceptance.</p>
-				${retestList(detail)}`
+			html`<p class="sc-help">The target policy does not require result acceptance.</p>
+				${retestList(detail)} ${foot}`
 		)
 	const latest = result.latestDecision
 	if (latest && !state)
@@ -407,11 +419,11 @@ export function decisionPanel(
 					${statusMark({ state: latest.verdict, label: latest.verdict === 'approved' ? 'accepted' : 'rejected' })}
 					${detail.runId}
 				</p>
-				<p class="help">
+				<p class="sc-help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
-				${retestList(detail)}`,
+				${retestList(detail)} ${foot}`,
 			`${detail.runId} was ${latest.verdict === 'approved' ? 'accepted' : 'rejected'} by ${latest.actor}. Review it before you decide.`
 		)
 	return verdictPanel(
@@ -436,41 +448,42 @@ export function decisionPanel(
 				summary: `Reject ${detail.runId}. Dependent plans stay blocked.`,
 			},
 			staleMessage: `${detail.runId} has a new result. Review it before you decide.`,
-			...(extra ? { extra } : {}),
+			extra,
+			foot,
 			intro: html`${retestList(detail)}${inconclusiveList(detail)}`,
 		},
 		state ?? emptyState()
 	)
 }
 
-function runRow(
+function itemRow(
 	runId: string,
 	key: string,
 	selected: string,
-	label: Html | string,
-	tag: Html | string,
-	title: Html | string,
-	meta: Html | string = ''
+	label: string,
+	cells: TableCell[],
+	href = runItemHref(runId, key)
 ) {
-	return listRow({
-		id: `run-row-${key.replace(/[^A-Za-z0-9-]/g, '-')}`,
-		key,
-		href: runItemHref(runId, key),
-		label: typeof label === 'string' ? label : key,
-		inListbox: true,
-		current: key === selected,
-		tag,
-		shownId: label,
-		title,
-		titleText: typeof title === 'string' ? title : '',
-		meta,
-		metaText: typeof meta === 'string' ? meta : '',
+	return tableRow({
+		attrs: {
+			'data-row': true,
+			'data-key': key,
+			'data-href': href,
+			'data-label': label,
+			class: key === selected ? 'is-open' : undefined,
+		},
+		cells: cells.map((value, index) =>
+			index === 1 ? { content: html`<a href="${href}">${label}</a>`, attrs: { class: 'is-mono' } } : value
+		),
 	})
 }
 
-function runGroup(title: string, rows: Html[]) {
+function section(id: string, title: string, rows: Html[], columns: string[]) {
 	if (!rows.length) return ''
-	return html`${groupHeader({ label: title, count: rows.length })} ${rows}`
+	return html`<section class="sc-sec" aria-labelledby="${id}">
+		<h2 class="sc-sec-h" id="${id}">${title}<b>${rows.length}</b></h2>
+		${dataTable({ columns, rows, scroll: true })}
+	</section>`
 }
 
 function passedCount(test: RunTest) {
@@ -478,104 +491,120 @@ function passedCount(test: RunTest) {
 	return `${passed} of ${test.assertions.length} checks passed`
 }
 
-function runList(detail: Detail, selected: string) {
-	const result = detail.result
-	const tests = detail.tests.map((test) =>
-		runRow(
-			detail.runId,
-			`test:${test.testId}`,
-			selected,
-			test.testId,
-			testState(test, detail),
-			test.title,
-			passedCount(test)
-		)
-	)
-	const found = detail.findings.map((finding) =>
-		runRow(
-			detail.runId,
-			`finding:${finding.id}`,
-			selected,
-			finding.id,
-			statusMark({ state: finding.severity }),
-			finding.title,
-			words(finding.type)
-		)
-	)
-	const gaps = detail.newGaps.map((gap) =>
-		runRow(
-			detail.runId,
-			`gap:${gap.id}`,
-			selected,
-			gap.id,
-			statusMark({ state: gap.severity }),
-			gap.question,
-			words(gap.status)
-		)
-	)
-	const record = [
-		runRow(
-			detail.runId,
-			'coverage',
-			selected,
-			'Coverage',
-			result
-				? statusMark({ state: result.coverage.status })
-				: statusMark({ state: 'pending', label: 'not known yet' }),
-			result ? `${plural(result.coverage.requirements.length, 'requirement')}` : 'Known when the run finishes.'
-		),
-		runRow(
-			detail.runId,
-			'cleanup',
-			selected,
-			'Cleanup',
-			result
-				? statusMark({ state: result.cleanup.status })
-				: statusMark({ state: 'pending', label: 'not finished' }),
-			plural(detail.attempts.length, 'attempt')
-		),
-	]
-	return html`<div class="sp-ch">
-			<p class="sp-path">
-				<a href="/plans/${detail.planId}@${detail.revision}">${detail.planId}@${detail.revision}</a> · build
-				<code>${detail.build}</code> · instance <code>${detail.instance.instanceId}</code>
-			</p>
-			<h1>${detail.runId}</h1>
-			<p class="sp-sub" data-region="state">
-				${runStatus({ state: detail.state, acceptance: detail.result?.acceptance ?? null })} started
-				${time(detail.startedAt)}${result ? html` · finished ${time(result.finishedAt)}` : ''}
-			</p>
-		</div>
-		<div class="sp-list" role="listbox" aria-label="Run ${detail.runId}" data-list>
-			${runGroup('Run', [runRow(detail.runId, 'summary', selected, 'Overview', '', html`${statusCounts({ counts: outcomeCounts(detail) })}`)])}
-			${runGroup('Tests', tests)} ${runGroup('Findings', found)} ${runGroup('New gaps', gaps)}
-			${runGroup('Record', record)}
-		</div>`
+function sentence(text: string) {
+	return /[.!?]$/.test(text) ? text : `${text}.`
 }
 
-function openChecks(detail: Detail) {
+function muted(content: Html | string) {
+	return { content, attrs: { class: 'is-muted' } }
+}
+
+function title(content: Html | string) {
+	return { content, attrs: { class: 'is-title' } }
+}
+
+function notPassed(detail: Detail, selected: string) {
 	const rows = detail.tests.flatMap((test) =>
 		test.assertions
 			.filter((assertion) => assertion.result && assertion.result !== 'passed')
-			.map((assertion) => ({ test, assertion }))
+			.map((assertion) => {
+				const reference = `${test.testId}.${assertion.assertionId}`
+				return itemRow(
+					detail.runId,
+					`check:${reference}`,
+					selected,
+					reference,
+					[
+						statusMark({ state: assertion.result ?? 'waiting' }),
+						'',
+						title(
+							html`${sentence(assertion.check)}${assertion.observed ? html` Observed: ${assertion.observed}` : ''}`
+						),
+						muted(words(assertion.result ?? '')),
+					],
+					runItemHref(detail.runId, `test:${test.testId}`, `#${reference}`)
+				)
+			})
 	)
-	if (!rows.length) return ''
-	return html`<section aria-labelledby="open-checks">
-		<h3 class="lab" id="open-checks">Not passed <span class="n">${rows.length}</span></h3>
-		<ul class="plist">
-			${rows.map(
-				({ test, assertion }) =>
-					html`<li>
-						${resultCell({ result: assertion.result })}
-						${assertionLink(detail.runId, `${test.testId}.${assertion.assertionId}`)}
-						${assertion.check}${assertion.observed ? html` <span class="muted">Observed: ${assertion.observed}</span>` : ''}
-					</li>`
-			)}
-		</ul>
-	</section>`
+	return section('not-passed', 'Not passed', rows, ['Result', 'Check', 'What happened', 'Kind'])
 }
 
-function summaryDetail(store: Store, context: Context, detail: Detail, state: FormState | null, crumbs: Html) {
+function runSections(detail: Detail, selected: string) {
+	const result = detail.result
+	const tests = detail.tests.map((test) =>
+		itemRow(detail.runId, `test:${test.testId}`, selected, test.testId, [
+			testState(test, detail),
+			'',
+			title(test.title),
+			muted(passedCount(test)),
+		])
+	)
+	const found = detail.findings.map((finding) =>
+		itemRow(detail.runId, `finding:${finding.id}`, selected, finding.id, [
+			statusMark({ state: finding.severity }),
+			'',
+			title(finding.title),
+			muted(words(finding.type)),
+		])
+	)
+	const gaps = detail.newGaps.map((gap) =>
+		itemRow(detail.runId, `gap:${gap.id}`, selected, gap.id, [
+			statusMark({ state: gap.severity }),
+			'',
+			title(gap.question),
+			muted(words(gap.status)),
+		])
+	)
+	const record = [
+		itemRow(detail.runId, 'coverage', selected, 'Coverage', [
+			result
+				? statusMark({ state: result.coverage.status })
+				: statusMark({ state: 'pending', label: 'not known yet' }),
+			'',
+			title(result ? plural(result.coverage.requirements.length, 'requirement') : 'Known when the run finishes.'),
+		]),
+		itemRow(detail.runId, 'cleanup', selected, 'Cleanup', [
+			result
+				? statusMark({ state: result.cleanup.status })
+				: statusMark({ state: 'pending', label: 'not finished' }),
+			'',
+			title(plural(detail.attempts.length, 'attempt')),
+		]),
+	]
+	return html`<section class="sc-sec" aria-labelledby="overview">
+			<h2 class="sc-sec-h" id="overview">Overview</h2>
+			${strip(detail)}
+		</section>
+		${detail.warnings.map((warning) => notice({ kind: 'warn', content: warning }))} ${notPassed(detail, selected)}
+		${section('tests', 'Tests', tests, ['Result', 'Test', 'Name', 'Checks'])}
+		${section('findings', 'Findings', found, ['Severity', 'Finding', 'Title', 'Kind'])}
+		${section('new-gaps', 'New gaps', gaps, ['State', 'Gap', 'Question', 'Kind'])}
+		${section('record', 'Record', record, ['State', 'Record', 'Detail'])}`
+}
+
+function runHead(detail: Detail, label: string | null) {
+	const result = detail.result
+	const run = html`<a href="/runs/${detail.runId}">${detail.runId}</a>`
+	return html`<header class="sc-h">
+		<div class="sc-h-text">
+			<p class="sc-crumb">
+				<a href="/runs">Runs</a> ›
+				<a href="/plans/${detail.planId}@${detail.revision}">${detail.planId}@${detail.revision}</a> · build
+				${detail.build} · instance ${detail.instance.instanceId}${label ? html` › ${run}` : ''}
+			</p>
+			<h1>${label ? `${detail.runId} · ${label}` : detail.runId}</h1>
+			<p class="sc-h-meta" data-region="state">
+				${runStatus({ state: detail.state, acceptance: detail.result?.acceptance ?? null })}
+				<span
+					>started
+					${time(detail.startedAt)}${result ? html` · finished ${time(result.finishedAt)}` : ''}</span
+				>
+			</p>
+		</div>
+	</header>`
+}
+
+function decisionSide(store: Store, context: Context, detail: Detail, state: FormState | null, selected: string) {
 	const report = detail.result
 		? downloadMenu({
 				label: 'Download report',
@@ -583,14 +612,17 @@ function summaryDetail(store: Store, context: Context, detail: Detail, state: Fo
 				note: 'The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.',
 				formats: ['html', 'md', 'json', 'junit'],
 			})
-		: html`<span class="muted small">The report is ready when the run finishes.</span>`
-	return html`${crumbs}
-		<h2 class="q-h">Overview</h2>
-		${strip(detail)}
-		<p class="muted small" data-region="run-usage">${runUsageLine(detail)}</p>
-		${detail.warnings.map((warning) => banner({ kind: 'warn', content: warning }))} ${openChecks(detail)}
-		${decisionPanel(store, context, detail, state, returnFields({ key: 'summary' }, `/runs/${detail.runId}`))}
-		<div class="actions">${report}</div>`
+		: html`<span class="sc-muted sc-note">The report is ready when the run finishes.</span>`
+	return html`<div class="sc-side">
+		${decisionPanel(
+			store,
+			context,
+			detail,
+			state,
+			returnFields({ key: selected }, runItemHref(detail.runId, selected)),
+			html`<div class="sc-row-btns">${report}</div>`
+		)}
+	</div>`
 }
 
 export function runPage(
@@ -612,29 +644,23 @@ export function runPage(
 	const label =
 		test?.testId ?? finding?.id ?? gap?.id ?? (asked === 'coverage' ? 'Coverage' : record ? 'Cleanup' : null)
 	const list = `/runs/${runId}`
-	const crumbs = crumbBar({
-		crumbs: [
-			['Runs', '/runs'],
-			[`${detail.planId}@${detail.revision}`, `/plans/${detail.planId}@${detail.revision}`],
-			[runId, label ? list : null],
-			...(label ? [[label, null] as [string, null]] : []),
-		],
-	})
-	const pane = test
-		? html`${crumbs} ${testCard(store, detail, test)}`
+	const main = test
+		? testCard(store, detail, test)
 		: finding
-			? html`${crumbs} ${findingCard(store, detail, finding)}`
+			? findingCard(store, detail, finding)
 			: gap
-				? html`${crumbs} ${gapCard(store, context, detail, gap, adoptError)}`
+				? gapCard(store, context, detail, gap, adoptError)
 				: asked === 'coverage'
-					? html`${crumbs}
-							<h2 class="q-h">Coverage</h2>
-							${coverage(store, detail)}`
+					? html`<section class="sc-sec" aria-labelledby="coverage">
+							<h2 class="sc-sec-h" id="coverage">Coverage</h2>
+							${coverage(store, detail)}
+						</section>`
 					: asked === 'cleanup'
-						? html`${crumbs}
-								<h2 class="q-h">Cleanup and attempts</h2>
-								${cleanup(detail)}`
-						: summaryDetail(store, context, detail, state, crumbs)
+						? html`<section class="sc-sec" aria-labelledby="cleanup">
+								<h2 class="sc-sec-h" id="cleanup">Cleanup and attempts</h2>
+								${cleanup(detail)}
+							</section>`
+						: runSections(detail, selected)
 	return {
 		viewer: true,
 		title: label ? `${runId} · ${label}` : runId,
@@ -649,26 +675,28 @@ export function runPage(
 		],
 		back: label ? list : `/plans/${detail.planId}@${detail.revision}`,
 		nav: navigator(reviewOf(store, detail.planId), 'plan'),
-		body: html`<div data-region="run-list">${runList(detail, selected)}</div>
-			<section
-				class="sp-detail q-detail"
-				aria-label="${label ?? 'Overview'}"
-				data-region="run-detail"
-				data-key="detail:${selected}"
-				data-stale-message="This run changed. Review it before you decide."
-			>
-				${
-					!detail.result && interruption
-						? banner({
-								kind: 'info',
-								content: html`<b>Delegated worker interrupted ${time(interruption)}.</b> Recorded
-									results stay. Run <code>checkmate run resume ${runId}</code> to continue. To end the
-									run, use <code>checkmate run finish ${runId}</code> with a completion and cleanup
-									result.`,
-							})
-						: ''
-				}
-				${pane}
-			</section>`,
+		body: html`${runHead(detail, label)}
+			${
+				!detail.result && interruption
+					? notice({
+							kind: 'info',
+							content: html`<b>Delegated worker interrupted ${time(interruption)}.</b> Recorded results
+								stay. Run <code>checkmate run resume ${runId}</code> to continue. To end the run, use
+								<code>checkmate run finish ${runId}</code> with a completion and cleanup result.`,
+						})
+					: ''
+			}
+			<div class="sc-split">
+				<div
+					class="sc-stack is-loose"
+					aria-label="${label ?? 'Overview'}"
+					data-region="run-detail"
+					data-key="detail:${selected}"
+					data-stale-message="This run changed. Review it before you decide."
+				>
+					${main}
+				</div>
+				${decisionSide(store, context, detail, state, selected)}
+			</div>`,
 	}
 }

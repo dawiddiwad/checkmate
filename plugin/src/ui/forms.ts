@@ -1,6 +1,6 @@
 import type { Html } from './html.ts'
 import type { Context } from './layout.ts'
-import { banner } from './components/banner.ts'
+import { notice } from './components/notice.ts'
 import { formButton } from './components/button.ts'
 import { field, textArea, textInput } from './components/field.ts'
 import { actorLimit, html, short } from './html.ts'
@@ -24,6 +24,7 @@ export type Verdict = {
 	staleMessage: string
 	intro?: Html | ''
 	extra?: Html
+	foot?: Html
 }
 
 export function emptyState(): FormState {
@@ -42,15 +43,15 @@ export function actorField(context: Context, state: FormState) {
 }
 
 export function messages(state: FormState) {
-	return html`${state.stale ? banner({ kind: 'warn', content: state.stale }) : ''}
-	${state.error ? html`<p class="form-error" role="alert">${state.error}</p>` : ''}`
+	return html`${state.stale ? notice({ kind: 'warn', content: state.stale }) : ''}
+	${state.error ? html`<p class="sc-error" role="alert">${state.error}</p>` : ''}`
 }
 
 export function keptText(state: FormState) {
 	const typed = state.values.value || state.values.rationale || ''
 	if (!typed.trim()) return ''
 	return html`<div class="kept" data-kept>
-		<p class="lab">Your text</p>
+		<p class="sc-label">Your text</p>
 		<blockquote>${typed}</blockquote>
 	</div>`
 }
@@ -65,17 +66,17 @@ export function rationaleField(
 
 function confirmStep(context: Context, verdict: Verdict, state: FormState) {
 	const choice = state.values.verdict === verdict.reject.value ? verdict.reject : verdict.approve
-	return html`<form method="post" action="${verdict.action}" class="decision-form">
+	return html`<form method="post" action="${verdict.action}" class="sc-form">
 		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ''}
 		<input type="hidden" name="verdict" value="${choice.value}" />
 		<input type="hidden" name="rationale" value="${state.values.rationale ?? ''}" />
 		${context.actor ? '' : html`<input type="hidden" name="actor" value="${state.values.actor ?? ''}" />`}
 		<div class="confirm-box">
-			<p class="lab">Confirm</p>
+			<p class="sc-label">Confirm</p>
 			<p>${choice.summary}</p>
 			<blockquote>${state.values.rationale ?? ''}</blockquote>
 		</div>
-		<div class="btns">
+		<div class="sc-row-btns">
 			${formButton({ label: choice.confirm, emphasis: 'primary', attrs: { name: 'confirmed', value: '1' } })}
 			${formButton({ label: 'Back', attrs: { name: 'back', value: '1', formnovalidate: true } })}
 		</div>
@@ -95,15 +96,15 @@ function chooseStep(context: Context, verdict: Verdict, state: FormState) {
 				'data-summary': choice.summary,
 			},
 		})
-	return html`<form method="post" action="${verdict.action}" class="decision-form" data-verdict-form>
+	return html`<form method="post" action="${verdict.action}" class="sc-form" data-verdict-form>
 		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ''} ${actorField(context, state)}
 		${rationaleField(state, 'Why do you decide this?')}
 		<div class="confirm-box" data-confirm hidden>
-			<p class="lab">Confirm</p>
+			<p class="sc-label">Confirm</p>
 			<p data-confirm-summary></p>
 		</div>
-		<div class="btns" data-choose>${button(verdict.approve, true)} ${button(verdict.reject, false)}</div>
-		<div class="btns" data-confirm-buttons hidden>
+		<div class="sc-row-btns" data-choose>${button(verdict.approve, true)} ${button(verdict.reject, false)}</div>
+		<div class="sc-row-btns" data-confirm-buttons hidden>
 			${formButton({ label: 'Confirm', emphasis: 'primary', attrs: { name: 'confirmed', value: '1', 'data-confirm-submit': true } })}
 			${formButton({ label: 'Back', attrs: { type: 'button', 'data-confirm-back': true } })}
 		</div>
@@ -112,21 +113,21 @@ function chooseStep(context: Context, verdict: Verdict, state: FormState) {
 
 export function verdictPanel(context: Context, verdict: Verdict, state: FormState) {
 	return html`<section
-		class="panel decision"
+		class="sc-card decision"
 		id="decide"
 		aria-labelledby="decide-title"
 		data-region="decision"
 		data-stale-message="${verdict.staleMessage}"
 	>
-		<h2 class="lab" id="decide-title">Decision</h2>
-		<p class="subj">${verdict.question}</p>
-		<p class="help">
+		<h2 class="sc-card-h" id="decide-title">${verdict.question}</h2>
+		<p class="sc-note">
 			${verdict.digestLabel} sha256 <code title="${verdict.sha256}">${short(verdict.sha256)}</code>. Your decision
 			is recorded in the log.
 		</p>
 		<div data-stale-slot>${messages(state)}</div>
 		${verdict.intro ?? ''}
 		${state.confirm ? confirmStep(context, verdict, state) : chooseStep(context, verdict, state)}
+		${verdict.foot ?? ''}
 	</section>`
 }
 
@@ -161,24 +162,24 @@ export type GapForm = {
 export function gapPanel(context: Context, form: GapForm, state: FormState) {
 	const selected = state.values.kind ?? 'clarify'
 	return html`<section
-		class="panel decision"
+		class="sc-card decision"
 		id="answer"
 		aria-labelledby="answer-title"
 		data-region="decision"
 		data-stale-message="${form.staleMessage}"
 	>
-		<h2 class="lab" id="answer-title">Answer gap</h2>
+		<h2 class="sc-card-h" id="answer-title">Answer gap</h2>
 		${form.title ? html`<p class="subj">${form.title}</p>` : ''}
-		${form.question ? html`<p class="help">${form.question}</p>` : ''}
+		${form.question ? html`<p class="sc-help">${form.question}</p>` : ''}
 		<div data-stale-slot>${messages(state)}</div>
-		<form method="post" action="${form.action}" class="decision-form gap-form" data-gap-form>
+		<form method="post" action="${form.action}" class="sc-form gap-form" data-gap-form>
 			${hidden(context, form.sha256)} ${form.extra ?? ''}
-			<fieldset class="seg-field">
-				<legend class="lab">Kind of answer</legend>
-				<div class="seg">
+			<fieldset>
+				<legend class="sc-label">Kind of answer</legend>
+				<div class="sc-radios">
 					${kinds.map(
 						(kind) =>
-							html`<label
+							html`<label class="sc-radio"
 								><input
 									type="radio"
 									id="kind-${kind.value}"
@@ -190,10 +191,10 @@ export function gapPanel(context: Context, form: GapForm, state: FormState) {
 					)}
 				</div>
 			</fieldset>
-			${kinds.map((kind) => html`<p class="help kind-help" data-kind="${kind.value}">${kind.help}</p>`)}
+			${kinds.map((kind) => html`<p class="sc-help kind-help" data-kind="${kind.value}">${kind.help}</p>`)}
 			${field({ id: 'value', label: 'Answer', control: textArea({ id: 'value', name: 'value', rows: 3, value: state.values.value ?? '', attrs: { required: true, 'data-missing': 'Write the answer.' } }) })}
-			<div class="field-group source-field">
-				<label class="lab" for="source">Source <span class="req">required for Clarify</span></label>
+			<div class="sc-field source-field">
+				<label class="sc-label" for="source">Source <span class="sc-req">required for Clarify</span></label>
 				<input
 					id="source"
 					name="source"
@@ -202,11 +203,11 @@ export function gapPanel(context: Context, form: GapForm, state: FormState) {
 					data-source
 					data-missing="A clarification needs a source. Name where the answer comes from."
 				/>
-				<p class="help">Where the answer comes from: a document, a ticket, or a person.</p>
+				<p class="sc-help">Where the answer comes from: a document, a ticket, or a person.</p>
 			</div>
 			${rationaleField(state, 'Why is this the right answer?', 'Write a rationale. Checkmate records it with your answer.')}
 			${actorField(context, state)}
-			<div class="btns">
+			<div class="sc-row-btns">
 				${formButton({ label: 'Record answer', emphasis: 'primary', attrs: { 'data-needs-rationale': true } })}
 				${formButton({ label: 'Cancel', href: form.cancel })}
 			</div>
@@ -216,12 +217,12 @@ export function gapPanel(context: Context, form: GapForm, state: FormState) {
 
 export function recordPanel(title: string, content: Html, decided = '') {
 	return html`<section
-		class="panel decision"
+		class="sc-card decision"
 		aria-labelledby="decide-title"
 		data-region="decision"
 		${decided ? html`data-decided-message="${decided}"` : ''}
 	>
-		<h2 class="lab" id="decide-title">${title}</h2>
+		<h2 class="sc-card-h" id="decide-title">${title}</h2>
 		${content}
 	</section>`
 }

@@ -9,6 +9,7 @@ export type PlanTile = {
 	status: Html | ''
 	when: Html | string
 	whenTitle: string
+	waitsOn: string | null
 	objective: string
 	verdict: { head: string; tail: string }
 	cost: string | null
@@ -19,7 +20,7 @@ export type PlanTile = {
 
 export function planTile(tile: PlanTile) {
 	return html`<div
-		class="sp-ct"
+		class="sc-plan"
 		role="listitem"
 		tabindex="-1"
 		id="plan-${tile.index}"
@@ -28,19 +29,20 @@ export function planTile(tile: PlanTile) {
 		data-href="${tile.href}"
 		data-label="${tile.planId}"
 	>
-		<div class="sp-ct-main">
-			<div class="sp-ct-head">
-				<span class="sp-c-id">${tile.planId}</span>
+		<div class="sc-plan-main">
+			<div class="sc-plan-top">
+				<span class="sc-plan-id">${tile.planId}</span>
 				${tile.status}
-				<span class="sp-ct-when ell" title="${tile.whenTitle}">${tile.when}</span>
+				<span class="sc-plan-when" title="${tile.whenTitle}">${tile.when}</span>
+				${tile.waitsOn ? html`<span class="sc-plan-waits">· ${tile.waitsOn}</span>` : ''}
 			</div>
-			<h2 class="sp-ct-title ell" title="${tile.objective}">${tile.objective}</h2>
-			<p class="sp-ct-verdict"><b>${tile.verdict.head}</b> ${tile.verdict.tail}</p>
+			<h2 class="sc-plan-title" title="${tile.objective}">${tile.objective}</h2>
+			<p class="sc-plan-sum">${tile.verdict.head} ${tile.verdict.tail}</p>
 			${
 				tile.cost === null
 					? ''
 					: html`<p
-							class="sp-ct-cost"
+							class="sc-plan-sum"
 							title="Reported cost across this plan’s explorations, chats, and structured runs"
 						>
 							Total cost ${tile.cost}
@@ -48,12 +50,13 @@ export function planTile(tile: PlanTile) {
 			}
 		</div>
 		${tile.board} ${tile.metrics}
-		<div class="sp-ct-opts">
+		<div class="sc-plan-act">
 			${button({
 				label: tile.next.label,
 				href: tile.next.href,
 				keyName: 1,
-				emphasis: tile.next.unblocks ? 'unblocks' : undefined,
+				emphasis: tile.next.unblocks ? 'unblocks' : 'primary',
+				mainAction: true,
 				attrs: { 'data-option': true },
 			})}
 		</div>
@@ -62,7 +65,7 @@ export function planTile(tile: PlanTile) {
 
 export function newChangeTile({ index }: { index: number }) {
 	return html`<div
-		class="sp-ct sp-ct-new"
+		class="sc-plan is-new"
 		role="listitem"
 		tabindex="-1"
 		id="plan-${index}"
@@ -71,12 +74,19 @@ export function newChangeTile({ index }: { index: number }) {
 		data-href="/new"
 		data-label="New change"
 	>
-		<div class="sp-ct-main">
-			<h2 class="sp-ct-title ell">New change</h2>
-			<p class="sp-ct-verdict">Give a ticket. Checkmate makes a plan and starts the first test.</p>
+		<div class="sc-plan-main">
+			<h2 class="sc-plan-title">New change</h2>
+			<p class="sc-plan-sum">Give a ticket. Checkmate makes a plan and starts the first test.</p>
 		</div>
-		<div class="sp-ct-opts">
-			${button({ label: 'New change', href: '/new', keyName: 1, attrs: { 'data-option': true } })}
+		<div class="sc-plan-act">
+			${button({
+				label: 'New change',
+				href: '/new',
+				keyName: 1,
+				emphasis: 'primary',
+				mainAction: true,
+				attrs: { 'data-option': true },
+			})}
 		</div>
 	</div>`
 }

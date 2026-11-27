@@ -33,7 +33,7 @@ function askRow(query) {
 	link.setAttribute('role', 'option')
 	link.tabIndex = -1
 	const kind = document.createElement('span')
-	kind.className = 'sp-pill'
+	kind.className = 'sc-mark is-question'
 	kind.textContent = 'ask'
 	const title = document.createElement('span')
 	title.className = 't'
@@ -55,7 +55,7 @@ function findResults(results, query) {
 			link.setAttribute('role', 'option')
 			link.tabIndex = -1
 			const kind = document.createElement('span')
-			kind.className = 'sp-pill'
+			kind.className = 'sc-mark is-question'
 			kind.textContent = entry.kind
 			const id = document.createElement('span')
 			id.className = 'k'

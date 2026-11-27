@@ -22,9 +22,9 @@ export function fold({
 	listRegion = false,
 	body,
 }: Fold) {
-	const heading = html`${title}${count === null ? '' : html` <span class="n">${count}</span>`}`
+	const heading = html`${title}${count === null ? '' : html`<b>${count}</b>`}`
 	return html`<details
-		class="fold"
+		class="sc-fold"
 		data-open-key="${key}"
 		${region ? html`data-region="${region}"` : ''}
 		${open ? html`open` : ''}
@@ -32,6 +32,6 @@ export function fold({
 		<summary>
 			${headingId === undefined ? html`<h2>${heading}</h2>` : html`<h2 id="${headingId}">${heading}</h2>`}
 		</summary>
-		<div class="fold-b" ${listRegion ? html`data-list-region` : ''}>${body}</div>
+		<div class="sc-fold-b" ${listRegion ? html`data-list-region` : ''}>${body}</div>
 	</details>`
 }

@@ -45,7 +45,7 @@ export function money(costUsd: number) {
 }
 
 export function costText(costUsd: number | null, partial: boolean) {
-	return costUsd === null ? 'Unknown' : `${money(costUsd)}${partial ? ' (partial)' : ''}`
+	return costUsd === null ? '—' : `${money(costUsd)}${partial ? ' (partial)' : ''}`
 }
 
 export function words(status: string) {
@@ -108,8 +108,8 @@ export function hasMetadata(values: Record<string, unknown> | undefined) {
 
 export function metadataList(values: Record<string, string | number | boolean> = {}) {
 	const entries = Object.entries(values)
-	return html`<span class="kv" aria-label="Metadata"
-		>${entries.map(([key, value]) => html`<span class="tag">${key}=${String(value)}</span>`)}</span
+	return html`<span class="sc-chips" aria-label="Metadata"
+		>${entries.map(([key, value]) => html`<span class="sc-chip">${key}=${String(value)}</span>`)}</span
 	>`
 }
 

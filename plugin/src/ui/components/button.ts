@@ -5,8 +5,8 @@ import { key } from './key.ts'
 export type Emphasis = 'primary' | 'unblocks'
 
 const emphasisClass: Record<Emphasis, string> = {
-	primary: ' pri',
-	unblocks: ' you',
+	primary: ' is-primary',
+	unblocks: ' is-you',
 }
 
 export type Button = {
@@ -15,11 +15,13 @@ export type Button = {
 	keyName?: string | number
 	keySpoken?: boolean
 	emphasis?: Emphasis
+	mainAction?: boolean
+	quiet?: boolean
 	attrs?: Attrs
 }
 
-export function button({ label, href, keyName, keySpoken = true, emphasis, attrs }: Button) {
-	const look = `sp-btn${emphasis ? emphasisClass[emphasis] : ''}`
+export function button({ label, href, keyName, keySpoken = true, emphasis, mainAction, quiet, attrs }: Button) {
+	const look = `sc-btn${emphasis ? emphasisClass[emphasis] : ''}${mainAction ? ' is-lg' : ''}${quiet ? ' is-quiet' : ''}${keyName === undefined ? '' : ' has-key'}`
 	const inner = html`${keyName === undefined ? '' : key({ name: keyName, spoken: keySpoken })}<span>${label}</span>`
 	return href === undefined
 		? html`<button class="${look}" ${attributes(attrs)}>${inner}</button>`
@@ -49,7 +51,7 @@ export type FormButton = {
 }
 
 export function formButton({ label, href, element, emphasis, inline = false, quiet = false, attrs }: FormButton) {
-	const look = `btn${inline ? ' small' : ''}${emphasis ? ' primary' : ''}${quiet ? ' ghost' : ''}`
+	const look = `sc-btn${emphasis ? ' is-primary' : ''}${quiet ? ' is-quiet' : ''}${inline ? ' is-inline' : ''}`
 	if (href !== undefined) return html`<a class="${look}" href="${href}" ${attributes(attrs)}>${label}</a>`
 	if (element === 'summary') return html`<summary class="${look}" ${attributes(attrs)}>${label}</summary>`
 	if (element === 'span') return html`<span class="${look}" ${attributes(attrs)}>${label}</span>`

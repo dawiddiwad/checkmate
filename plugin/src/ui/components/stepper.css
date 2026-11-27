@@ -1,5 +1,26 @@
-.sp-strip {
-	display: inline-flex;
+.sc-phases {
+	display: flex;
 	flex-wrap: wrap;
-	gap: 8px;
+	align-items: center;
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font: 500 13px/20px var(--font-mono);
+}
+.sc-phases li {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+.sc-phases li + li::before {
+	content: '';
+	width: var(--space-4);
+	height: var(--hairline);
+	background: var(--edge);
+}
+.sc-phases .sc-mark,
+.sc-phases .sc-word {
+	font-family: var(--font-mono);
+	font-weight: 500;
 }

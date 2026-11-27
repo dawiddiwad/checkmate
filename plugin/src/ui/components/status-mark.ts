@@ -1,141 +1,130 @@
 import type { Attrs, Html } from '../html.ts'
-import { attributes, glyph, html, words } from '../html.ts'
+import { attributes, html, words } from '../html.ts'
 
-type Tone = 'pass' | 'fail' | 'block' | 'warn' | 'unsure' | 'acc' | 'muted'
+export type MarkKind = 'run' | 'pass' | 'fail' | 'crit' | 'you' | 'triage' | 'approve' | 'question' | 'stop' | 'none'
 
-const statusLook: Record<string, [string, Tone]> = {
-	passed: ['✓', 'pass'],
-	failed: ['✗', 'fail'],
-	inconclusive: ['?', 'unsure'],
-	not_checked: ['!', 'warn'],
-	blocked: ['–', 'block'],
-	not_run: ['–', 'block'],
-	error: ['!', 'warn'],
-	ready: ['✓', 'pass'],
-	deferred: ['–', 'block'],
-	planned: ['✓', 'pass'],
-	tested: ['✓', 'pass'],
-	uncovered: ['–', 'block'],
-	complete: ['✓', 'pass'],
-	partial: ['◐', 'warn'],
-	not_executed: ['–', 'block'],
-	completed: ['✓', 'pass'],
-	interrupted: ['!', 'warn'],
-	operational_error: ['!', 'fail'],
-	not_applicable: ['–', 'block'],
-	approved: ['✓', 'pass'],
-	rejected: ['✗', 'fail'],
-	pending: ['○', 'acc'],
-	not_required: ['–', 'block'],
-	started: ['●', 'acc'],
-	given: ['○', 'acc'],
-	not_needed: ['–', 'block'],
-	ended: ['✓', 'pass'],
-	active: ['●', 'pass'],
-	retired: ['–', 'block'],
-	finalized: ['✓', 'pass'],
-	open: ['○', 'warn'],
-	resolved: ['✓', 'pass'],
-	blocking: ['●', 'fail'],
-	non_blocking: ['○', 'warn'],
-	clarify: ['✓', 'acc'],
-	accept_assumption: ['≈', 'acc'],
-	defer: ['–', 'block'],
-	defect: ['✗', 'fail'],
-	potential_issue: ['?', 'warn'],
-	low: ['·', 'block'],
-	medium: ['!', 'warn'],
-	high: ['!', 'fail'],
-	critical: ['!!', 'fail'],
-	rejected_operation: ['✗', 'fail'],
-	needs_decision: ['?', 'warn'],
-	invalid_request: ['✗', 'fail'],
-	needs_plan: ['○', 'acc'],
-	ready_to_test: ['○', 'acc'],
-	exploring: ['●', 'acc'],
-	needs_triage: ['?', 'warn'],
-	run_in_progress: ['●', 'acc'],
-	needs_revision: ['○', 'acc'],
-	plan_rejected: ['✗', 'fail'],
-	needs_answers: ['?', 'warn'],
-	needs_approval: ['○', 'acc'],
-	ready_to_run: ['○', 'acc'],
-	nothing_to_run: ['–', 'block'],
-	defects_open: ['✗', 'fail'],
-	needs_retest: ['!', 'warn'],
-	awaits_acceptance: ['○', 'acc'],
-	accepted: ['✓', 'pass'],
-	running: ['●', 'acc'],
-	starting: ['●', 'acc'],
-	testing: ['●', 'acc'],
-	recording: ['●', 'acc'],
-	verifying: ['●', 'acc'],
-	following: ['●', 'acc'],
-	stopped: ['!', 'fail'],
-	skipped: ['–', 'block'],
-	not_in_level: ['–', 'block'],
-	confirmed: ['✗', 'fail'],
-	observed: ['✗', 'fail'],
-	suspected: ['?', 'warn'],
-	unresolved: ['?', 'warn'],
-	answered: ['✓', 'pass'],
-	requested: ['○', 'acc'],
-	paused: ['‖', 'warn'],
-	waiting: ['○', 'acc'],
+const statusKinds: Record<string, MarkKind> = {
+	running: 'run',
+	starting: 'run',
+	testing: 'run',
+	recording: 'run',
+	verifying: 'run',
+	following: 'run',
+	exploring: 'run',
+	run_in_progress: 'run',
+	started: 'run',
+	passed: 'pass',
+	ready: 'pass',
+	planned: 'pass',
+	tested: 'pass',
+	complete: 'pass',
+	completed: 'pass',
+	approved: 'pass',
+	ended: 'pass',
+	active: 'pass',
+	finalized: 'pass',
+	resolved: 'pass',
+	answered: 'pass',
+	accepted: 'pass',
+	failed: 'fail',
+	rejected: 'fail',
+	defect: 'fail',
+	high: 'fail',
+	rejected_operation: 'fail',
+	invalid_request: 'fail',
+	plan_rejected: 'fail',
+	defects_open: 'fail',
+	confirmed: 'fail',
+	observed: 'fail',
+	operational_error: 'fail',
+	error: 'fail',
+	critical: 'crit',
+	blocking: 'you',
+	needs_decision: 'you',
+	needs_answers: 'you',
+	needs_approval: 'you',
+	awaits_acceptance: 'you',
+	paused: 'you',
+	needs_triage: 'triage',
+	potential_issue: 'triage',
+	suspected: 'triage',
+	unresolved: 'triage',
+	inconclusive: 'triage',
+	open: 'question',
+	non_blocking: 'question',
+	pending: 'question',
+	given: 'question',
+	requested: 'question',
+	waiting: 'question',
+	needs_plan: 'question',
+	ready_to_test: 'question',
+	needs_revision: 'question',
+	ready_to_run: 'question',
+	clarify: 'question',
+	accept_assumption: 'question',
+	medium: 'question',
+	partial: 'question',
+	needs_retest: 'question',
+	stopped: 'stop',
+	interrupted: 'stop',
+	not_run: 'none',
+	blocked: 'none',
+	deferred: 'none',
+	uncovered: 'none',
+	not_executed: 'none',
+	not_required: 'none',
+	retired: 'none',
+	not_needed: 'none',
+	low: 'none',
+	skipped: 'none',
+	not_in_level: 'none',
+	nothing_to_run: 'none',
+	not_applicable: 'none',
+	not_checked: 'none',
+	defer: 'none',
 }
 
 const labels: Record<string, string> = {
-	given: 'given to the session',
+	given: 'Given to the session',
 }
 
-const toneClass: Record<Tone, string> = {
-	pass: 'pass',
-	fail: 'fail',
-	warn: 'you',
-	unsure: 'you',
-	acc: 'run',
-	block: '',
-	muted: '',
+function sentence(state: string) {
+	const text = words(state)
+	return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
-const unknown: [string, Tone] = ['·', 'muted']
-
-export function statusLookOf(state: string | null) {
-	return state ? (statusLook[state] ?? unknown) : unknown
+export function markKindOf(state: string | null): MarkKind {
+	return (state && statusKinds[state]) || 'none'
 }
 
-function markClass(state: string) {
-	return `sp-pill ${toneClass[statusLookOf(state)[1]]}`.trim()
+function mark(kind: MarkKind) {
+	return `sc-mark is-${kind}`
 }
 
-export function statusMark({ state, label = labels[state] ?? words(state) }: { state: string; label?: string }) {
-	return html`<span class="${markClass(state)}" data-status="${state}"
-		><span aria-hidden="true">${glyph(statusLookOf(state)[0])}</span> ${label}</span
-	>`
+export function statusMark({ state, label = labels[state] ?? sentence(state) }: { state: string; label?: string }) {
+	return html`<span class="${mark(markKindOf(state))}" data-status="${state}">${label}</span>`
 }
 
 export function statusWord({ state, label }: { state: string; label: Html | string }) {
-	return html`<span class="${markClass(state)}" title="${words(state)}">${label}</span>`
+	return html`<span class="${mark(markKindOf(state))}" title="${words(state)}">${label}</span>`
 }
 
 const countOrder = ['passed', 'failed', 'inconclusive', 'error', 'blocked', 'not_run'] as const
 
 export function statusCounts({ counts }: { counts: Record<string, number> }) {
 	const shown = countOrder.filter((key) => counts[key])
-	if (!shown.length) return html`<span class="muted">no outcomes yet</span>`
-	return html`<span class="counts"
+	if (!shown.length) return html`<span class="sc-muted">no outcomes yet</span>`
+	return html`<span class="sc-counts"
 		>${shown.map(
 			(key) =>
-				html`<span class="${markClass(key)}" title="${counts[key]} ${words(key)}"
-					><span aria-hidden="true">${glyph(statusLook[key][0])}</span> ${counts[key]}<span class="sr-only">
-						${words(key)}</span
-					></span
+				html`<span class="${mark(markKindOf(key))}" title="${counts[key]} ${words(key)}"
+					>${counts[key]}<span class="sc-sr"> ${words(key)}</span></span
 				>`
 		)}</span
 	>`
 }
 
-const wordTones: Record<string, string> = {
+const wordKinds: Record<string, MarkKind> = {
 	testing: 'run',
 	running: 'run',
 	given: 'run',
@@ -143,9 +132,9 @@ const wordTones: Record<string, string> = {
 	blocks: 'you',
 	asks: 'you',
 	paused: 'you',
-	approval: 'you',
 	uncertain: 'you',
-	finding: 'you triage',
+	approval: 'approve',
+	finding: 'triage',
 	passed: 'pass',
 	answered: 'pass',
 	finished: 'pass',
@@ -156,21 +145,33 @@ const wordTones: Record<string, string> = {
 	high: 'fail',
 	denied: 'fail',
 	critical: 'crit',
+	question: 'question',
+	gap: 'question',
+	medium: 'question',
+	not_started: 'none',
+	not_tested: 'none',
+	low: 'none',
+	deferred: 'stop',
+	rejected: 'stop',
+	closed: 'stop',
+	not_running: 'stop',
 }
+
+const plainWords = ['cost', 'elapsed', 'phase', 'rule', 'stored', 'build_state', 'built-in']
 
 export type WordMark = {
 	state: string
 	label: Html | string
-	live?: boolean
 	title?: string
 	attrs?: Attrs
 }
 
-export function wordMark({ state, label, live = false, title, attrs }: WordMark) {
-	return html`<span
-		class="sp-pill ${wordTones[state] ?? ''}"
-		${title === undefined ? '' : html`title="${title}"`}
-		${attributes(attrs)}
-		>${live ? html`<span class="dot" aria-hidden="true"></span>` : ''}${label}</span
+export function wordMark({ state, label, title, attrs }: WordMark) {
+	const look = plainWords.includes(state) ? 'sc-word' : mark(wordKinds[state] ?? 'question')
+	return html`<span class="${look}" ${title === undefined ? '' : html`title="${title}"`} ${attributes(attrs)}
+		>${label}</span
 	>`
 }
+
+export const statusStates = Object.keys(statusKinds)
+export const wordStates = [...Object.keys(wordKinds), ...plainWords]

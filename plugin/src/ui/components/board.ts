@@ -1,70 +1,73 @@
 import type { CellStatus } from '../../rulemap.ts'
-import { glyph, html, plural, words } from '../html.ts'
-import { statusLookOf } from './status-mark.ts'
+import { html, words } from '../html.ts'
+import { markKindOf } from './status-mark.ts'
 
 export type CellState = CellStatus | 'running'
 
-const cellLook: Record<CellState, [string, string]> = {
-	failed: ['✗', 'k-fail'],
-	question: ['?', 'k-q'],
-	passed: ['✓', 'k-pass'],
-	not_checked: ['', 'k-none'],
-	running: ['●', 'k-run'],
+const cellLook: Record<CellState, [string, string, string]> = {
+	failed: ['×', 'k-fail', 'failed'],
+	question: ['?', 'k-q', 'needs you'],
+	passed: ['', 'k-pass', 'passed'],
+	not_checked: ['', 'k-none', 'not run'],
+	running: ['', 'k-run', 'running'],
 }
 
-export type BoardCell = { state: CellState; label?: string; build?: string; buildLabel?: string }
+export type BoardCell = { state: CellState; label?: string; build?: string; buildLabel?: string; decorative?: boolean }
 
-export function boardCell({ state, label, build, buildLabel }: BoardCell) {
-	const [symbol, look] = cellLook[state]
-	if (label === undefined) return html`<span class="sp-mk ${look}">${glyph(symbol)}</span>`
+export function boardCell({ state, label, build, buildLabel, decorative = false }: BoardCell) {
+	const [symbol, look, name] = cellLook[state]
+	if (decorative) return html`<span class="sc-cell ${look}" aria-hidden="true">${symbol}</span>`
+	if (label === undefined) return html`<span class="sc-cell ${look}" role="img" aria-label="${name}">${symbol}</span>`
 	return html`<span
-		class="sp-mk ${look}"
+		class="sc-cell ${look}"
 		role="img"
 		aria-label="${label}"
 		title="${label}"
 		data-mark="${build}"
 		data-b="${buildLabel}"
-		>${glyph(symbol)}</span
+		>${symbol}</span
 	>`
 }
 
-const resultLook: Record<string, string> = { pass: 'k-pass', fail: 'k-fail', warn: 'k-q', unsure: 'k-q', acc: 'k-run' }
+const resultCells: Record<string, CellState> = {
+	pass: 'passed',
+	fail: 'failed',
+	crit: 'failed',
+	you: 'question',
+	triage: 'question',
+	run: 'running',
+}
 
 export function resultCell({ result }: { result: string | null }) {
-	const [symbol, tone] = statusLookOf(result)
-	return html`<span
-		class="sp-mk ${resultLook[tone] ?? 'k-none'}"
-		role="img"
-		aria-label="${result ? words(result) : 'no result yet'}"
-		>${glyph(symbol)}</span
+	const [symbol, look] = cellLook[resultCells[markKindOf(result)] ?? 'not_checked']
+	return html`<span class="sc-cell ${look}" role="img" aria-label="${result ? words(result) : 'no result yet'}"
+		>${symbol}</span
 	>`
 }
 
-export type BoardBuild = { build: string; label: string }
-export type BoardColumn = { label: string; title: string; cells: CellStatus[] }
+export type BoardBuild = { build: string; label: string; cells: CellStatus[] }
 
-export function board({ builds, columns }: { builds: BoardBuild[]; columns: BoardColumn[] }) {
+export type BoardColumn = { label: string; title: string }
+
+export function board({ builds, label, columns }: { builds: BoardBuild[]; label: string; columns: BoardColumn[] }) {
 	if (!builds.length) return html`<span></span>`
-	return html`<div
-		class="sp-mm"
-		data-builds="${builds.length}"
-		role="img"
-		aria-label="Rules against the last ${plural(builds.length, 'build')}"
-	>
-		<span></span>${builds.map((build) => html`<span class="sp-mm-b" title="${build.build}">${build.label}</span>`)}
-		${columns.map(
-			(column) =>
-				html`<span class="sp-mm-l" title="${column.title}">${column.label}</span>${column.cells.map((state) =>
-						boardCell({ state })
-					)}`
+	return html`<div class="sc-plan-board" role="img" aria-label="${label}">
+		<div class="sc-plan-cols" aria-hidden="true">
+			<span></span>${columns.map((column) => html`<span title="${column.title}">${column.label}</span>`)}
+		</div>
+		${builds.map(
+			(build) =>
+				html`<div title="${build.build}">
+					<span>${build.label}</span>${build.cells.map((state) => boardCell({ state }))}
+				</div>`
 		)}
 	</div>`
 }
 
-export const boardKey = html`<ul class="sp-legend" aria-label="Board key">
-	<li><span class="sp-mk k-pass" aria-hidden="true"></span>passed</li>
-	<li><span class="sp-mk k-fail" aria-hidden="true">${glyph('✗')}</span>failed</li>
-	<li><span class="sp-mk k-run" aria-hidden="true"></span>running</li>
-	<li><span class="sp-mk k-q" aria-hidden="true">?</span>needs you</li>
-	<li><span class="sp-mk k-none" aria-hidden="true"></span>not run</li>
+export const boardKey = html`<ul class="sc-legend" aria-label="Board key">
+	<li>${boardCell({ state: 'passed', decorative: true })}passed</li>
+	<li>${boardCell({ state: 'failed', decorative: true })}failed</li>
+	<li>${boardCell({ state: 'running', decorative: true })}running</li>
+	<li>${boardCell({ state: 'question', decorative: true })}needs you</li>
+	<li>${boardCell({ state: 'not_checked', decorative: true })}not run</li>
 </ul>`

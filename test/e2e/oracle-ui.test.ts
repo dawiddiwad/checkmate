@@ -2,14 +2,26 @@ import test from 'node:test'
 import type { TestContext } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { chromium, type Browser, type BrowserContext } from 'playwright-core'
 import { closeStore, openStore } from '../../plugin/src/store.ts'
+import { startUi as startSourceUi } from '../../plugin/src/ui/server.ts'
 import { seedDemo } from '../../scripts/ui-demo.ts'
+import { endSeededProcesses, seedVolume } from '../../scripts/ui-volume.ts'
 import {
 	actor,
 	directory,
@@ -437,13 +449,18 @@ test(
 	async (t) => {
 		const workspace = directory(t)
 		t.after(() => endProcessesIn(workspace))
+		const reproduction = ['Add LAMP-01 to the cart.', 'Apply SPRING40.', 'Apply WELCOME10.']
 		const opened = store(t, workspace)
 		target(opened)
 		plan(opened)
 		openTest(opened, 'checkout', 'review', 'b1')
 		launched(opened, 'review', 'tester')
 		ended(opened, 'review', 'tester', [
-			{ ...stacks, evidence: [evidenceFile(opened, 'review', 'quote.txt', 'HTTP 200: 220 PLN')] },
+			{
+				...stacks,
+				steps: reproduction,
+				evidence: [evidenceFile(opened, 'review', 'quote.txt', 'HTTP 200: 220 PLN')],
+			},
 		])
 		done(opened, 'review')
 		openTest(opened, 'checkout', 'review-2', 'b1')
@@ -453,6 +470,7 @@ test(
 				...stacks,
 				id: 'D2',
 				title: 'Confirmation is missing',
+				steps: reproduction,
 				evidence: [evidenceFile(opened, 'review-2', 'confirmation.txt', 'Order not confirmed')],
 			},
 		])
@@ -467,7 +485,8 @@ test(
 		await claim.click()
 		await page.waitForURL((address) => address.searchParams.has('item'))
 		const key = new URL(page.url()).searchParams.get('item')!
-		await page.locator('[data-drawer] .sp-dhead [data-option]', { hasText: 'No' }).click()
+		assert.deepEqual(await page.locator('[data-drawer] ol li').allTextContents(), reproduction)
+		await page.locator('[data-drawer] .sc-drawer-top [data-option]', { hasText: 'No' }).click()
 		const reason = page.locator('[data-drawer] #reject-text')
 		await reason.waitFor()
 		await page.locator('[data-drawer]').getByRole('button', { name: 'Reject' }).click()
@@ -590,15 +609,15 @@ test(
 		await page.waitForURL((address) => address.searchParams.get('item') === key)
 		await page.getByText('Promotion quote is wrong').first().waitFor()
 		await page.locator('[data-drawer] [data-sub][data-label="quote.txt"]').click()
-		await page.locator('.sp-viewer').waitFor()
-		assert.match((await page.locator('.sp-viewer').textContent()) ?? '', /HTTP 200: totalPLN=220/)
+		await page.locator('.sc-viewer').waitFor()
+		assert.match((await page.locator('.sc-viewer').textContent()) ?? '', /HTTP 200: totalPLN=220/)
 		await page.keyboard.press('Escape')
 		await page.locator('[data-drawer]').waitFor()
 		// A running test with no tester shows its empty state as one line across the list.
 		await page.goto(new URL('/explorations/no-tester-yet', ui.url).href)
-		const empty = page.locator('.sp-list > .sp-empty')
+		const empty = page.locator('.sc-list > .sc-empty')
 		await empty.waitFor()
-		const list = await page.locator('.sp-list').first().boundingBox()
+		const list = await page.locator('.sc-list').first().boundingBox()
 		const line = await empty.boundingBox()
 		assert(list && line)
 		assert(line.width > list.width - 4, `The empty state is ${line.width}px wide in a list ${list.width}px wide.`)
@@ -826,6 +845,67 @@ test(
 		assert(historyBefore > 0, 'the existing run has recorded operation history')
 		const first = await startUi(t, workspace)
 		const { page } = await pageFor(t, first.url)
+		await page.goto(new URL('/', first.url).href)
+		await page.locator('[data-live]:not([hidden])').first().waitFor()
+		const blocked = page.locator('[data-key="plan:checkout"]')
+		assert.equal(await blocked.evaluate((tile) => tile.classList.contains('is-sel')), false)
+		const filled = await blocked.locator('.sc-plan-act .sc-btn').evaluate((button) => ({
+			you: button.classList.contains('is-you'),
+			background: getComputedStyle(button).backgroundColor,
+			surface: getComputedStyle(button.closest('.sc-plan')!).backgroundColor,
+		}))
+		assert.ok(
+			filled.you && filled.background !== filled.surface,
+			`a blocked plan keeps its filled button: ${JSON.stringify(filled)}`
+		)
+		assert.equal(await page.locator('[data-key="plan:search"] .sc-plan-act .sc-btn.is-you').count(), 0)
+		for (const waits of await page.locator('.sc-plan-waits').all()) {
+			assert.match((await waits.textContent()) ?? '', /^· waits on \S/)
+			assert.ok(
+				await waits.evaluate(
+					(element) => element.scrollWidth <= element.clientWidth && element.clientWidth > 0
+				),
+				'the waits on part of a plan head is not cut'
+			)
+		}
+		const arrows = page.locator('[data-hints] .sc-key-hint[data-cap="↑↓"] kbd')
+		await arrows.first().waitFor()
+		assert.equal(await arrows.count(), 2)
+		for (const cap of await arrows.all())
+			assert.ok(
+				await cap.evaluate((kbd) => {
+					const box = kbd.getBoundingClientRect()
+					const glyph = kbd.querySelector('.glyph')!.getBoundingClientRect()
+					return (
+						glyph.left >= box.left &&
+						glyph.right <= box.right &&
+						glyph.top >= box.top &&
+						glyph.bottom <= box.bottom
+					)
+				}),
+				'each arrow sits inside its own key cap'
+			)
+		await page.goto(new URL('/runs/run-7?item=finding%3AF1', first.url).href)
+		assert.deepEqual(await page.locator('ol.sc-steps li:visible').allTextContents(), [
+			'Sign in as anna@example.test.',
+			'Add LAMP-01 (400 PLN) to the cart.',
+			'Apply the code SPRING40.',
+			'Read totalPLN in the quote response.',
+		])
+		const volume = directory(t)
+		seedVolume(volume)
+		t.after(endSeededProcesses)
+		const wide = await startUi(t, volume)
+		await page.goto(new URL('/', wide.url).href)
+		const codes = (plan: string) => page.locator(`[data-key="plan:${plan}"] .sc-plan-cols span`).allTextContents()
+		assert.deepEqual(await codes('checkout'), ['', 'R1', 'R2', 'R3', 'R4', 'Out'])
+		const areas = await codes('coupons')
+		assert.equal(areas.at(-1), 'Out')
+		assert.ok(
+			areas.slice(1, -1).every((code) => code.length === 2),
+			`area codes are two letters: ${areas}`
+		)
+		wide.server.kill('SIGTERM')
 		await page.goto(new URL('/plans/checkout?item=g%3AG2', first.url).href)
 		const token = await page.locator('input[name="csrf"]').first().inputValue()
 		first.server.kill('SIGTERM')
@@ -893,7 +973,7 @@ test(
 			await sources(),
 			builtIn.map((name) => [name, 'built-in'])
 		)
-		const empty = page.locator('[data-region="recipes"] .sp-empty')
+		const empty = page.locator('[data-region="recipes"] .sc-empty')
 		assert.match((await empty.textContent()) ?? '', /No custom recipe yet\.[\s\S]*Drop a recipe JSON file in/)
 		assert.equal(await page.locator('main form, main button').count(), 0)
 
@@ -928,8 +1008,8 @@ test(
 
 		await page.locator('[data-label="acme"]').click()
 		await page.waitForURL(/\/settings\/recipes\/acme$/)
-		const facts = await page.locator('#recipe + .facts').innerText()
-		assert.equal(await page.locator('#recipe + .facts [data-source]').getAttribute('data-source'), 'custom')
+		const facts = await page.locator('#recipe + .sc-facts').innerText()
+		assert.equal(await page.locator('#recipe + .sc-facts [data-source]').getAttribute('data-source'), 'custom')
 		assert.ok(facts.includes(path), facts)
 		assert.match(facts, /inventory · command-line tool/)
 		assert.match(facts, /acme on PATH/)
@@ -950,8 +1030,8 @@ test(
 		assert.equal(await page.locator('[data-json]').textContent(), JSON.stringify(withoutUsage))
 
 		await page.goto(new URL('/settings/recipes/node', url).href)
-		const nodeFacts = await page.locator('#recipe + .facts').innerText()
-		assert.equal(await page.locator('#recipe + .facts [data-source]').getAttribute('data-source'), 'built-in')
+		const nodeFacts = await page.locator('#recipe + .sc-facts').innerText()
+		assert.equal(await page.locator('#recipe + .sc-facts [data-source]').getAttribute('data-source'), 'built-in')
 		assert.match(nodeFacts, /The Node\.js that runs Checkmate/)
 		assert.doesNotMatch(nodeFacts, /FILE/)
 		const nodeUsage = (await page.locator('[data-usage]').textContent()) ?? ''
@@ -969,7 +1049,7 @@ test(
 			['acme', 'custom'],
 			['bad.json', 'invalid'],
 		])
-		assert.equal(await page.locator('.banner').count(), 0)
+		assert.equal(await page.locator('.sc-notice').count(), 0)
 		assert.match((await bad.textContent()) ?? '', /bad\.json is not valid: Cannot read JSON: .*<img src=x/)
 		await bad.click()
 		await page.waitForURL(/\/settings\/invalid-recipes\?file=bad\.json$/)
@@ -982,20 +1062,105 @@ test(
 		)
 		assert.match(error, /<img src=x/)
 		assert.ok(
-			(await page.locator('main .facts').innerText()).includes(
+			(await page.locator('main .sc-facts').innerText()).includes(
 				join(workspace, '.checkmate', 'recipes', 'bad.json')
 			)
 		)
 		assert.equal(await page.locator('main img, main form, main button').count(), 0)
 		assert.equal(await page.evaluate(() => document.body.dataset.injected ?? null), null)
 		assert.equal((await fetch(new URL('/settings/invalid-recipes?file=acme.json', url))).status, 404)
-		assert.match(await page.locator('main .facts').innerText(), /Edit this JSON file to fix the listed problems/)
+		assert.match(await page.locator('main .sc-facts').innerText(), /Edit this JSON file to fix the listed problems/)
 		await page.goto(new URL('/settings/recipes', url).href)
 		await page.locator('[data-live]:not(.down):not([hidden])').waitFor()
 		writeFileSync(join(folder, 'bad.json'), JSON.stringify({ ...recipe, name: 'bad' }))
 		await page.locator('[data-label="bad"] [data-source="custom"]').waitFor()
 		rmSync(join(folder, 'bad.json'))
 		rmSync(path)
-		await page.locator('[data-region="recipes"] .sp-empty').waitFor()
+		await page.locator('[data-region="recipes"] .sc-empty').waitFor()
+	}
+)
+
+const screenshots = process.env.CHECKMATE_CATALOGUE_SCREENSHOTS
+const baselines = join(root, 'test/e2e/catalogue')
+const actuals = join(tmpdir(), 'checkmate-catalogue-actual')
+
+function checkScreenshot(theme: string, name: string, actual: Buffer) {
+	const expected = join(baselines, theme, `${name}.png`)
+	if (screenshots === 'update') {
+		mkdirSync(dirname(expected), { recursive: true })
+		writeFileSync(expected, actual)
+		return null
+	}
+	if (existsSync(expected) && readFileSync(expected).equals(actual)) return null
+	mkdirSync(join(actuals, theme), { recursive: true })
+	writeFileSync(join(actuals, theme, `${name}.png`), actual)
+	return `${theme}/${name}`
+}
+
+test(
+	'The dev-only component catalogue shows every component in light and dark without console errors, and checkmate ui does not serve it.',
+	{ skip: browserSkip, timeout: 120_000 },
+	async (t) => {
+		const components = readdirSync(join(root, 'plugin/src/ui/components'))
+			.filter((name) => name.endsWith('.ts') && !name.endsWith('.catalogue.ts'))
+			.map((name) => name.slice(0, -'.ts'.length))
+		assert.ok(components.length > 0)
+		const plain = await startSourceUi({ workspace: directory(t) })
+		t.after(() => plain.close())
+		assert.equal((await fetch(new URL('/catalogue', plain.url))).status, 404)
+		const ui = await startSourceUi({ workspace: directory(t), catalogue: true })
+		t.after(() => ui.close())
+		const pinned = screenshots ? await chromium.launch() : browser!
+		if (screenshots) t.after(() => pinned.close())
+		const changed: string[] = []
+		for (const theme of ['light', 'dark']) {
+			const context = await pinned.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' })
+			t.after(() => context.close())
+			await context.addCookies([{ name: 'checkmate_theme', value: theme, url: ui.url }])
+			await context.route('**/settings/harness/models?*', (route) =>
+				route.fulfill({ json: { models: [], primary: null, defaultModel: null } })
+			)
+			const page = await context.newPage()
+			const errors: string[] = []
+			page.on('console', (message) => {
+				if (message.type() === 'error') errors.push(message.text())
+			})
+			page.on('pageerror', (error) => errors.push(String(error)))
+			await page.goto(new URL('/catalogue', ui.url).href)
+			await page.locator('[data-live]:not([hidden])').first().waitFor()
+			assert.equal(await page.locator('html').getAttribute('data-theme'), theme)
+			if (screenshots) {
+				await page.evaluate(() => document.fonts.ready)
+				assert.ok(
+					await page.evaluate(() =>
+						['IBM Plex Sans', 'IBM Plex Mono'].every((family) =>
+							[...document.fonts].some(
+								(face) => face.family.replace(/"/g, '') === family && face.status === 'loaded'
+							)
+						)
+					),
+					'IBM Plex did not load from Google Fonts'
+				)
+				const height = await page.evaluate(() => document.documentElement.scrollHeight)
+				await page.setViewportSize({ width: 1280, height: height + 200 })
+				await page.mouse.move(0, 0)
+			}
+			for (const name of components) {
+				const entry = page.locator(`[data-catalogue-entry="${name}"]`)
+				assert.equal(await entry.count(), 1, `${name} has no catalogue entry in ${theme}`)
+				assert.ok(await entry.locator('[data-catalogue-example]').count(), `${name} has no example in ${theme}`)
+				if (screenshots) {
+					const actual = await entry.screenshot({ animations: 'disabled', caret: 'hide' })
+					const difference = checkScreenshot(theme, name, actual)
+					if (difference) changed.push(difference)
+				}
+			}
+			assert.deepEqual(errors, [], `console errors in ${theme}`)
+		}
+		assert.deepEqual(
+			changed,
+			[],
+			`Catalogue screenshots differ from test/e2e/catalogue/. The new ones are in ${actuals}.`
+		)
 	}
 )

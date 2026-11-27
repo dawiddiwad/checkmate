@@ -23,7 +23,7 @@ import type { Context } from './layout.ts'
 import { phaseOf } from './activity.ts'
 import { button, optionButton } from './components/button.ts'
 import { listRow, optionsBox } from './components/list-row.ts'
-import { navRail, railBuilds, railCells, railCount, railRow, railSeparator } from './components/nav-rail.ts'
+import { navRail, railBuilds, railCells, railCount, railRow } from './components/nav-rail.ts'
 import { wordMark } from './components/status-mark.ts'
 import { age, glyph, html, plural, words } from './html.ts'
 import { askBadge, askTitle, requestHref, requestName, rowOptions, waitsFor } from './permissions.ts'
@@ -301,7 +301,7 @@ const tags: Record<string, string> = {
 
 export function itemTag(item: Item) {
 	if (item.permission) return askBadge()
-	if (item.blocking) return wordMark({ state: 'blocks', label: 'Blocks', live: true })
+	if (item.blocking) return wordMark({ state: 'blocks', label: 'Blocks' })
 	const state = item.kind === 'defect' ? (item.severity ?? 'low') : item.kind
 	return tags[state] ? wordMark({ state, label: tags[state] }) : wordMark({ state: 'low', label: tags.low })
 }
@@ -329,7 +329,7 @@ function optionForm(
 	fields: Array<[string, string]>,
 	name = label
 ) {
-	return html`<form method="post" action="${action(item)}" class="sp-opt">
+	return html`<form method="post" action="${action(item)}" class="sc-opt-form">
 		${hiddenFields(context, item, fields)}${optionButton({ n, label, name })}
 	</form>`
 }
@@ -351,7 +351,7 @@ export function optionsOf(context: Context, review: Review, item: Item): Html[] 
 	if (item.kind === 'defect')
 		return [
 			item.claim?.handoff
-				? html`<form method="post" action="/plans/${review.planId}/handoff" class="sp-opt">
+				? html`<form method="post" action="/plans/${review.planId}/handoff" class="sc-opt-form">
 						${hiddenFields(context, item, [
 							['claim', item.id],
 							['undo', '1'],
@@ -396,14 +396,14 @@ export function optionsOf(context: Context, review: Review, item: Item): Html[] 
 
 export function extraOf(context: Context, review: Review, item: Item) {
 	const form = (field: string, label: string, name: string, fields: Array<[string, string]>, url = action(item)) =>
-		html`<div class="sp-c-extra" data-extra="${field}" hidden>
-			<form method="post" action="${url}" class="sp-form" data-field-form>
+		html`<div class="sc-c-extra" data-extra="${field}" hidden>
+			<form method="post" action="${url}" class="sc-form" data-field-form>
 				${hiddenFields(context, item, fields)} ${item.kind === 'gap' ? html`<div data-stale-slot></div>` : ''}
 				<label for="${field}-${item.key}">${label}</label>
 				<textarea id="${field}-${item.key}" name="${name}" rows="2" required></textarea>
-				<div class="btns">
+				<div class="sc-row-btns">
 					${button({ label: 'Send', emphasis: 'primary' })}
-					<span class="small">Enter sends. Shift+Enter starts a new line. Esc keeps the draft.</span>
+					<span class="sc-note">Enter sends. Shift+Enter starts a new line. Esc keeps the draft.</span>
 				</div>
 			</form>
 		</div>`
@@ -443,6 +443,7 @@ export function itemRow(context: Context, review: Review, item: Item, id: string
 		href: opened,
 		label: item.id,
 		settled: dim,
+		blocking: item.blocking,
 		attrs: {
 			'data-builds': JSON.stringify(item.builds),
 			'data-needs': item.needs,
@@ -501,6 +502,36 @@ function marks(review: Review, cells: CellStatus[]) {
 	return railCells({
 		cells: cells.slice(from).map((status, index) => cellOf(review, status, builds[from + index].build)),
 	})
+}
+
+const boardMaxColumns = 9
+
+export function boardColumns(review: Review) {
+	const rules = review.map.rows.filter((row) => row.rule.id !== outside)
+	const out = review.map.rows.find((row) => row.rule.id === outside)!
+	const own =
+		rules.length <= boardMaxColumns
+			? rules.map((row) => ({
+					label: row.rule.id,
+					title: row.rule.text,
+					cells: row.cells.map((cell) => cell.status),
+				}))
+			: review.areas.map((area) => ({ label: area.label.slice(0, 2), title: area.label, cells: area.cells }))
+	return [...own, { label: 'Out', title: 'Outside the rules', cells: out.cells.map((cell) => cell.status) }]
+}
+
+export function ruleBoard(review: Review) {
+	const builds = shown(review)
+	const from = review.map.builds.length - builds.length
+	return {
+		builds: builds.map((item) => buildLabel(review, item.build)),
+		rows: review.map.rows.map((row) => ({
+			id: row.rule.id,
+			text: row.rule.id === outside ? 'Outside the rules' : row.rule.text,
+			storedTests: row.storedTests,
+			cells: row.cells.slice(from).map((cell, index) => cellOf(review, cell.status, builds[index].build)),
+		})),
+	}
 }
 
 function navRow(
@@ -622,7 +653,7 @@ export function navigator(
 	})
 	return navRail({
 		planId,
-		builds: builds.length,
+		buildCount: builds.length,
 		pinned: html`${review.running ? testersRow : ''}
 		${navRow(
 			review,
@@ -638,7 +669,7 @@ export function navigator(
 		)}
 		${navRow(review, active, 'all', href('all'), '', 'All items', count(review.items.length))}
 		${navRow(review, active, 'chats', chat.href, '', 'Plan chats', html``, { look: 'link' })}`,
-		rows: html`${railBuilds({ builds: builds.map((item) => ({ build: item.build, label: buildLabel(review, item.build) })) })}
+		board: html`${railBuilds({ builds: builds.map((item) => ({ build: item.build, label: buildLabel(review, item.build) })) })}
 		${ruleRows}
 		${navRow(
 			review,
@@ -654,9 +685,8 @@ export function navigator(
 			{
 				look: 'rule',
 			}
-		)}
-		${railSeparator}
-		${review.map.builds.map((item) =>
+		)}`,
+		builds: html`${review.map.builds.map((item) =>
 			navRow(
 				review,
 				active,
@@ -666,11 +696,10 @@ export function navigator(
 				item.build,
 				count(itemsOf(review, `build:${item.build}`).length)
 			)
-		)}
-		${review.map.builds.length ? railSeparator : ''}
-		${navRow(review, active, 'rules', href('rules'), '', 'Rules of the plan', count(review.map.rows.length - 1))}
+		)}`,
+		links: html`${navRow(review, active, 'rules', href('rules'), '', 'Rules of the plan', count(review.map.rows.length - 1))}
 		${review.running ? '' : testersRow}
-		${navRow(review, active, 'plan', review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, '', review.revision ? `Plan @${review.revision}` : 'Plan request', html`<span></span>`, { look: 'link' })}`,
+		${navRow(review, active, 'plan', review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, '', review.revision ? `Plan @${review.revision}` : 'Plan request', html``, { look: 'link' })}`,
 	})
 }
 

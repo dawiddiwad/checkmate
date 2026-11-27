@@ -1,23 +1,42 @@
-kbd {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 1px;
+.sc-key {
+	display: inline-grid;
+	place-items: center;
 	min-width: 16px;
 	height: 16px;
-	padding: 0 4px;
-	border: 1px solid var(--edge);
-	border-bottom-width: 2px;
+	padding: 0 var(--space-1);
+	border: var(--hairline) solid var(--edge);
+	border-bottom-width: var(--rule);
 	background: transparent;
-	color: inherit;
+	color: var(--ink);
 	font: 600 11px/13px var(--font-mono);
-	letter-spacing: 0;
-	text-transform: none;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
 	white-space: nowrap;
 }
-kbd .glyph {
+.sc-key-hint {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	font: 400 13px/20px var(--font-sans);
+	color: var(--muted);
+	white-space: nowrap;
+}
+button.sc-key-hint {
+	cursor: pointer;
+}
+button.sc-key-hint:hover {
+	color: var(--ink);
+}
+.sc-key .glyph {
 	width: 10px;
 	height: 10px;
 	-webkit-mask-size: 10px 10px;
 	mask-size: 10px 10px;
+	vertical-align: 0;
+}
+.sc-key + .sc-key {
+	margin-left: 2px;
 }

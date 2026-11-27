@@ -24,18 +24,19 @@ import {
 	testerStopOption,
 } from '../actions.ts'
 import { failureOf, phases, runsOf } from '../activity.ts'
-import { banner } from '../components/banner.ts'
 import { formButton } from '../components/button.ts'
 import { dataTable, tableRow } from '../components/data-table.ts'
 import { emptyLine } from '../components/empty-state.ts'
 import { evidenceList, viewLink } from '../components/evidence-viewer.ts'
-import { groupHeader, listRow, optionsBox } from '../components/list-row.ts'
+import { optionsBox } from '../components/list-row.ts'
+import { testerCard, timeline } from '../components/tester-card.ts'
 import { downloadMenu } from '../components/menu.ts'
+import { notice } from '../components/notice.ts'
 import { crumbBar, heading } from '../components/page-heading.ts'
 import { statusMark, statusWord, wordMark } from '../components/status-mark.ts'
 import { shownAsText } from '../evidence.ts'
 import { actorField, emptyState, gapPanel, hidden, keptText, messages, rationaleField, recordPanel } from '../forms.ts'
-import { ago, asList, costText, duration, html, join, plural, time } from '../html.ts'
+import { ago, asList, costText, duration, html, join, plural, time, words } from '../html.ts'
 import {
 	askingPill,
 	asksFor,
@@ -55,13 +56,13 @@ function claimRow(planId: string, claim: Claim) {
 	const key = encodeURIComponent(`c:${claim.id}`)
 	return tableRow({
 		cells: [
-			html`<a class="mono" href="/plans/${planId}?view=all&amp;item=${key}">${claim.id}</a>`,
+			html`<a class="sc-mono" href="/plans/${planId}?view=all&amp;item=${key}">${claim.id}</a>`,
 			statusMark({ state: claim.state }),
 			statusMark({ state: claim.severity }),
 			claim.actors.join(', '),
 			{
-				content: html`${claim.title}${claim.reason ? html`<p class="help">${claim.reason}</p>` : ''}`,
-				attrs: { class: 'wrap-cell' },
+				content: html`${claim.title}${claim.reason ? html`<p class="sc-help">${claim.reason}</p>` : ''}`,
+				attrs: { class: 'is-title' },
 			},
 		],
 		attrs: { id: claim.id, 'data-key': `claim:${claim.id}` },
@@ -69,7 +70,8 @@ function claimRow(planId: string, claim: Claim) {
 }
 
 export function claimsTable(planId: string, claims: Claim[]) {
-	if (!claims.length) return html`<p class="none">No claim. Claims show here when an explorer reports a defect.</p>`
+	if (!claims.length)
+		return html`<p class="sc-empty is-line">No claim. Claims show here when an explorer reports a defect.</p>`
 	return dataTable({
 		columns: ['Claim', 'State', 'Severity', 'Reporters', 'Title'],
 		rows: claims.map((claim) => claimRow(planId, claim)),
@@ -78,16 +80,19 @@ export function claimsTable(planId: string, claims: Claim[]) {
 }
 
 function claimLinks(planId: string, claims: Claim[]) {
-	if (!claims.length) return html`<p class="none">No claim. Claims show here when an explorer reports a defect.</p>`
-	return html`<ul class="items">
+	if (!claims.length)
+		return html`<p class="sc-empty is-line">No claim. Claims show here when an explorer reports a defect.</p>`
+	return html`<ul class="sc-links">
 		${claims.map(
 			(claim) =>
 				html`<li data-key="claim:${claim.id}">
-					<a class="item" href="/plans/${planId}?view=all&amp;item=${encodeURIComponent(`c:${claim.id}`)}"
-						><span class="id">${claim.id}</span
-						><span class="what"
-							>${claim.title}${claim.reason ? html`<span class="help"> ${claim.reason}</span>` : ''}</span
-						><span class="end"
+					<a
+						class="sc-link-row"
+						href="/plans/${planId}?view=all&amp;item=${encodeURIComponent(`c:${claim.id}`)}"
+						><span class="sc-c-id">${claim.id}</span
+						><span class="sc-c-title"
+							>${claim.title}${claim.reason ? html`<span class="sc-help"> ${claim.reason}</span>` : ''}</span
+						><span class="sc-link-end"
 							>${statusMark({ state: claim.severity })} ${statusMark({ state: claim.state })}</span
 						></a
 					>
@@ -97,14 +102,17 @@ function claimLinks(planId: string, claims: Claim[]) {
 }
 
 export function questionsList(planId: string, questions: Question[]) {
-	if (!questions.length) return html`<p class="none">No question. Questions show here when an explorer asks one.</p>`
-	return html`<ul class="items">
+	if (!questions.length)
+		return html`<p class="sc-empty is-line">No question. Questions show here when an explorer asks one.</p>`
+	return html`<ul class="sc-links">
 		${questions.map(
 			(question) =>
 				html`<li data-key="question:${question.id}">
-					<a class="item" href="/plans/${planId}?view=all&amp;item=${encodeURIComponent(`q:${question.id}`)}"
-						><span class="id">${question.id}</span><span class="what">${question.question}</span
-						><span class="end"
+					<a
+						class="sc-link-row"
+						href="/plans/${planId}?view=all&amp;item=${encodeURIComponent(`q:${question.id}`)}"
+						><span class="sc-c-id">${question.id}</span><span class="sc-c-title">${question.question}</span
+						><span class="sc-link-end"
 							>${question.blocking ? html`${statusMark({ state: 'blocking' })} ` : ''}${statusMark({ state: question.answer === null ? 'open' : 'answered' })}</span
 						></a
 					>
@@ -155,7 +163,7 @@ export function explorationBanners(explorations: Listed[]) {
 	const running = explorations.filter((item) => item.running)
 	const last = explorations.at(-1)
 	return html`${running.map((item) =>
-		banner({
+		notice({
 			kind: item.paused ? 'warn' : 'info',
 			content: html`<span data-key="running:${item.explorationId}"
 				>${item.paused ? html`<strong>Exploration ${item.explorationId} is paused: ${item.paused}</strong> It waits on the oracle in the Claude Code session.` : html`Exploration ${item.explorationId} is running.`}
@@ -166,7 +174,7 @@ export function explorationBanners(explorations: Listed[]) {
 	)}
 	${
 		last && (last.state === 'failed' || last.state === 'stopped' || last.state === 'interrupted')
-			? banner({
+			? notice({
 					kind: 'fail',
 					content: html`<span data-key="failed:${last.explorationId}"
 						>${endedLine(last)} ${dataLine('', last.data)}
@@ -179,33 +187,33 @@ export function explorationBanners(explorations: Listed[]) {
 
 export function explorationsTable(explorations: Listed[]) {
 	if (!explorations.length)
-		return html`<p class="none">No exploration yet. Start one with <code>checkmate test</code>.</p>`
+		return html`<p class="sc-empty is-line">No exploration yet. Start one with <code>checkmate test</code>.</p>`
 	return dataTable({
 		columns: ['Exploration', 'State', 'Build', 'Instance', 'Level', 'Started', 'Cost'],
 		rows: [...explorations].reverse().map((item) =>
 			tableRow({
 				cells: [
-					html`<a class="mono" href="/explorations/${item.explorationId}">${item.explorationId}</a>`,
+					html`<a class="sc-mono" href="/explorations/${item.explorationId}">${item.explorationId}</a>`,
 					html`${statusMark({ state: item.state })}
-					${item.reason !== null ? html`<p class="help">${dataLine(item.reason, item.data)}</p>` : ''}
+					${item.reason !== null ? html`<p class="sc-help">${dataLine(item.reason, item.data)}</p>` : ''}
 					${
 						item.follow === 'failed' || item.follow === 'stopped' || item.follow === 'interrupted'
-							? html`<p class="help">
+							? html`<p class="sc-help">
 									Follow-up ${item.follow}: ${dataLine(item.followReason, item.data)}
 								</p>`
 							: ''
 					}`,
-					{ content: item.build, attrs: { class: 'mono' } },
-					{ content: item.instanceId, attrs: { class: 'mono' } },
-					html`${item.level ?? html`<span class="muted">none</span>`}${
+					{ content: item.build, attrs: { class: 'is-mono' } },
+					{ content: item.instanceId, attrs: { class: 'is-mono' } },
+					html`${item.level ?? html`<span class="sc-muted">none</span>`}${
 						item.explorers === null
 							? ''
-							: html` <span class="muted">· ${plural(item.explorers, 'explorer')}</span>`
+							: html` <span class="sc-muted">· ${plural(item.explorers, 'explorer')}</span>`
 					}`,
-					{ content: time(item.startedAt), attrs: { class: 'nowrap' } },
+					{ content: time(item.startedAt), attrs: { class: 'is-muted' } },
 					{
 						content: costText(item.costUsd, item.costPartial),
-						attrs: { class: 'exploration-cost', title: 'Reported exploration cost' },
+						attrs: { class: 'is-num', title: 'Reported exploration cost' },
 					},
 				],
 				attrs: { 'data-key': `exploration:${item.explorationId}` },
@@ -218,7 +226,7 @@ export function explorationsTable(explorations: Listed[]) {
 type LiveExplorer = Live['explorers'][number]
 type Found = Live['found'][number]
 
-const none = html`<span class="muted">–</span>`
+const none = html`<span class="sc-muted">–</span>`
 
 function explorerState(item: LiveExplorer) {
 	return item.state ? statusMark({ state: item.state }) : statusMark({ state: 'pending', label: 'not started' })
@@ -260,7 +268,7 @@ function workNote(live: Live) {
 function failedLine(run: Run, live: Live) {
 	if (!run.failure) return html`<strong>${run.outcome}</strong>`
 	return html`<strong>${run.failure.cause}</strong> ${run.failure.next}
-		${run.failure.detail ? html`<span class="help">${run.failure.detail}</span>` : ''} ${dataLine('', live.data)}`
+		${run.failure.detail ? html`<span class="sc-help">${run.failure.detail}</span>` : ''} ${dataLine('', live.data)}`
 }
 
 function strayLines(live: Live) {
@@ -268,7 +276,7 @@ function strayLines(live: Live) {
 		.filter((item) => item.stray.length)
 		.map(
 			(item) =>
-				html`<p class="help" data-key="stray-${item.explorer}">
+				html`<p class="sc-help" data-key="stray-${item.explorer}">
 					Workspace entries appeared outside the work folder during tester ${item.explorer}’s turns:
 					<code>${item.stray.join(', ')}</code>. Checkmate did not touch them.
 				</p>`
@@ -277,7 +285,7 @@ function strayLines(live: Live) {
 
 function stateLine(store: Store, live: Live, run: Run) {
 	if (live.stuck.length)
-		return banner({
+		return notice({
 			kind: 'fail',
 			content: html`<span data-key="stop-stuck"
 				><strong
@@ -288,7 +296,7 @@ function stateLine(store: Store, live: Live, run: Run) {
 			>`,
 		})
 	if (live.stopping)
-		return banner({
+		return notice({
 			kind: 'info',
 			content: html`<span data-key="stopping"
 				><strong>Stopping ${live.explorationId}…</strong> The testers end now. This page shows the result when
@@ -296,27 +304,27 @@ function stateLine(store: Store, live: Live, run: Run) {
 			>`,
 		})
 	if (live.running && live.paused)
-		return banner({
+		return notice({
 			kind: 'warn',
 			content: html`<span data-key="paused"
 				><strong>Paused: ${live.paused}</strong> It waits for you in the Claude Code session.</span
 			>`,
 		})
 	if (live.running)
-		return banner({
+		return notice({
 			kind: 'info',
 			content: html`Exploration ${live.explorationId} is running. Phase: ${run.phase ?? live.phase}. This page
 			updates by itself.`,
 		})
 	if (live.state === 'failed')
-		return banner({ kind: 'fail', content: html`<span data-key="run-ended">${failedLine(run, live)}</span>` })
+		return notice({ kind: 'fail', content: html`<span data-key="run-ended">${failedLine(run, live)}</span>` })
 	if (live.state === 'stopped')
-		return banner({
+		return notice({
 			kind: 'fail',
 			content: html`<span data-key="run-ended">${stoppedLine(store, live)}.${workNote(live)}</span>`,
 		})
 	if (live.state === 'interrupted')
-		return banner({
+		return notice({
 			kind: 'fail',
 			content: html`<span data-key="run-ended"
 				><strong>The run was interrupted: the supervisor stopped before the end.</strong>${workNote(live)}
@@ -327,7 +335,7 @@ function stateLine(store: Store, live: Live, run: Run) {
 			>`,
 		})
 	if (live.follow === 'failed' || live.follow === 'stopped' || live.follow === 'interrupted')
-		return banner({
+		return notice({
 			kind: 'fail',
 			content: html`<span data-key="follow-failed"
 				><strong
@@ -338,7 +346,7 @@ function stateLine(store: Store, live: Live, run: Run) {
 			>`,
 		})
 	if (live.state === 'open')
-		return banner({
+		return notice({
 			kind: 'info',
 			content: html`Exploration ${live.explorationId} is open. Record its sessions, then run
 				<code>checkmate explore finish ${live.explorationId}</code>.`,
@@ -376,7 +384,6 @@ function testerState(live: Live, item: LiveExplorer) {
 	return wordMark({
 		state: look[item.state] ?? 'not_running',
 		label: label[item.state] ?? item.state,
-		live: item.state === 'running',
 	})
 }
 
@@ -392,41 +399,12 @@ function testerLine(item: LiveExplorer) {
 	return `In its ${item.turn ?? 'test'} turn. No activity line yet.`
 }
 
-function spRow(
-	key: string,
-	href: string,
-	label: string,
-	tag: Html,
-	title: Html | string,
-	meta: Html | string,
-	n: string,
-	metaText = '',
-	opts: Html | '' = '',
-	ask = ''
-) {
-	return listRow({
-		id: n,
-		key,
-		href,
-		label,
-		inListbox: true,
-		attrs: { 'data-ask': ask || null },
-		tag,
-		shownId: label,
-		title,
-		titleText: typeof title === 'string' ? title : '',
-		meta,
-		metaText: typeof meta === 'string' ? meta : metaText,
-		options: opts,
-	})
-}
-
 function stepAsks(open: Permission[]) {
 	return open
 		.filter((item) => !item.tester)
 		.map(
 			(item) =>
-				html`<p class="help sp-asks" data-key="step-asks-${item.id}">
+				html`<p class="sc-help sc-asks" data-key="step-asks-${item.id}">
 					<a href="${requestHref(item, null)}">Step ${item.who} asks to ${asksFor(item)}</a>
 				</p>`
 		)
@@ -443,73 +421,96 @@ function stoppableTester(live: Live, item: LiveExplorer) {
 	return live.running && live.state !== 'following' && live.path !== 'session' && item.state === 'running'
 }
 
+function testerStats(live: Live, item: LiveExplorer) {
+	const raw = rawCount(live, item.explorer)
+	return [
+		inState(item) || '—',
+		`cost ${costText(item.costUsd, item.costPartial)}${raw ? ` · ${raw} not merged` : ''}`,
+	]
+}
+
 function explorationList(context: Context, live: Live, others: Listed[], asking: Map<string, Permission>) {
+	const here = `/explorations/${live.explorationId}`
 	const explorers = live.explorers.map((item, index) => {
-		const raw = rawCount(live, item.explorer)
 		const asked = asking.get(item.explorer)
-		const here = `/explorations/${live.explorationId}`
 		const from = `${here}?at=${encodeURIComponent(`explorer:${item.explorer}`)}`
-		return spRow(
-			`explorer:${item.explorer}`,
-			asked ? requestHref(asked, from) : explorationHref(live.explorationId, `explorer:${item.explorer}`),
-			item.explorer,
-			asked ? askingPill() : testerState(live, item),
-			asked ? `Asks to ${asksFor(asked)}` : testerLine(item),
-			asked
-				? waitsFor(asked)
-				: html`${item.turn ?? ''}${item.turn && item.elapsedMs !== null ? ' · ' : ''}${inState(item)}${raw ? ` · ${raw} not merged` : ''}`,
-			`tester-${index}`,
-			[
-				item.turn,
-				item.pausedAt
-					? `paused for ${duration(Date.now() - Date.parse(item.pausedAt))}`
-					: item.elapsedMs !== null
-						? duration(item.elapsedMs)
-						: null,
-				raw ? `${raw} not merged` : null,
-			]
-				.filter(Boolean)
-				.join(' · '),
-			asked
+		return testerCard({
+			id: `tester-${index}`,
+			key: `explorer:${item.explorer}`,
+			href: asked ? requestHref(asked, from) : explorationHref(live.explorationId, `explorer:${item.explorer}`),
+			label: item.explorer,
+			mark: asked ? askingPill() : testerState(live, item),
+			phase: item.turn ?? '',
+			line: asked ? html`Asks to ${asksFor(asked)} · ${waitsFor(asked)}` : testerLine(item),
+			stats: testerStats(live, item),
+			options: asked
 				? rowOptions(context, asked, from)
 				: stoppableTester(live, item)
 					? optionsBox([testerStopOption(live.explorationId, item.explorer, 1)])
 					: '',
-			asked ? `${asked.askerId}/${asked.id}` : ''
-		)
+			done: ['ended', 'completed'].includes(item.state ?? ''),
+			attrs: { 'data-ask': asked ? `${asked.askerId}/${asked.id}` : null },
+		})
 	})
-	const phases = live.phases.map((row, index) =>
-		spRow(
-			`phase:${row.phase}`,
-			explorationHref(live.explorationId, `phase:${row.phase}`),
-			row.phase,
-			statusMark({ state: row.state }),
-			row.reason ?? phaseNote(row.state),
-			'',
-			`phase-${index}`
-		)
-	)
-	const sessions = others.map((item, index) =>
-		spRow(
-			`exploration:${item.explorationId}`,
-			`/explorations/${item.explorationId}`,
-			item.explorationId,
-			statusMark({ state: item.running && item.paused ? 'paused' : item.state }),
-			`Build ${item.build} on ${item.instanceId}${item.reason ? `: ${item.reason}` : ''}`,
-			html`${time(item.startedAt)}`,
-			`session-${index}`
-		)
-	)
-	return html`<div class="sp-list" role="listbox" aria-label="Testers and phases of ${live.explorationId}" data-list>
-		${groupHeader({ label: live.running ? 'Testers now' : 'Testers', count: explorers.length })}
-		${explorers.length ? explorers : emptyLine({ text: 'No tester has started yet.' })}
-		${groupHeader({ label: 'After the testers', count: phases.length })} ${phases}
+	const phases = timeline({
+		label: 'After the testers',
+		events: live.phases.map((row, index) => ({
+			id: `phase-${index}`,
+			key: `phase:${row.phase}`,
+			href: explorationHref(live.explorationId, `phase:${row.phase}`),
+			label: row.phase,
+			mark: statusMark({ state: row.state, label: '' }),
+			text: row.reason ?? phaseNote(row.state),
+			meta: words(row.state),
+		})),
+	})
+	const sessions = dataTable({
+		columns: ['Session', 'State', 'Build and instance', 'Started'],
+		rows: others.map((item) =>
+			tableRow({
+				attrs: {
+					'data-row': true,
+					'data-key': `exploration:${item.explorationId}`,
+					'data-href': `/explorations/${item.explorationId}`,
+					'data-label': item.explorationId,
+				},
+				cells: [
+					{
+						content: html`<a href="/explorations/${item.explorationId}">${item.explorationId}</a>`,
+						attrs: { class: 'is-mono' },
+					},
+					statusMark({ state: item.running && item.paused ? 'paused' : item.state }),
+					{
+						content: html`Build <code>${item.build}</code> on
+							<code>${item.instanceId}</code>${item.reason ? `: ${item.reason}` : ''}`,
+						attrs: { class: 'is-title' },
+					},
+					{ content: time(item.startedAt), attrs: { class: 'is-muted' } },
+				],
+			})
+		),
+		scroll: true,
+	})
+	return html`<section class="sc-sec" aria-labelledby="testers-h">
+			<h2 class="sc-sec-h" id="testers-h">
+				${live.running ? 'Testers now' : 'Testers'}<b>${explorers.length}</b>
+			</h2>
+			<div class="sc-list" role="listbox" aria-label="Testers of ${live.explorationId}" data-list>
+				${explorers.length ? explorers : emptyLine({ text: 'No tester has started yet.' })}
+			</div>
+		</section>
+		<section class="sc-sec" aria-labelledby="after-h">
+			<h2 class="sc-sec-h" id="after-h">After the testers<b>${live.phases.length}</b></h2>
+			${phases}
+		</section>
 		${
-			sessions.length
-				? html`${groupHeader({ label: `Other sessions of ${live.planId}`, count: sessions.length })} ${sessions}`
+			others.length
+				? html`<section class="sc-sec" aria-labelledby="others-h">
+						<h2 class="sc-sec-h" id="others-h">Other sessions of ${live.planId}<b>${others.length}</b></h2>
+						${sessions}
+					</section>`
 				: ''
-		}
-	</div>`
+		}`
 }
 
 const phaseNotes: Record<string, string> = {
@@ -539,13 +540,13 @@ function foundFiles(store: Store, live: Live, entry: Found): EvidenceFile[] {
 function foundRow(store: Store, live: Live, entry: Found) {
 	const link = entry.claimId
 		? html`<a
-				class="mono"
+				class="sc-mono"
 				href="/plans/${live.planId}?view=all&amp;item=${encodeURIComponent(`c:${entry.claimId}`)}"
 				>${entry.claimId}</a
 			>`
 		: entry.questionId
 			? html`<a
-					class="mono"
+					class="sc-mono"
 					href="/plans/${live.planId}?view=all&amp;item=${encodeURIComponent(`q:${entry.questionId}`)}"
 					>${entry.questionId}</a
 				>`
@@ -555,7 +556,7 @@ function foundRow(store: Store, live: Live, entry: Found) {
 		: statusMark({ state: 'pending', label: `${entry.kind}, not merged` })
 	return html`<li class="found${entry.merged ? '' : ' raw'}" data-key="${entry.merged ? 'found' : 'raw'}:${entry.id}">
 		<div class="found-h">
-			<span class="mono">${entry.id}</span>
+			<span class="sc-mono">${entry.id}</span>
 			${entry.severity ? statusMark({ state: entry.severity }) : entry.blocking ? statusMark({ state: 'blocking' }) : ''}
 			${marker}
 		</div>
@@ -567,8 +568,8 @@ function foundRow(store: Store, live: Live, entry: Found) {
 function rawSection(store: Store, live: Live, entries: Found[]) {
 	if (!entries.length) return ''
 	return html`<section class="raw-box" aria-labelledby="unmerged-title" data-key="unmerged">
-		<h3 class="lab" id="unmerged-title">Not merged yet <span class="n">${entries.length}</span></h3>
-		<p class="help">
+		<h3 class="sc-card-h" id="unmerged-title">Not merged yet <span class="sc-count-n">${entries.length}</span></h3>
+		<p class="sc-help">
 			These are the raw questions and defects of single explorers. They can change before the exploration is
 			completed. Needs you and the plan page do not show them.
 		</p>
@@ -590,7 +591,7 @@ function fileOpeners(live: Live, item: LiveExplorer) {
 
 function savedFiles(store: Store, live: Live, item: LiveExplorer) {
 	if (!item.files.length)
-		return html`<p class="none">
+		return html`<p class="sc-empty is-line">
 			${live.running ? 'The files show when the explorer ends.' : 'The record keeps no file of this explorer.'}
 		</p>`
 	const texts = explorationReport(store, live.explorationId).files
@@ -619,31 +620,33 @@ function summaryDetail(store: Store, live: Live, crumbs: Html, options: Html | '
 		)
 	)
 	return html`${crumbs}
-		<h2 class="q-h">Overview</h2>
+		<h2 class="sc-sec-h">Overview</h2>
 		${options} ${rawSection(store, live, live.unmerged)}
 		<section aria-labelledby="claims-title">
-			<h3 class="lab" id="claims-title">Claims <span class="n">${live.claims.length}</span></h3>
-			${merged ? claimLinks(live.planId, live.claims) : html`<p class="none">The claims show when the exploration is completed.</p>`}
+			<h3 class="sc-card-h" id="claims-title">Claims <span class="sc-count-n">${live.claims.length}</span></h3>
+			${merged ? claimLinks(live.planId, live.claims) : html`<p class="sc-empty is-line">The claims show when the exploration is completed.</p>`}
 		</section>
 		<section aria-labelledby="questions-title">
-			<h3 class="lab" id="questions-title">Questions <span class="n">${live.questions.length}</span></h3>
+			<h3 class="sc-card-h" id="questions-title">
+				Questions <span class="sc-count-n">${live.questions.length}</span>
+			</h3>
 			${
 				merged
 					? questionsList(live.planId, live.questions)
-					: html`<p class="none">The merged questions show when the exploration is completed.</p>`
+					: html`<p class="sc-empty is-line">The merged questions show when the exploration is completed.</p>`
 			}
 		</section>
 		${
 			files.length
 				? html`<section aria-labelledby="files-title">
-						<h3 class="lab" id="files-title">Saved files</h3>
-						<ul class="plain">
+						<h3 class="sc-card-h" id="files-title">Saved files</h3>
+						<ul class="sc-plain">
 							${files}
 						</ul>
 					</section>`
 				: ''
 		}
-		<div class="actions">
+		<div class="sc-row-btns">
 			${downloadMenu({ label: 'Download report', base: `/explorations/${live.explorationId}/export`, note: 'The record of this exploration.', formats: ['md', 'json'] })}
 		</div>`
 }
@@ -651,48 +654,43 @@ function summaryDetail(store: Store, live: Live, crumbs: Html, options: Html | '
 function explorerDetail(store: Store, live: Live, item: LiveExplorer, crumbs: Html) {
 	const found = live.found.filter((entry) => entry.explorer === item.explorer)
 	return html`${crumbs}
-		<h2 class="q-h">Explorer ${item.explorer}</h2>
-		<p class="q-meta">${explorerState(item)} ${inState(item)}</p>
-		${['failed', 'operational_error'].includes(item.state ?? '') && item.reason ? html`<div class="banner fail" role="alert"><strong>Tester failed.</strong> ${Array.isArray(item.reason) ? item.reason.join(' ') : item.reason} ${item.hint ? html`<p>${item.hint}</p>` : ''}</div>` : ''}
-		<dl class="facts">
+		<h2 class="sc-sec-h">Explorer ${item.explorer}</h2>
+		<p class="sc-h-meta">${explorerState(item)} ${inState(item)}</p>
+		${['failed', 'operational_error'].includes(item.state ?? '') && item.reason ? html`<div class="sc-notice is-error" role="alert"><strong>Tester failed.</strong> ${Array.isArray(item.reason) ? item.reason.join(' ') : item.reason} ${item.hint ? html`<p>${item.hint}</p>` : ''}</div>` : ''}
+		<dl class="sc-facts">
 			${
 				item.model
-					? html`<div>
+					? html`
 							<dt>Model</dt>
 							<dd><code>${item.model}</code></dd>
-						</div>`
+						`
 					: ''
 			}
-			<div>
-				<dt>Reported cost</dt>
-				<dd>${costText(item.costUsd, item.costPartial)}</dd>
-			</div>
-			<div>
-				<dt>${live.path === 'session' ? 'Step' : 'Turn'}</dt>
-				<dd>${item.turn ?? none}</dd>
-			</div>
-			<div>
-				<dt>${live.path === 'session' ? 'Since' : 'Started'}</dt>
-				<dd>${item.startedAt ? time(item.startedAt) : none}</dd>
-			</div>
-			<div>
-				<dt>Last activity</dt>
-				<dd>${item.activity ?? none}</dd>
-			</div>
-			<div>
-				<dt>Record</dt>
-				<dd>
-					${item.recorded ? html`${statusMark({ state: item.recorded })} ${plural(item.saved, 'entry', 'entries')}` : none}
-				</dd>
-			</div>
+
+			<dt>Reported cost</dt>
+			<dd>${costText(item.costUsd, item.costPartial)}</dd>
+
+			<dt>${live.path === 'session' ? 'Step' : 'Turn'}</dt>
+			<dd>${item.turn ?? none}</dd>
+
+			<dt>${live.path === 'session' ? 'Since' : 'Started'}</dt>
+			<dd>${item.startedAt ? time(item.startedAt) : none}</dd>
+
+			<dt>Last activity</dt>
+			<dd>${item.activity ?? none}</dd>
+
+			<dt>Record</dt>
+			<dd>
+				${item.recorded ? html`${statusMark({ state: item.recorded })} ${plural(item.saved, 'entry', 'entries')}` : none}
+			</dd>
 		</dl>
 		${
 			stoppableTester(live, item)
 				? html`<section aria-labelledby="options-title" data-key="options:${item.explorer}">
-						<h3 class="lab" id="options-title">Options</h3>
-						<ul class="sp-optlist">
+						<h3 class="sc-card-h" id="options-title">Options</h3>
+						<ul class="sc-ask-list">
 							<li>
-								${testerStopOption(live.explorationId, item.explorer, 1)}<span class="help"
+								${testerStopOption(live.explorationId, item.explorer, 1)}<span class="sc-help"
 									>Ends this tester. The other testers go on.</span
 								>
 							</li>
@@ -706,19 +704,19 @@ function explorerDetail(store: Store, live: Live, item: LiveExplorer, crumbs: Ht
 			found.filter((entry) => !entry.merged)
 		)}
 		<section aria-labelledby="found-title">
-			<h3 class="lab" id="found-title">
-				Merged <span class="n">${found.filter((entry) => entry.merged).length}</span>
+			<h3 class="sc-card-h" id="found-title">
+				Merged <span class="sc-count-n">${found.filter((entry) => entry.merged).length}</span>
 			</h3>
 			${
 				found.some((entry) => entry.merged)
 					? html`<ul class="found-list">
 							${found.filter((entry) => entry.merged).map((entry) => foundRow(store, live, entry))}
 						</ul>`
-					: html`<p class="none">No entry of ${item.explorer} is merged yet.</p>`
+					: html`<p class="sc-empty is-line">No entry of ${item.explorer} is merged yet.</p>`
 			}
 		</section>
 		<section aria-labelledby="saved-title">
-			<h3 class="lab" id="saved-title">Saved files</h3>
+			<h3 class="sc-card-h" id="saved-title">Saved files</h3>
 			${savedFiles(store, live, item)}
 		</section>`
 }
@@ -726,10 +724,10 @@ function explorerDetail(store: Store, live: Live, item: LiveExplorer, crumbs: Ht
 function phaseDetail(live: Live, row: Live['phases'][number], crumbs: Html) {
 	const failed = row.state === 'failed' || row.state === 'stopped'
 	return html`${crumbs}
-		<h2 class="q-h">Phase ${row.phase}</h2>
-		<p class="q-meta">${statusMark({ state: row.state })}</p>
+		<h2 class="sc-sec-h">Phase ${row.phase}</h2>
+		<p class="sc-h-meta">${statusMark({ state: row.state })}</p>
 		<p>${row.reason ?? phaseNote(row.state)}</p>
-		${failed ? html`<p class="help">${dataLine(null, live.data)}</p>` : ''}`
+		${failed ? html`<p class="sc-help">${dataLine(null, live.data)}</p>` : ''}`
 }
 
 function timeLine(live: Live, run: Run) {
@@ -739,19 +737,29 @@ function timeLine(live: Live, run: Run) {
 	return html`${started}, ended ${ago(run.endedAt)}, took ${took}`
 }
 
-function phaseStrip(run: Run) {
-	return html`<span class="sp-strip" role="list" aria-label="Phase of the test">
-		${phases.map((phase) =>
-			phase === run.phase
-				? wordMark({
-						state: 'running',
-						label: phase,
-						live: true,
-						attrs: { role: 'listitem', 'aria-current': 'step', 'data-phase': phase },
-					})
-				: wordMark({ state: 'phase', label: phase, attrs: { role: 'listitem', 'data-phase': phase } })
-		)}
-	</span>`
+function phaseStrip(live: Live, run: Run) {
+	const state = live.stopping
+		? statusMark({ state: 'stopping', label: 'Stopping…' })
+		: statusMark({ state: live.running && live.paused ? 'paused' : live.state })
+	const steps =
+		live.running && run.phase
+			? phases.map((phase) =>
+					phase === run.phase
+						? html`<li aria-current="step" data-phase="${phase}">
+								${statusMark({ state: 'running', label: phase })}
+							</li>`
+						: html`<li data-phase="${phase}">${statusWord({ state: 'not_started', label: phase })}</li>`
+				)
+			: live.phases.map(
+					(row) =>
+						html`<li data-phase="${row.phase}">${statusWord({ state: row.state, label: row.phase })}</li>`
+				)
+	return html`<div data-region="exploration-state">
+		<ol class="sc-phases" aria-label="Phases of ${live.explorationId}">
+			<li>${state}</li>
+			${steps}
+		</ol>
+	</div>`
 }
 
 function runChoices(live: Live, others: Listed[]) {
@@ -777,9 +785,9 @@ function runOptions(live: Live, run: Run, others: Listed[]) {
 	]
 	if (!items.length) return ''
 	return html`<section aria-labelledby="run-options-title" data-key="options:run">
-		<h3 class="lab" id="run-options-title">Options</h3>
-		<ul class="sp-optlist">
-			${items.map((item) => html`<li>${item.option}<span class="help">${item.help}</span></li>`)}
+		<h3 class="sc-card-h" id="run-options-title">Options</h3>
+		<ul class="sc-ask-list">
+			${items.map((item) => html`<li>${item.option}<span class="sc-help">${item.help}</span></li>`)}
 		</ul>
 	</section>`
 }
@@ -803,15 +811,19 @@ function runActions(
 		repo: run.repo,
 		instance: live.instanceId,
 	}
-	return html`<div data-region="exploration-actions">
-		<div class="sp-tools" data-actions>
-			${stoppable ? stopButton(live.explorationId) : ''}
-			${again ? testButton(live.planId, 'Test build… again', values) : ''}
-		</div>
-		${stoppable ? stopDialog(context, subject) : ''}
-		${testers.map((item) => stopTesterDialog(context, subject, item.explorer))}
-		${again ? testDialog(context, live.planId, values, workspaceBuild, asList(choice)) : ''}
-	</div>`
+	return {
+		buttons: html`<div class="sc-h-act" data-region="exploration-actions">
+			<div class="sc-tools" data-actions>
+				${stoppable ? stopButton(live.explorationId) : ''}
+				${again ? testButton(live.planId, 'Test build… again', values) : ''}
+			</div>
+		</div>`,
+		dialogs: html`<div data-region="exploration-dialogs">
+			${stoppable ? stopDialog(context, subject) : ''}
+			${testers.map((item) => stopTesterDialog(context, subject, item.explorer))}
+			${again ? testDialog(context, live.planId, values, workspaceBuild, asList(choice)) : ''}
+		</div>`,
+	}
 }
 
 export function explorationPage(
@@ -833,6 +845,14 @@ export function explorationPage(
 	const permissions = explorationPermissions(store, explorationId)
 	const open = permissions.filter((item) => !item.decision)
 	const asking = new Map(open.flatMap((item) => (item.tester ? [[item.tester, item] as const] : [])))
+	const actions = runActions(
+		context,
+		live,
+		run,
+		review.explorations.filter((item) => item.explorationId !== explorationId),
+		defaultBuild(store.workspace),
+		instanceChoice(store, live.planId)
+	)
 	const detail = explorer
 		? explorerDetail(store, live, explorer, html``)
 		: phase
@@ -851,8 +871,8 @@ export function explorationPage(
 		],
 		back: label ? `/explorations/${explorationId}` : `/plans/${live.planId}?nav=testers`,
 		nav: navigator(review, 'testers', explorationId),
-		body: html`<div class="sp-ch">
-				<div data-region="exploration-head">
+		body: html`<header class="sc-h">
+				<div class="sc-h-text" data-region="exploration-head">
 					${crumbBar({
 						crumbs: [
 							[live.planId, `/plans/${live.planId}`],
@@ -860,58 +880,34 @@ export function explorationPage(
 						],
 					})}
 					<h1>${title}</h1>
-					<p class="sp-sub">
+					<p>
 						Session ${explorationId} on build ${live.build} · ${live.instanceId} ·
-						${live.level ?? 'no level'} · ${timeLine(live, run)}. ${live.goal}
+						${live.level ?? 'no level'} ·
+						${timeLine(live, run)}${live.costUsd === null ? '' : ` · total cost ${costText(live.costUsd, live.costPartial)}`}.
+						${live.goal}
 					</p>
 				</div>
-				<div class="sp-pills" data-region="exploration-state">
-					${live.stopping ? statusMark({ state: 'stopping', label: 'Stopping…' }) : statusMark({ state: live.running && live.paused ? 'paused' : live.state })}
-					${
-						live.running && run.phase
-							? html`${phaseStrip(run)}
-								${wordMark({
-									state: 'elapsed',
-									label: html`elapsed
-									${live.running ? html`<span data-since="${run.startedAt}">${duration(Date.now() - Date.parse(run.startedAt))}</span>` : ''}`,
-									title: 'Time since the start',
-								})}`
-							: live.phases.map((row) => statusWord({ state: row.state, label: row.phase }))
-					}
-					${
-						live.costUsd === null
-							? ''
-							: wordMark({
-									state: 'cost',
-									label: `Total cost ${costText(live.costUsd, live.costPartial)}`,
-									title: 'Reported cost across this exploration and its follow-ups',
-								})
-					}
-				</div>
-			</div>
+				${actions.buttons}
+			</header>
+			${phaseStrip(live, run)}
 			<div data-region="exploration-banner">
 				${stateLine(store, live, run)}${strayLines(live)}${stepAsks(open)}${rulesLines(permissionRules(store, explorationId))}
-				${live.warnings.map((warning) => banner({ kind: 'warn', content: warning }))}
+				${live.warnings.map((warning) => notice({ kind: 'warn', content: warning }))}
 			</div>
-			${runActions(
-				context,
-				live,
-				run,
-				review.explorations.filter((item) => item.explorationId !== explorationId),
-				defaultBuild(store.workspace),
-				instanceChoice(store, live.planId)
-			)}
-			<div data-region="exploration-list">${explorationList(context, live, others, asking)}</div>
+			${actions.dialogs}
+			<div class="sc-stack is-loose" data-region="exploration-list">
+				${explorationList(context, live, others, asking)}
+			</div>
 			<div data-region="permission-history">
 				${permissionHistory(store, explorationId, params, historyFrom(explorationId, params))}
 			</div>
 			<section
-				class="sp-detail"
+				class="sc-detail"
 				aria-label="${label ?? 'Overview'}"
 				data-region="exploration-detail"
 				data-key="detail:${label ? asked : 'summary'}"
 			>
-				<h2 class="sp-sec">${label ? (explorer ? `Tester ${label}` : `Phase ${label}`) : 'Overview'}</h2>
+				<h2 class="sc-sec-h">${label ? (explorer ? `Tester ${label}` : `Phase ${label}`) : 'Overview'}</h2>
 				${detail}
 			</section>`,
 	}
@@ -946,7 +942,7 @@ export function explorerFilePage(
 			<p>
 				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · ${plural(file.size, 'byte')}
 			</p>
-			<section class="panel" aria-label="${name}"><pre class="report">${file.text}</pre></section>`,
+			<section class="sc-card" aria-label="${name}"><pre class="report">${file.text}</pre></section>`,
 	}
 }
 
@@ -1012,17 +1008,17 @@ export function claimPage(
 				'Decision',
 				html`<div>${messages(shown)}</div>
 					<p class="subj">${statusMark({ state: claim.state })} ${claim.id}</p>
-					<p class="help">By ${claim.decision.actor}. Rationale: ${claim.decision.rationale}</p>
+					<p class="sc-help">By ${claim.decision.actor}. Rationale: ${claim.decision.rationale}</p>
 					${keptText(shown)}`
 			)
-		: html`<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
-				<h2 class="lab" id="decide-title">Decision</h2>
+		: html`<section class="sc-card decision" id="decide" aria-labelledby="decide-title" data-region="decision">
+				<h2 class="sc-card-h" id="decide-title">Decision</h2>
 				<p class="subj">Is ${claim.id} a defect?</p>
 				<div>${messages(shown)}</div>
-				<form method="post" action="/explorations/${explorationId}/claims/${claim.id}" class="decision-form">
+				<form method="post" action="/explorations/${explorationId}/claims/${claim.id}" class="sc-form">
 					${hidden(context, '')} ${actorField(context, shown)}
 					${rationaleField(shown, 'Why do you decide this?')}
-					<div class="btns">
+					<div class="sc-row-btns">
 						${formButton({ label: 'Accept as a defect', emphasis: 'primary', attrs: { name: 'verdict', value: 'approved' } })}
 						${formButton({ label: 'Reject', attrs: { name: 'verdict', value: 'rejected' } })}
 					</div>
@@ -1039,29 +1035,35 @@ export function claimPage(
 			[claim.id, null],
 		],
 		subjects: [`exploration:${explorationId}`, 'inbox'],
-		body: html`${heading({ title: html`${report.planId} · ${claim.id}`, sub: claim.title, extra: html`<div class="meta">${statusMark({ state: claim.state })} ${statusMark({ state: claim.severity })}</div>` })}
-			<div class="split">
-				<section class="panel" aria-labelledby="claim-title">
-					<h2 class="lab" id="claim-title">Claim</h2>
+		body: html`${heading({ title: html`${report.planId} · ${claim.id}`, sub: claim.title, meta: html`${statusMark({ state: claim.state })} ${statusMark({ state: claim.severity })}` })}
+			<div class="sc-split">
+				<section class="sc-card" aria-labelledby="claim-title">
+					<h2 class="sc-card-h" id="claim-title">Claim</h2>
 					<p>
 						<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
 						<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · build ${claim.build}
 					</p>
-					<p class="lab">Expected</p>
-					<p>${claim.expected}</p>
-					<p class="lab">Actual</p>
-					<p>${claim.actual}</p>
+					<div class="sc-compare">
+						<div>
+							<span class="sc-kicker">Expected</span>
+							<p>${claim.expected}</p>
+						</div>
+						<div>
+							<span class="sc-kicker">Actual</span>
+							<p>${claim.actual}</p>
+						</div>
+					</div>
 					${
 						steps.length
-							? html`<p class="lab">Steps</p>
-									<ol>
+							? html`<span class="sc-kicker">Steps</span>
+									<ol class="sc-steps">
 										${steps.map((step) => html`<li>${step}</li>`)}
 									</ol>`
 							: ''
 					}
-					<p class="lab">Evidence</p>
+					<p class="sc-label">Evidence</p>
 					${claimEvidenceList(store, report.planId, claim)}
-					<p class="help">Reported by ${claim.actors.join(', ')}. ${claim.reason ?? ''}</p>
+					<p class="sc-help">Reported by ${claim.actors.join(', ')}. ${claim.reason ?? ''}</p>
 				</section>
 				${panel}
 			</div>`,

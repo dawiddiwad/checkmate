@@ -1,72 +1,24 @@
-.sp-nums {
+.sc-metrics {
 	display: grid;
-	grid-template-columns: repeat(3, 96px);
-	column-gap: 8px;
+	grid-template-columns: repeat(3, 88px);
+	gap: var(--space-2);
 }
-.sp-nums div {
+.sc-metric {
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
 }
-.sp-nums b {
+.sc-metric-n {
 	font: 500 24px/28px var(--font-mono);
-	font-variant-numeric: tabular-nums;
+	color: var(--ink);
 }
-.sp-nums b.zero {
+.sc-metric-l {
+	font: 400 12px/16px var(--font-sans);
+	color: var(--muted);
+}
+.sc-metric.is-hot .sc-metric-n {
+	color: var(--signal);
+}
+.sc-metric.is-zero .sc-metric-n {
 	color: var(--edge);
-}
-.sp-nums span {
-	font: 400 12px/16px var(--font-body);
-	color: var(--muted);
-	white-space: nowrap;
-}
-.strip {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px 24px;
-}
-.strip > div {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-}
-.strip small {
-	font: 600 13px/16px var(--font-body);
-	letter-spacing: 0;
-	color: var(--muted);
-}
-.strip strong {
-	font-weight: 600;
-}
-.plist {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-.plist li {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 8px;
-}
-.retest-verdicts li {
-	display: block;
-	overflow-wrap: anywhere;
-}
-.plist .sp-mk {
-	width: 20px;
-	height: 20px;
-}
-@media (max-width: 760px) {
-	.plist a {
-		display: inline-flex;
-		align-items: center;
-		min-height: 40px;
-	}
-	.sp-nums {
-		grid-template-columns: repeat(4, minmax(0, 1fr));
-	}
 }

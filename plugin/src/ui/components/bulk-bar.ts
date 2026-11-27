@@ -7,7 +7,7 @@ export function bulkBar({ planId, csrf }: { planId: string; csrf: string }) {
 	const action = (name: string, label = '') =>
 		button({ label, keyName: '', attrs: { type: 'button', 'data-bulk-action': name } })
 	return html`<div
-		class="sp-bulk"
+		class="sc-bulk"
 		data-bulk
 		data-plan="${planId}"
 		data-csrf="${csrf}"
@@ -15,7 +15,7 @@ export function bulkBar({ planId, csrf }: { planId: string; csrf: string }) {
 		aria-label="Selection"
 		hidden
 	>
-		<span class="sp-path" data-bulk-count aria-live="polite"></span>
+		<span class="sc-crumb" data-bulk-count aria-live="polite"></span>
 		${join(
 			actions.map((name) => action(name)),
 			' '

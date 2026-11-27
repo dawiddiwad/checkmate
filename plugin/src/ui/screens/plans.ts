@@ -9,32 +9,19 @@ import { heading } from '../components/page-heading.ts'
 import { newChangeTile, planTile } from '../components/plan-tile.ts'
 import { statusMark, wordMark } from '../components/status-mark.ts'
 import { costText, duration, html, plural, time, words } from '../html.ts'
-import { buildLabel, outside, reviewHref, reviewOf, verdictLine } from '../review.ts'
-
-const maxColumns = 9
-
-function columns(review: Review) {
-	const rules = review.map.rows.filter((row) => row.rule.id !== outside)
-	const out = review.map.rows.find((row) => row.rule.id === outside)!
-	const own =
-		rules.length <= maxColumns
-			? rules.map((row) => ({
-					label: row.rule.id,
-					title: row.rule.text,
-					cells: row.cells.map((cell) => cell.status),
-				}))
-			: review.areas.map((area) => ({ label: area.label.slice(0, 2), title: area.label, cells: area.cells }))
-	return [...own, { label: 'Out', title: 'Outside the rules', cells: out.cells.map((cell) => cell.status) }]
-}
+import { boardColumns, buildLabel, reviewHref, reviewOf, verdictLine } from '../review.ts'
 
 function planBoard(review: Review) {
 	const builds = review.map.builds.slice(-2)
 	const from = review.map.builds.length - builds.length
+	const cols = boardColumns(review)
 	return board({
-		builds: builds.map((build) => ({ build: build.build, label: buildLabel(review, build.build) })),
-		columns: columns(review).map((column) => ({
-			...column,
-			cells: column.cells.slice(from, from + builds.length),
+		label: `Rules against the last ${plural(builds.length, 'build')}`,
+		columns: cols.map((column) => ({ label: column.label, title: column.title })),
+		builds: builds.map((build, index) => ({
+			build: build.build,
+			label: buildLabel(review, build.build),
+			cells: cols.map((column) => column.cells[from + index]),
 		})),
 	})
 }
@@ -70,7 +57,7 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 	const last = review.explorations.at(-1)
 	const ended = !review.running && last && ['stopped', 'interrupted'].includes(last.state) ? last : null
 	const status = review.running
-		? wordMark({ state: 'testing', label: 'Testing', live: true })
+		? wordMark({ state: 'testing', label: 'Testing' })
 		: ended
 			? statusMark({ state: ended.state })
 			: loop
@@ -89,7 +76,8 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 		planId: review.planId,
 		href: reviewHref(review.planId, 'needs'),
 		status,
-		when: html`${when}${loop && !review.running ? ` · waits on ${roleWords[loop.waitsOn]}` : ''}`,
+		when,
+		waitsOn: loop && !review.running ? `waits on ${roleWords[loop.waitsOn]}` : null,
 		whenTitle: latest ? `${latest.build}, first tested ${latest.firstTestedAt}` : review.target,
 		objective: review.objective,
 		verdict,
@@ -128,12 +116,12 @@ export function homePage(store: Store): Page {
 	now${
 		blocking > 0
 			? html` ·
-					<span class="att"
-						>${plural(blocking, 'question')} ${blocking === 1 ? 'blocks' : 'block'} testing</span
+					<b class="sc-hot"
+						>${plural(blocking, 'question')} ${blocking === 1 ? 'blocks' : 'block'} testing</b
 					>`
 			: ''
 	}`
-	const body = html`<div class="sp-home" role="list" aria-label="Plans" data-list>
+	const body = html`<div class="sc-plans" role="list" aria-label="Plans" data-list>
 		${listed.map(({ plan, review }, index) => tile(review, plan, runDefects.get(plan.planId) ?? 0, index))}${newChangeTile(
 			{ index: reviews.length }
 		)}

@@ -5,12 +5,12 @@ import type { Html } from './html.ts'
 import { formButton } from './components/button.ts'
 import { emptyNotice } from './components/empty-state.ts'
 import { statusMark } from './components/status-mark.ts'
-import { costText, html, plural, words } from './html.ts'
+import { html, plural, words } from './html.ts'
 
 export function loopState(loop: { state: string; waitsOn: string }) {
 	const role = loop.waitsOn === 'qa' ? 'QA' : loop.waitsOn
 	return html`<span class="loop"
-		>${statusMark({ state: loop.state })}${loop.waitsOn === 'none' ? '' : html` <span class="muted small">waits on ${role}</span>`}</span
+		>${statusMark({ state: loop.state })}${loop.waitsOn === 'none' ? '' : html` <span class="sc-muted sc-note">waits on ${role}</span>`}</span
 	>`
 }
 
@@ -103,8 +103,8 @@ function filterChoices(filter: Filter, selected: string) {
 }
 
 export function filterBar(spec: ListSpec, state: ListState) {
-	return html`<form class="filters" method="get" action="${spec.path}" role="search" data-list-form>
-		<label class="sr-only" for="q">Search ${spec.noun}s</label>
+	return html`<form class="sc-filters" method="get" action="${spec.path}" role="search" data-list-form>
+		<label class="sc-sr" for="q">Search ${spec.noun}s</label>
 		<input
 			id="q"
 			type="search"
@@ -116,19 +116,19 @@ export function filterBar(spec: ListSpec, state: ListState) {
 		/>
 		${spec.filters.map(
 			(filter) =>
-				html`<label class="sr-only" for="filter-${filter.name}">${filter.label}</label>
+				html`<label class="sc-sr" for="filter-${filter.name}">${filter.label}</label>
 					<select id="filter-${filter.name}" name="${filter.name}" data-default="">
 						${options(filterChoices(filter, state.filters[filter.name] ?? ''), state.filters[filter.name] ?? '')}
 					</select>`
 		)}
-		<label class="sr-only" for="sort">Sort by</label>
+		<label class="sc-sr" for="sort">Sort by</label>
 		<select id="sort" name="sort" data-default="${spec.sort}">
 			${options(
 				spec.columns.filter((column) => column.sort).map((column) => [column.sort!, `Sort: ${column.label}`]),
 				state.sort
 			)}
 		</select>
-		<label class="sr-only" for="dir">Order</label>
+		<label class="sc-sr" for="dir">Order</label>
 		<select id="dir" name="dir" data-default="${spec.direction}">
 			${options(
 				[
@@ -138,7 +138,7 @@ export function filterBar(spec: ListSpec, state: ListState) {
 				state.direction
 			)}
 		</select>
-		<label class="sr-only" for="size">Rows per page</label>
+		<label class="sc-sr" for="size">Rows per page</label>
 		<select id="size" name="size" data-default="25">
 			${options(
 				pageSizes.map((size) => [String(size), `${size} rows`]),
@@ -171,25 +171,22 @@ export function pager(spec: ListSpec, state: ListState, total: number) {
 					inline: true,
 					attrs: { rel, 'data-list-link': true },
 				})
-	return html`<nav class="pager" aria-label="Pages">
+	return html`<nav class="sc-pager" aria-label="Pages">
 		${link(1, '« First', 'first')} ${link(state.page - 1, '‹ Previous', 'prev')}
-		<span class="pager-at">Page ${state.page} of ${last}</span>
+		<span class="sc-pager-at">Page ${state.page} of ${last}</span>
 		${link(state.page + 1, 'Next ›', 'next')} ${link(last, 'Last »', 'last')}
 	</nav>`
 }
 
-export function listRegion(spec: ListSpec, state: ListState, total: number, rows: Html[]) {
+export function listRegion(spec: ListSpec, state: ListState, total: number, rows: Html) {
 	const first = total ? (state.page - 1) * state.size + 1 : 0
 	const last = Math.min(total, state.page * state.size)
 	const count = total ? `Showing ${first}–${last} of ${plural(total, spec.noun)}` : ''
 	return html`<div data-region="${spec.region}" data-list-region>
-		<p class="list-count" data-list-count role="status">${count}</p>
+		<p class="sc-count" data-list-count role="status">${count}</p>
 		${
 			total
-				? html`<ul class="q-items l-rows">
-							${rows}
-						</ul>
-						${pager(spec, state, total)}`
+				? html`${rows} ${pager(spec, state, total)}`
 				: state.q || Object.keys(state.filters).length
 					? emptyNotice({
 							what: `No ${spec.noun} matches these filters.`,
@@ -212,7 +209,7 @@ const runStatuses = [
 export function runStatus(row: { state: string; acceptance: string | null }) {
 	if (row.state === 'started') return statusMark({ state: 'started', label: 'in progress' })
 	if (row.acceptance === 'approved') return statusMark({ state: 'approved', label: 'accepted' })
-	if (row.acceptance === 'pending') return statusMark({ state: 'pending', label: 'awaiting acceptance' })
+	if (row.acceptance === 'pending') return statusMark({ state: 'awaits_acceptance', label: 'awaiting acceptance' })
 	return statusMark({ state: row.acceptance ?? 'finalized' })
 }
 
@@ -261,25 +258,15 @@ export function runsSpec(store: Store): ListSpec {
 
 export type RunRow = ReturnType<typeof pagedRuns>['rows'][number]
 
-export function runUsageLine({
-	observedModels,
-	costUsd,
-	costPartial,
-}: Pick<RunRow, 'observedModels' | 'costUsd' | 'costPartial'>) {
-	const label = observedModels.length > 1 ? 'Models' : 'Model'
-	return html`${label} <code>${observedModels.join(', ') || 'Unknown'}</code> · Cost
-		<span ${costUsd === null ? '' : html`title="Reported USD ${costUsd}"`}>${costText(costUsd, costPartial)}</span>`
-}
-
 export function subjectLink(subject: string) {
 	const [kind, id] = subject.split(/:(.*)/)
-	if (kind === 'plan') return html`<a class="mono" href="/plans/${id}">${subject}</a>`
-	if (kind === 'run') return html`<a class="mono" href="/runs/${id}">${subject}</a>`
-	if (kind === 'target') return html`<a class="mono" href="/settings/targets/${id}">${subject}</a>`
-	if (kind === 'chat') return html`<a class="mono" href="/chats/${id}">${subject}</a>`
-	if (kind === 'chats') return html`<a class="mono" href="/chats">Chats</a>`
-	if (kind === 'inbox') return html`<a class="mono" href="/">${subject}</a>`
-	return html`<span class="mono">${subject}</span>`
+	if (kind === 'plan') return html`<a class="sc-mono" href="/plans/${id}">${subject}</a>`
+	if (kind === 'run') return html`<a class="sc-mono" href="/runs/${id}">${subject}</a>`
+	if (kind === 'target') return html`<a class="sc-mono" href="/settings/targets/${id}">${subject}</a>`
+	if (kind === 'chat') return html`<a class="sc-mono" href="/chats/${id}">${subject}</a>`
+	if (kind === 'chats') return html`<a class="sc-mono" href="/chats">Chats</a>`
+	if (kind === 'inbox') return html`<a class="sc-mono" href="/">${subject}</a>`
+	return html`<span class="sc-mono">${subject}</span>`
 }
 
 export function logSpec(store: Store): ListSpec {

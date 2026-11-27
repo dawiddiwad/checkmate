@@ -1,4 +1,7 @@
-:root {
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+/* Checkmate — Scoresheet (A). The only place for colour, space, size, and type values. */
+:root,
+:root[data-theme='light'] {
 	--ground: #f6f5f1;
 	--surface: #ffffff;
 	--surface-2: #efeee9;
@@ -6,11 +9,11 @@
 	--on-ink: #f6f5f1;
 	--muted: #5a5f68;
 	--hair: #e2e0d9;
-	--edge: #8c8f94;
+	--edge: #85888d;
 	--edge-soft: #c9c6bc;
 	--row-hover: #f3f2ee;
 	--focus: #2f5bd3;
-	--signal: #c2410c;
+	--signal: #be400c;
 	--signal-soft: #fbeadf;
 	--on-signal: #ffffff;
 	--fail: #b42318;
@@ -18,15 +21,7 @@
 	--pass: #1f7a4d;
 	--pass-soft: #e3f1e9;
 	--on-pass: #ffffff;
-	--scrim: rgba(20, 22, 26, 0.35);
-	--chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%2314161a' stroke-width='1.6'/%3E%3C/svg%3E");
-	--font-body: 'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
-	--font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
-	--sp-bar: 48px;
-	--sp-nav: 320px;
-	--sp-drawer: 560px;
-	--sp-ctl: 32px;
-	--sp-ctl-lg: 40px;
+	--scrim: #14161a59;
 	color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -38,7 +33,7 @@
 		--on-ink: #0f1012;
 		--muted: #a3a6ac;
 		--hair: #2a2d32;
-		--edge: #5c6066;
+		--edge: #6b7078;
 		--edge-soft: #3a3e44;
 		--row-hover: #1a1c20;
 		--focus: #8fb0ff;
@@ -50,8 +45,7 @@
 		--pass: #5cc48a;
 		--pass-soft: #12271b;
 		--on-pass: #0f1012;
-		--scrim: rgba(0, 0, 0, 0.6);
-		--chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23eceae4' stroke-width='1.6'/%3E%3C/svg%3E");
+		--scrim: #00000099;
 		color-scheme: dark;
 	}
 }
@@ -63,7 +57,7 @@
 	--on-ink: #0f1012;
 	--muted: #a3a6ac;
 	--hair: #2a2d32;
-	--edge: #5c6066;
+	--edge: #6b7078;
 	--edge-soft: #3a3e44;
 	--row-hover: #1a1c20;
 	--focus: #8fb0ff;
@@ -75,29 +69,38 @@
 	--pass: #5cc48a;
 	--pass-soft: #12271b;
 	--on-pass: #0f1012;
-	--scrim: rgba(0, 0, 0, 0.6);
-	--chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23eceae4' stroke-width='1.6'/%3E%3C/svg%3E");
+	--scrim: #00000099;
 	color-scheme: dark;
 }
-@media (max-width: 1240px) {
-	:root {
-		--path-w: 240px;
-	}
-}
 :root {
-	--glyph-closed: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 4l5 4-5 4z'/%3E%3C/svg%3E");
-	--glyph-open: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 5 4-5z'/%3E%3C/svg%3E");
-}
-@media (max-width: 900px) {
-	:root {
-		--path-w: 160px;
-	}
-}
-@media (max-width: 760px) {
-	:root {
-		--path-w: 72px;
-	}
-	:root {
-		--sp-bar: 48px;
-	}
+	--space-1: 4px;
+	--space-2: 8px;
+	--space-3: 12px;
+	--space-4: 16px;
+	--space-5: 24px;
+	--space-6: 32px;
+	--space-7: 48px;
+	--space-8: 64px;
+	--radius-0: 0;
+	--radius-round: 50%;
+	--bar-h: 48px;
+	--ctl: 32px;
+	--ctl-lg: 40px;
+	--row-h: 44px;
+	--rail-w: 288px;
+	--drawer-w: 560px;
+	--page-w: 1440px;
+	--mark: 12px;
+	--mark-sm: 10px;
+	--cell-sm: 24px;
+	--cell-lg: 36px;
+	--legend-cell: 12px;
+	--hairline: 1px;
+	--rule: 2px;
+	--bar: 3px;
+	--stroke: 1.5px;
+	--focus-w: 2px;
+	--focus-gap: 2px;
+	--font-sans: 'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+	--font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 }

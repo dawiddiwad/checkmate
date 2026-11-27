@@ -5,7 +5,7 @@ import type { FormState } from '../forms.ts'
 import type { Html } from '../html.ts'
 import type { Context } from '../layout.ts'
 import type { Item, Review } from '../review.ts'
-import { banner } from '../components/banner.ts'
+import { notice } from '../components/notice.ts'
 import { button } from '../components/button.ts'
 import { closeButton, drawer, drawerHead } from '../components/drawer.ts'
 import { evidenceFiles, evidencePreview } from '../components/evidence-viewer.ts'
@@ -61,15 +61,22 @@ function textForm(
 		missing: string
 	}
 ) {
-	return html`<form method="post" action="${spec.action}" class="sp-form" id="${spec.id}" data-field-form>
+	return html`<form method="post" action="${spec.action}" class="sc-form" id="${spec.id}" data-field-form>
 		${hiddenFields(context, item, back, spec.fields)}
-		<label for="${spec.id}-text">${spec.label}</label>
-		<textarea id="${spec.id}-text" name="${spec.name}" rows="3" required data-missing="${spec.missing}">
+		<label class="sc-label" for="${spec.id}-text">${spec.label}</label>
+		<textarea
+			class="sc-textarea"
+			id="${spec.id}-text"
+			name="${spec.name}"
+			rows="3"
+			required
+			data-missing="${spec.missing}"
+		>
 ${spec.value ?? ''}</textarea>
 		${spec.more ?? ''}
-		<div class="btns">
-			${button({ label: spec.send, emphasis: 'primary' })}
-			<span class="small muted">Enter sends. Shift+Enter starts a new line.</span>
+		<div class="sc-row-btns">
+			${button({ label: spec.send, emphasis: item.blocking ? 'unblocks' : 'primary', mainAction: true })}
+			<span class="sc-note sc-muted">Enter sends. Shift+Enter starts a new line.</span>
 		</div>
 	</form>`
 }
@@ -101,32 +108,32 @@ function claimBody(
 		: null
 	return html`${
 			uncertain.length
-				? html`<p class="sp-why">
+				? html`<p class="sc-why">
 						${uncertain.map((reason) => `${words(reason.reason)}${reason.text ? `: ${reason.text}` : ''}`).join(' · ')}
 					</p>`
 				: ''
 		}
-		<div class="sp-ea">
+		<div class="sc-compare">
 			<div>
-				<span class="sp-lbl">Expected</span>
+				<span class="sc-kicker">Expected</span>
 				<p>${claim.expected}</p>
 			</div>
 			<div>
-				<span class="sp-lbl">Actual</span>
+				<span class="sc-kicker">Actual</span>
 				<p>${claim.actual}</p>
 			</div>
 		</div>
 		${
 			claim.steps?.length
 				? html`<div>
-						<span class="sp-lbl">Steps</span>
-						<ol class="sp-steps">
+						<span class="sc-kicker">Steps</span>
+						<ol class="sc-steps">
 							${(Array.isArray(claim.steps) ? claim.steps : [claim.steps]).map((step) => html`<li>${step}</li>`)}
 						</ol>
 					</div>`
 				: ''
 		}
-		<div><span class="sp-lbl">Evidence</span>${evidenceFiles({ files, base, current: null })}</div>
+		<div><span class="sc-kicker">Evidence</span>${evidenceFiles({ files, base, current: null })}</div>
 		${recordFacts({
 			rows: [
 				['Across builds', acrossBuilds(review, item)],
@@ -166,26 +173,10 @@ function claimBody(
 		}`
 }
 
-function questionBody(context: Context, review: Review, item: Item, back: string, state: FormState | null) {
+function questionFacts(review: Review, item: Item) {
 	const question = item.question
 	const members = question?.members ?? []
-	const open = item.kind === 'question' || item.kind === 'gap' || item.kind === 'deferred'
-	const more = html`<details class="sp-more">
-		<summary>Source and reason</summary>
-		<div class="sp-form">
-			<label for="answer-source">Source</label>
-			<input
-				id="answer-source"
-				name="source"
-				value="${state?.values.source ?? ''}"
-				placeholder="${context.actor ?? 'You'}, in the review UI"
-			/>
-			<label for="answer-rationale">Reason</label>
-			<input id="answer-rationale" name="rationale" value="${state?.values.rationale ?? ''}" />
-		</div>
-	</details>`
-	return html`${question?.actual ? html`<p class="sp-today"><span class="sp-lbl">What the build does</span>${question.actual}</p>` : ''}
-	${recordFacts({
+	return recordFacts({
 		rows: [
 			['Rule', item.kind === 'gap' ? null : ruleText(review, item.rule)],
 			['Topic', item.topic],
@@ -203,7 +194,27 @@ function questionBody(context: Context, review: Review, item: Item, back: string
 			],
 			['Answer', question?.answer ?? null],
 		],
-	})}
+	})
+}
+
+function questionBody(context: Context, review: Review, item: Item, back: string, state: FormState | null) {
+	const question = item.question
+	const open = item.kind === 'question' || item.kind === 'gap' || item.kind === 'deferred'
+	const more = html`<details class="sc-fold">
+		<summary>Source and reason</summary>
+		<div class="sc-form">
+			<label for="answer-source">Source</label>
+			<input
+				id="answer-source"
+				name="source"
+				value="${state?.values.source ?? ''}"
+				placeholder="${context.actor ?? 'You'}, in the review UI"
+			/>
+			<label for="answer-rationale">Reason</label>
+			<input id="answer-rationale" name="rationale" value="${state?.values.rationale ?? ''}" />
+		</div>
+	</details>`
+	return html`${question?.actual ? html`<p class="sc-today"><span class="sc-kicker">What the build does</span>${question.actual}</p>` : ''}
 	${
 		open
 			? textForm(context, item, back, {
@@ -225,8 +236,8 @@ function questionBody(context: Context, review: Review, item: Item, back: string
 }
 
 function approvalBody(item: Item) {
-	return html`<p class="sp-today">${item.title}</p>
-		<div class="btns">
+	return html`<p class="sc-today">${item.title}</p>
+		<div class="sc-row-btns">
 			${button({
 				label: `Open ${item.kind === 'approval' && item.key.startsWith('p:') ? 'the plan' : 'the run'} to decide`,
 				href: item.href,
@@ -260,7 +271,7 @@ export function recordDrawer(
 		path: `${review.planId} › ${view === 'needs' ? 'Needs you' : view.replace(/^[a-z]+:/, '')} › ${item.id}`,
 		slot: state
 			? html`<div data-stale-slot>
-					${state.stale ? banner({ kind: 'warn', content: state.stale }) : ''}${state.error ? html`<p class="form-error" role="alert">${state.error}</p>` : ''}${keptText(state)}
+					${state.stale ? notice({ kind: 'warn', content: state.stale }) : ''}${state.error ? html`<p class="sc-error" role="alert">${state.error}</p>` : ''}${keptText(state)}
 				</div>`
 			: html`<div data-stale-slot></div>`,
 		head: drawerHead({
@@ -268,9 +279,10 @@ export function recordDrawer(
 			tags: html`${itemTag(item)}
 				${item.detail && item.kind !== 'rejected' ? wordMark({ state: 'build_state', label: buildStateWords[latestClaimBuild(item.detail)?.state ?? ''] ?? '' }) : ''}
 				${item.claim?.handoff ? wordMark({ state: 'handed_over', label: 'Handed over' }) : ''}
-				<span class="sp-c-id">${item.id}</span>
-				${when ? html`<span class="sp-c-id">${time(when)}</span>` : ''}`,
+				<span class="sc-c-id">${item.id}</span>
+				${when ? html`<span class="sc-c-id">${time(when)}</span>` : ''}`,
 			title: item.title,
+			facts: item.claim || item.kind === 'approval' ? '' : questionFacts(review, item),
 			options,
 		}),
 		body,
@@ -281,22 +293,22 @@ export function evidenceViewer(store: Store, review: Review, item: Item, view: s
 	const files = filesOf(store, review, item)
 	const base = reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`)
 	const shown = Math.min(Math.max(0, index), files.length - 1)
-	return html`<section class="sp-viewer" aria-label="Evidence of ${item.id}" data-viewer-pane data-back="${base}">
-		<div class="sp-dh">
-			<p class="sp-path">
+	return html`<section class="sc-viewer" aria-label="Evidence of ${item.id}" data-viewer-pane data-back="${base}">
+		<div class="sc-pane-h">
+			<p class="sc-crumb">
 				${review.planId} › ${item.id} › Evidence › <span data-file-name>${files[shown]?.name ?? ''}</span>
 			</p>
 			${closeButton({ href: base })}
 		</div>
-		<div class="sp-vb">
+		<div class="sc-viewer-b">
 			${evidenceFiles({ files, base, current: shown, inViewer: true })}
 			<div>
 				${files.map(
 					(file, n) =>
-						html`<figure class="sp-fig" data-vfig="${n}" ${n === shown ? '' : html`hidden`}>
+						html`<figure class="sc-shot" data-vfig="${n}" ${n === shown ? '' : html`hidden`}>
 							${evidencePreview({ file })}
 							<figcaption>
-								<span class="ell" title="${file.name}"
+								<span class="sc-ell" title="${file.name}"
 									>${file.name}${file.size ? ` · ${size(file.size)}` : ''}</span
 								>
 								${file.href ? button({ label: 'Download', href: file.href, attrs: { download: file.name } }) : ''}

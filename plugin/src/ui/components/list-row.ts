@@ -9,6 +9,7 @@ export type ListRow = {
 	inListbox?: boolean
 	settled?: boolean
 	current?: boolean
+	blocking?: boolean
 	attrs?: Attrs
 	pickLabel?: string
 	tag: Html | string
@@ -23,17 +24,17 @@ export type ListRow = {
 	extra?: Html | ''
 }
 
-function rowClass({ settled, current }: ListRow) {
-	return `sp-row${settled ? ' dim' : ''}${current ? ' cur' : ''}`
+function rowClass({ settled, current, blocking }: ListRow) {
+	return `sc-row${settled ? ' is-dim' : ''}${current ? ' is-open' : ''}${blocking ? ' is-block' : ''}`
 }
 
 export function listRow(row: ListRow) {
 	const role = row.inListbox ? html`role="option" aria-selected="false"` : html`role="listitem"`
 	const title = row.titleHref
-		? html`<a class="sp-c-title ell" title="${row.titleText}" tabindex="-1" href="${row.titleHref}"
+		? html`<a class="sc-c-title sc-ell" title="${row.titleText}" tabindex="-1" href="${row.titleHref}"
 				>${row.title}</a
 			>`
-		: html`<span class="sp-c-title ell" title="${row.titleText}">${row.title}</span>`
+		: html`<span class="sc-c-title sc-ell" title="${row.titleText}">${row.title}</span>`
 	return html`<div
 		class="${rowClass(row)}"
 		${role}
@@ -47,29 +48,29 @@ export function listRow(row: ListRow) {
 	>
 		${
 			row.pickLabel === undefined
-				? html`<span class="sp-c-cb"></span>`
-				: html`<label class="sp-c-cb"
+				? html`<span class="sc-c-cb"></span>`
+				: html`<label class="sc-c-cb"
 						><input type="checkbox" tabindex="-1" aria-label="Select ${row.pickLabel}" data-pick-box
 					/></label>`
 		}
-		<span class="sp-c-tag">${row.tag}</span>
+		<span class="sc-c-tag">${row.tag}</span>
 		${
 			row.idTitle === undefined
-				? html`<span class="sp-c-id">${row.shownId}</span>`
-				: html`<span class="sp-c-id" title="${row.idTitle}">${row.shownId}</span>`
+				? html`<span class="sc-c-id">${row.shownId}</span>`
+				: html`<span class="sc-c-id" title="${row.idTitle}">${row.shownId}</span>`
 		}
 		${title}
 		${
 			row.metaText === undefined
-				? html`<span class="sp-c-meta ell">${row.meta}</span>`
-				: html`<span class="sp-c-meta ell" title="${row.metaText}">${row.meta}</span>`
+				? html`<span class="sc-c-meta sc-ell">${row.meta}</span>`
+				: html`<span class="sc-c-meta sc-ell" title="${row.metaText}">${row.meta}</span>`
 		}
 		${row.options ?? ''} ${row.extra ?? ''}
 	</div>`
 }
 
 export function groupHeader({ label, count }: { label: Html | string; count: number }) {
-	return html`<div class="sp-gh" role="presentation">${label} <span>${count}</span></div>`
+	return html`<div class="sc-group-h" role="presentation">${label}<b>${count}</b></div>`
 }
 
 export type ListPageRow = {
@@ -78,24 +79,32 @@ export type ListPageRow = {
 	top: Html | string
 	tags: Html | string
 	lines: Array<Html | string>
+	open?: boolean
 }
 
-export function listPageRow({ key, href, top, tags, lines }: ListPageRow) {
-	const inner = html`<span class="q-top"><span class="q-id">${top}</span> <span class="q-tags">${tags}</span></span>
-		${lines.map((line, index) => html`<span class="${index ? 'q-note' : 'q-title'}">${line}</span>`)}`
+export function listPageRow({ key, href, top, tags, lines, open = false }: ListPageRow) {
+	const inner = html`<span class="sc-recipe-n">${top} ${tags}</span>
+		${lines.map((line, index) => html`<span class="${index ? 'sc-recipe-m' : 'sc-recipe-d'}">${line}</span>`)}`
 	const label = key.slice(key.indexOf(':') + 1)
 	return html`<li data-key="${key}" data-nav-row>
 		${
 			href
-				? html`<a class="q-row" href="${href}" data-row data-href="${href}" data-label="${label}">${inner}</a>`
-				: html`<div class="q-row" tabindex="-1" data-row data-label="${label}">${inner}</div>`
+				? html`<a
+						class="sc-recipe${open ? ' is-open' : ''}"
+						href="${href}"
+						data-row
+						data-href="${href}"
+						data-label="${label}"
+						>${inner}</a
+					>`
+				: html`<div class="sc-recipe" tabindex="-1" data-row data-label="${label}">${inner}</div>`
 		}
 	</li>`
 }
 
 export function optionsBox(items: Html[]) {
 	if (!items.length) return ''
-	return html`<div class="sp-c-opts" aria-label="Options" data-fit>
-		${items}<span class="sp-c-more" aria-hidden="true">${glyph('→')} ${plural(items.length, 'option')}</span>
+	return html`<div class="sc-c-opts" aria-label="Options" data-fit>
+		${items}<span class="sc-c-more" aria-hidden="true">${glyph('→')} ${plural(items.length, 'option')}</span>
 	</div>`
 }

@@ -6,7 +6,7 @@ textarea,
 select {
 	width: 100%;
 	min-width: 0;
-	min-height: var(--sp-ctl);
+	min-height: var(--ctl);
 	padding: 4px 8px;
 	border: 1px solid var(--edge);
 	background: var(--surface);
@@ -14,17 +14,36 @@ select {
 	font: 400 13px/20px var(--font-mono);
 }
 textarea {
-	min-height: 64px;
+	min-height: 96px;
 	resize: vertical;
 	field-sizing: content;
+	font: 400 14px/20px var(--font-sans);
+}
+input:hover,
+textarea:hover,
+select:hover {
+	border-color: var(--ink);
+}
+input::placeholder,
+textarea::placeholder {
+	color: var(--muted);
 }
 select {
 	appearance: none;
 	-webkit-appearance: none;
 	width: auto;
 	max-width: 100%;
-	padding-right: 32px;
-	background: var(--surface) var(--chevron) no-repeat right 10px center / 12px 8px;
+	padding-right: var(--space-5);
+	font: 400 14px/20px var(--font-sans);
+	background-color: var(--surface);
+	background-image:
+		linear-gradient(45deg, transparent 50%, var(--ink) 50%),
+		linear-gradient(-45deg, transparent 50%, var(--ink) 50%);
+	background-position:
+		calc(100% - 14px) 50%,
+		calc(100% - 9px) 50%;
+	background-size: 5px 5px;
+	background-repeat: no-repeat;
 	cursor: pointer;
 }
 input[type='checkbox'],
@@ -39,20 +58,24 @@ input[type='radio'] {
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-	outline: 2px solid var(--focus);
-	outline-offset: -2px;
+	border-color: var(--ink);
+}
+input:disabled,
+textarea:disabled,
+select:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
 }
 input[readonly],
 textarea[readonly] {
 	color: var(--muted);
 }
 label,
-.lab {
+.sc-label {
 	display: block;
-	margin-bottom: 4px;
-	font: 600 13px/16px var(--font-body);
+	font: 500 13px/20px var(--font-sans);
 	letter-spacing: 0;
-	color: var(--muted);
+	color: var(--ink);
 }
 label.check,
 label.inline {
@@ -63,28 +86,35 @@ label.inline {
 	text-transform: none;
 	letter-spacing: 0;
 	color: var(--ink);
-	font: 400 14px/20px var(--font-body);
+	font: 400 14px/20px var(--font-sans);
 	cursor: pointer;
 }
-.help,
+.sc-help,
 .kind-help {
-	margin: 4px 0 0;
-	font: 400 12px/16px var(--font-body);
+	margin: 0;
+	font: 400 12px/16px var(--font-sans);
 	color: var(--muted);
 }
-.req {
+.sc-req {
 	color: var(--signal);
 }
-.form-error {
-	margin: 8px 0 0;
-	padding: 8px 12px;
-	border-left: 2px solid var(--fail);
-	background: var(--fail-soft);
-	color: var(--ink);
-	font: 400 14px/20px var(--font-body);
+.sc-error {
+	margin: 0;
+	font: 500 12px/16px var(--font-sans);
+	color: var(--fail);
 }
-.field-group {
-	margin: 0 0 12px;
+.sc-error::before {
+	content: '×';
+	margin-right: 6px;
+	font-family: var(--font-mono);
+	font-weight: 600;
+}
+.sc-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+	margin: 0 0 var(--space-3);
 }
 fieldset {
 	margin: 0 0 12px;
@@ -94,19 +124,19 @@ fieldset {
 }
 legend {
 	padding: 0;
-	margin-bottom: 4px;
-	font: 600 13px/16px var(--font-body);
+	margin-bottom: 6px;
+	font: 500 13px/20px var(--font-sans);
 	letter-spacing: 0;
-	color: var(--muted);
+	color: var(--ink);
 }
-.sp-form {
+.sc-form {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: var(--space-4);
 	margin: 0;
 }
-.sp-form textarea,
-.sp-form input:not([type='hidden'], [type='checkbox'], [type='radio']) {
+.sc-form textarea,
+.sc-form input:not([type='hidden'], [type='checkbox'], [type='radio']) {
 	width: 100%;
 }
 
@@ -126,7 +156,7 @@ legend {
 	input:not([type='checkbox'], [type='radio'], [type='hidden']),
 	select,
 	summary,
-	details.fold > summary {
+	details.sc-fold > summary {
 		min-height: 40px;
 	}
 }

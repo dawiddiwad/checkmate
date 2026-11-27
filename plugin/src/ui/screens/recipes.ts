@@ -2,7 +2,7 @@ import type { InvalidRecipe, ReachCheck, Recipe, RecipeCatalog, RecipeEntry } fr
 import { listRecipes, projectRecipeFolder, recipeProblem, toolExecutable } from '../../recipes.ts'
 import type { Html } from '../html.ts'
 import type { Page } from '../layout.ts'
-import { banner } from '../components/banner.ts'
+import { notice } from '../components/notice.ts'
 import { emptyNotice } from '../components/empty-state.ts'
 import { fold } from '../components/fold.ts'
 import { listPageRow } from '../components/list-row.ts'
@@ -46,7 +46,7 @@ function codes(items: string[]) {
 				items.map((item) => html`<code>${item}</code>`),
 				' '
 			)
-		: html`<span class="muted">none</span>`
+		: html`<span class="sc-muted">none</span>`
 }
 
 function commandText(args: string[]) {
@@ -63,8 +63,11 @@ function detection(recipe: Recipe) {
 		: html`<code>${toolExecutable(recipe)}</code> on <code>PATH</code>`
 }
 
-export function recipesPage(workspace: string): Page {
-	const { recipes, invalid, error } = readCatalog(workspace)
+const recipesSub = html`Tool descriptions for Checkmate. The target sets what testers may do. Built-in recipes come with
+	Checkmate. Custom recipes come from <code>.checkmate/recipes/</code> in this workspace.`
+
+function recipeList(workspace: string, catalog: ReturnType<typeof readCatalog>, open: string | null) {
+	const { recipes, invalid, error } = catalog
 	const rows = recipes.map(({ source, recipe }) =>
 		listPageRow({
 			key: `recipe:${recipe.name}`,
@@ -73,10 +76,11 @@ export function recipesPage(workspace: string): Page {
 			tags: sourcePill(source),
 			lines: [
 				recipe.purpose,
-				html`<span class="muted"
+				html`<span class="sc-muted"
 					><code>${recipe.capability}</code> · ${kindText(recipe)} · ${detection(recipe)}</span
 				>`,
 			],
+			open: recipe.name === open,
 		})
 	)
 	const invalidRows = invalid.map((item) =>
@@ -89,40 +93,52 @@ export function recipesPage(workspace: string): Page {
 		})
 	)
 	const custom = recipes.some((entry) => entry.source === 'custom') || invalid.length
-	const body = html`${heading({
-			title: 'Recipes',
-			sub: html`Tool descriptions for Checkmate. The target sets what testers may do. Built-in recipes come with
-				Checkmate. Custom recipes come from <code>.checkmate/recipes/</code> in this workspace.`,
-		})}
-		<div data-region="recipes">
-			${error ? banner({ kind: 'fail', content: html`Checkmate cannot read the recipes. ${error}` }) : ''}
-			${
-				rows.length + invalidRows.length
-					? html`<ul class="q-items l-rows">
-							${rows} ${invalidRows}
-						</ul>`
-					: ''
-			}
-			${
-				custom || error
-					? ''
-					: emptyNotice({
-							what: 'No custom recipe yet.',
-							next: html`Drop a recipe JSON file in <code>${projectRecipeFolder(workspace)}</code>.`,
-						})
-			}
+	return html`<div class="sc-stack" data-region="recipes">
+		${error ? notice({ kind: 'fail', content: html`Checkmate cannot read the recipes. ${error}` }) : ''}
+		${
+			rows.length + invalidRows.length
+				? html`<ul class="sc-recipes is-list">
+						${rows} ${invalidRows}
+					</ul>`
+				: ''
+		}
+		${
+			custom || error
+				? ''
+				: emptyNotice({
+						what: 'No custom recipe yet.',
+						next: html`Drop a recipe JSON file in <code>${projectRecipeFolder(workspace)}</code>.`,
+					})
+		}
+	</div>`
+}
+
+function recipesLayout(workspace: string, catalog: ReturnType<typeof readCatalog>, entry: RecipeEntry | undefined) {
+	return html`${heading({ title: 'Recipes', sub: recipesSub })}
+		<div class="sc-split is-list-first">
+			${recipeList(workspace, catalog, entry?.recipe.name ?? null)} ${entry ? recipeDetail(entry) : ''}
 		</div>`
-	return settingsPage('/settings/recipes', 'Recipes', ['recipes'], body)
+}
+
+export function recipesPage(workspace: string): Page {
+	const catalog = readCatalog(workspace)
+	return settingsPage(
+		'/settings/recipes',
+		'Recipes',
+		['recipes'],
+		recipesLayout(workspace, catalog, catalog.recipes[0])
+	)
 }
 
 function entryPoints(recipe: Recipe) {
-	if (!recipe.entryPoints?.length) return html`<p class="none">No entry point. The recipe fits every target.</p>`
-	return html`<ul class="plain">
+	if (!recipe.entryPoints?.length)
+		return html`<p class="sc-empty is-line">No entry point. The recipe fits every target.</p>`
+	return html`<ul class="sc-plain">
 		${recipe.entryPoints.map(
 			(entry) =>
 				html`<li>
 					<code>${entry.name}</code>
-					<span class="muted"
+					<span class="sc-muted"
 						>· ${entry.kind}${entry.pattern ? html` · format <code>${entry.pattern}</code>` : ''}</span
 					>
 					<br />${entry.purpose}
@@ -140,8 +156,8 @@ function checkText(check: ReachCheck) {
 
 function reachability(recipe: Recipe) {
 	if (!recipe.reachable?.length)
-		return html`<p class="none">No check. Setup leaves the instance of the target not checked.</p>`
-	return html`<ul class="plain">
+		return html`<p class="sc-empty is-line">No check. Setup leaves the instance of the target not checked.</p>`
+	return html`<ul class="sc-plain">
 		${recipe.reachable.map((check) => html`<li>${checkText(check)}</li>`)}
 	</ul>`
 }
@@ -154,13 +170,15 @@ function fact(label: string, value: Html | string, look = '') {
 function pairs(values: Record<string, string>) {
 	const entries = Object.entries(values)
 	return entries.length
-		? html`<span class="kv">${entries.map(([key, value]) => html`<span class="tag">${key}=${value}</span>`)}</span>`
-		: html`<span class="muted">none</span>`
+		? html`<span class="sc-chips"
+				>${entries.map(([key, value]) => html`<span class="sc-chip">${key}=${value}</span>`)}</span
+			>`
+		: html`<span class="sc-muted">none</span>`
 }
 
 function recipeFacts({ source, path, recipe }: RecipeEntry) {
 	const server = recipe.server
-	return html`<dl class="facts">
+	return html`<dl class="sc-facts">
 		${fact('Source', sourcePill(source))}
 		${source === 'custom' ? fact('File', html`<code>${path}</code>`, 'path') : ''}
 		${fact('Tool for', html`<code>${recipe.capability}</code> · ${kindText(recipe)}`)}
@@ -171,7 +189,7 @@ function recipeFacts({ source, path, recipe }: RecipeEntry) {
 
 function testingFacts(recipe: Recipe) {
 	const observe = Object.entries(recipe.observeFrom).map(([value, reading]) => `${value} (${reading})`)
-	return html`<dl class="facts">
+	return html`<dl class="sc-facts">
 		${fact('Observes from', codes(observe))} ${fact('Evidence', codes(recipe.evidence))}
 		${recipe.evidenceExtensions ? fact('Evidence files', pairs(recipe.evidenceExtensions)) : ''}
 		${fact('Environment', pairs(recipe.environment))} ${fact('Tool folders', codes(recipe.workspaceFolders))}
@@ -187,7 +205,7 @@ function catalogFailure(title: string, error: string) {
 		title,
 		['recipes'],
 		html`<div data-region="recipe">
-			${banner({ kind: 'fail', content: html`Checkmate cannot read the recipes. ${error}` })}
+			${notice({ kind: 'fail', content: html`Checkmate cannot read the recipes. ${error}` })}
 		</div>`
 	)
 }
@@ -198,13 +216,13 @@ export function invalidRecipePage(workspace: string, file: string): Page | null 
 	const item = invalid.find((candidate) => fileName(candidate.path) === file)
 	if (!item) return null
 	const body = html`<div data-region="recipe">
-		${heading({ title: item.name, sub: 'Checkmate does not use this recipe. A target, plan, run, or test that names it is refused.', extra: html`<div class="meta">${invalidPill()}</div>` })}
-		<div class="main-col">
+		${heading({ title: item.name, sub: 'Checkmate does not use this recipe. A target, plan, run, or test that names it is refused.', meta: html`${invalidPill()}` })}
+		<div class="sc-stack">
 			<section aria-labelledby="error">
 				<h2 id="error">Error</h2>
-				<pre class="sp-code" tabindex="0" data-error>${recipeProblem(item)}</pre>
+				<pre class="sc-code" tabindex="0" data-error>${recipeProblem(item)}</pre>
 			</section>
-			<dl class="facts">
+			<dl class="sc-facts">
 				${fact('Source', sourcePill(item.source))} ${fact('File', html`<code>${item.path}</code>`, 'path')}
 				${fact('Fix', html`Edit this JSON file to fix the listed problems. The recipe appears in the list when it is valid.`)}
 			</dl>
@@ -214,57 +232,62 @@ export function invalidRecipePage(workspace: string, file: string): Page | null 
 	return settingsPage('/settings/recipes', file, ['recipes'], body)
 }
 
-export function recipePage(workspace: string, name: string): Page | null {
-	const { recipes, error } = readCatalog(workspace)
-	if (error) return catalogFailure(name, error)
-	const entry = recipes.find(({ recipe }) => recipe.name === name)
-	if (!entry) return null
+function recipeDetail(entry: RecipeEntry) {
 	const { recipe, jsonText } = entry
 	const usage = recipe.usage?.join('\n')
 	const usageText = entry.source === 'built-in' ? usage?.replace(agentOnly, '\n') : usage
-	const body = html`<div data-region="recipe">
-		${heading({ title: recipe.name, sub: recipe.purpose, extra: html`<div class="meta">${sourcePill(entry.source)}</div>` })}
-		<div class="main-col">
-			${jumpLinks({
-				links: [
-					{ href: '#recipe', label: 'Recipe' },
-					{ href: '#requires', label: 'Requires' },
-					{ href: '#testing', label: 'Testing' },
-					...(usage !== undefined ? [{ href: '#usage', label: 'Usage' }] : []),
-					{ href: '#json', label: 'JSON' },
-				],
-			})}
-			<section aria-labelledby="recipe">
-				<h2 id="recipe">Recipe</h2>
-				${recipeFacts(entry)}
-			</section>
-			<section aria-labelledby="requires">
-				<h2 id="requires">Requires</h2>
-				<h3>Entry points <span class="n">${recipe.entryPoints?.length ?? 0}</span></h3>
-				${entryPoints(recipe)}
-				<h3>Setup reachability checks</h3>
-				${reachability(recipe)}
-			</section>
-			<section aria-labelledby="testing">
-				<h2 id="testing">Testing</h2>
-				${testingFacts(recipe)}
-			</section>
-			${
-				usage !== undefined
-					? html`<section aria-labelledby="usage">
-							<h2 id="usage">Usage</h2>
-							<pre class="sp-code" tabindex="0" data-usage>${usageText}</pre>
-						</section>`
-					: null
-			}
-			${fold({
-				key: 'section:json',
-				title: 'Recipe JSON',
-				headingId: 'json',
-				body: html`<pre class="sp-code" tabindex="0" data-json>${jsonText}</pre>`,
-			})}
-			<p class="back"><a href="/settings/recipes">All recipes</a></p>
-		</div>
+	return html`<div class="sc-stack" data-region="recipe">
+		<header class="sc-h is-sub">
+			<div class="sc-h-text">
+				<h2 class="sc-h-title">${recipe.name}</h2>
+				<p>${recipe.purpose}</p>
+			</div>
+			<div class="sc-h-act">${sourcePill(entry.source)}</div>
+		</header>
+		${jumpLinks({
+			links: [
+				{ href: '#recipe', label: 'Recipe' },
+				{ href: '#requires', label: 'Requires' },
+				{ href: '#testing', label: 'Testing' },
+				...(usage !== undefined ? [{ href: '#usage', label: 'Usage' }] : []),
+				{ href: '#json', label: 'JSON' },
+			],
+		})}
+		<section class="sc-sec" aria-labelledby="recipe">
+			<h2 class="sc-sec-h" id="recipe">Recipe</h2>
+			${recipeFacts(entry)}
+		</section>
+		<section class="sc-sec" aria-labelledby="requires">
+			<h2 class="sc-sec-h" id="requires">Requires</h2>
+			<dl class="sc-facts">
+				${fact('Entry points', entryPoints(recipe))} ${fact('Setup checks', reachability(recipe))}
+			</dl>
+		</section>
+		<section class="sc-sec" aria-labelledby="testing">
+			<h2 class="sc-sec-h" id="testing">Testing</h2>
+			${testingFacts(recipe)}
+		</section>
+		${
+			usage !== undefined
+				? html`<section class="sc-sec" aria-labelledby="usage">
+						<h2 class="sc-sec-h" id="usage">Usage</h2>
+						<pre class="sc-code" tabindex="0" data-usage>${usageText}</pre>
+					</section>`
+				: null
+		}
+		${fold({
+			key: 'section:json',
+			title: 'Recipe JSON',
+			headingId: 'json',
+			body: html`<pre class="sc-code" tabindex="0" data-json>${jsonText}</pre>`,
+		})}
 	</div>`
-	return settingsPage('/settings/recipes', recipe.name, ['recipes'], body)
+}
+
+export function recipePage(workspace: string, name: string): Page | null {
+	const catalog = readCatalog(workspace)
+	if (catalog.error) return catalogFailure(name, catalog.error)
+	const entry = catalog.recipes.find(({ recipe }) => recipe.name === name)
+	if (!entry) return null
+	return settingsPage('/settings/recipes', name, ['recipes'], recipesLayout(workspace, catalog, entry))
 }

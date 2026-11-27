@@ -109,7 +109,7 @@ function ruleGroups(review: Review, view: string, items: Item[]): Group[] {
 function listOf(context: Context, review: Review, view: string, groups: Group[], label: string) {
 	if (!groups.length) return emptyLine({ text: emptyText(view) })
 	let n = 0
-	return html`<div class="sp-list" role="list" aria-label="${label}" data-list>
+	return html`<div class="sc-list" role="list" aria-label="${label}" data-list>
 		${groups.map(
 			(group) =>
 				html`${groupHeader({ label: group.label, count: group.items.length })}
@@ -121,7 +121,13 @@ function listOf(context: Context, review: Review, view: string, groups: Group[],
 function blockingOf(review: Review, groups: Group[], view: string) {
 	const blocking = groups.find((group) => group.label === blockingLabel)?.items ?? []
 	if (!blocking.length) return ''
-	return blockingBanner({ count: blocking.length, href: openedHref(review, blocking[0], view) })
+	return blockingBanner({
+		count: blocking.length,
+		title: `${blocking.length === 1 ? 'question blocks' : 'questions block'} testing`,
+		text: 'Testers wait on these answers. Everything else can wait.',
+		action: 'Answer the first',
+		href: openedHref(review, blocking[0], view),
+	})
 }
 
 function emptyText(view: string) {
@@ -231,7 +237,7 @@ function ruleButtons(context: Context, review: Review, rule: Rule, count: number
 				title: `Edit the text and the area of ${rule.id}`,
 			},
 		}),
-		html`<form method="post" action="/plans/${review.planId}/rules/${rule.id}/remove" class="sp-opt">
+		html`<form method="post" action="/plans/${review.planId}/rules/${rule.id}/remove" class="sc-opt-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			${button({
 				label: numbered ? 'Remove…' : `Remove ${rule.id}…`,
@@ -265,7 +271,7 @@ function rulesList(context: Context, review: Review) {
 	const rows = review.map.rows.filter((row) => row.rule.id !== outside)
 	if (!rows.length) return emptyLine({ text: 'This plan has no rules yet.' })
 	const editable = ruleEditable(review)
-	return html`<div class="sp-list wide-title" role="list" aria-label="Rules of the plan" data-list>
+	return html`<div class="sc-list wide-title" role="list" aria-label="Rules of the plan" data-list>
 		${groupHeader({ label: 'Rules', count: rows.length })}
 		${rows.map((row, index) =>
 			listRow({
@@ -312,39 +318,38 @@ function panel(context: Context, review: Review, view: string, current: string, 
 		review.answers ? actionButton('follow', `Test the answers (${review.answers.count})…`) : ''
 	}${store}`
 	return html`<section
-		class="sp-panel"
+		class="sc-panel"
 		data-panel="${view}"
 		data-title="${title}"
 		aria-labelledby="title-${slug(view)}"
 		${view === current ? '' : html`hidden`}
 	>
-		<div class="sp-ch">
-			${crumbBar({
-				crumbs: [
-					[review.planId, `/plans/${review.planId}`],
-					[review.target, null],
-				],
-			})}
-			${
-				view === current
-					? html`<h1 id="title-${slug(view)}" data-view-title>${title}</h1>`
-					: html`<h2 id="title-${slug(view)}" data-view-title>${title}</h2>`
-			}
-			${head.sub ? html`<p class="sp-sub">${head.sub}</p>` : ''}
-			<div class="sp-pills">${head.pills}</div>
-			${
-				cost === null
-					? ''
-					: html`<p
-							class="sp-sub"
-							title="Reported cost across this plan’s explorations, chats, and structured runs"
-						>
-							Total cost ${cost}
-						</p>`
-			}
-			${canChoose(view) ? html`<p class="sp-sub att" data-build-note></p>` : ''}
-		</div>
-		<div class="sp-tools" data-actions>${tools}</div>
+		<header class="sc-h">
+			<div class="sc-h-text">
+				${crumbBar({
+					crumbs: [
+						[review.planId, `/plans/${review.planId}`],
+						[review.target, null],
+					],
+				})}
+				${
+					view === current
+						? html`<h1 id="title-${slug(view)}" data-view-title>${title}</h1>`
+						: html`<h2 id="title-${slug(view)}" data-view-title>${title}</h2>`
+				}
+				${head.sub ? html`<p>${head.sub}</p>` : ''}
+				<div class="sc-h-marks">${head.pills}</div>
+				${
+					cost === null
+						? ''
+						: html`<p title="Reported cost across this plan’s explorations, chats, and structured runs">
+								Total cost ${cost}
+							</p>`
+				}
+				${canChoose(view) ? html`<p class="sc-hot" data-build-note></p>` : ''}
+			</div>
+			<div class="sc-h-tools" data-actions>${tools}</div>
+		</header>
 		${view === 'needs' ? blockingOf(review, groups, view) : ''}
 		${view === 'rules' ? rulesList(context, review) : listOf(context, review, view, groups, title)}
 	</section>`
@@ -406,9 +411,9 @@ export function reviewPage(
 			: `/?at=${encodeURIComponent(`plan:${planId}`)}`,
 		drawer: Boolean(item),
 		nav: navigator(review, current, null, { href: reviewHref(planId, current, '&chat=list'), active: chatting }),
-		body: html`${notice ? html`<p class="form-error" role="alert" data-notice>${notice}</p>` : ''}${refusedAnswer}
+		body: html`${notice ? html`<p class="sc-error" role="alert" data-notice>${notice}</p>` : ''}${refusedAnswer}
 			<div
-				class="sp-review"
+				class="sc-review"
 				data-review
 				data-plan="${planId}"
 				data-qa-status="${JSON.stringify(review.qa)}"

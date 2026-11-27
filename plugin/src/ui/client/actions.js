@@ -222,7 +222,7 @@ export function attachActions() {
 		const send = () => fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form)) })
 		const alertText = (message) => {
 			const text = document.createElement('p')
-			text.className = 'form-error'
+			text.className = 'sc-error'
 			text.setAttribute('role', 'alert')
 			text.textContent = message
 			return text

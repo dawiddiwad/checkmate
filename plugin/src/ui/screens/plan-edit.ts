@@ -3,10 +3,10 @@ import { frozenRevision, jsonPatch, planCandidate } from '../../plans.ts'
 import { planDetail } from '../../views.ts'
 import type { Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
-import { banner } from '../components/banner.ts'
 import { formButton } from '../components/button.ts'
 import { dataTable } from '../components/data-table.ts'
 import { field, textArea, textInput } from '../components/field.ts'
+import { notice } from '../components/notice.ts'
 import { heading } from '../components/page-heading.ts'
 import { actorLimit, html, short } from '../html.ts'
 import { navigator, reviewOf } from '../review.ts'
@@ -132,9 +132,9 @@ export function ownChanges(form: URLSearchParams, fresh: Candidate) {
 }
 
 function unsavedPanel(unsaved: string) {
-	return html`<section class="panel unsaved" aria-labelledby="unsaved-title">
-		<h2 class="lab" id="unsaved-title">Your changes (not saved)</h2>
-		<p class="help">
+	return html`<section class="sc-card unsaved" aria-labelledby="unsaved-title">
+		<h2 class="sc-card-h" id="unsaved-title">Your changes (not saved)</h2>
+		<p class="sc-help">
 			The editor below shows the latest version. These are the values that you changed. Apply the changes again,
 			then save.
 		</p>
@@ -143,11 +143,11 @@ function unsavedPanel(unsaved: string) {
 }
 
 function removalField(state: EditState) {
-	return html`<div class="field-group" data-removal${state.removed.length ? '' : html` hidden`}>
-		<label class="lab" for="removal">Reason for removal</label>
-		<p class="help" id="removal-help">
-			The edit removes <span class="mono" data-removal-tests>${state.removed.join(', ')}</span>. Checkmate records
-			who removed which tests and why.
+	return html`<div class="sc-field" data-removal${state.removed.length ? '' : html` hidden`}>
+		<label class="sc-label" for="removal">Reason for removal</label>
+		<p class="sc-help" id="removal-help">
+			The edit removes <span class="sc-mono" data-removal-tests>${state.removed.join(', ')}</span>. Checkmate
+			records who removed which tests and why.
 		</p>
 		<textarea id="removal" name="rationale" rows="2" aria-describedby="removal-help">${state.rationale}</textarea>
 	</div>`
@@ -163,7 +163,7 @@ function areaField(label: string, name: string, value: string, rows: number, hel
 
 function requirementFields(requirement: Requirement, i: number) {
 	return html`<fieldset class="edit-card" id="edit-${requirement.id}">
-		<legend class="mono">${requirement.id}</legend>
+		<legend class="sc-mono">${requirement.id}</legend>
 		${areaField('Text', `r${i}.text`, requirement.text, 2)}
 		${inputField('Source', `r${i}.source`, requirement.source, 'Where the requirement comes from.')}
 	</fieldset>`
@@ -171,7 +171,7 @@ function requirementFields(requirement: Requirement, i: number) {
 
 function testFields(test: Test, i: number) {
 	return html`<fieldset class="edit-card" id="edit-${test.id}">
-		<legend><span class="mono">${test.id}</span> ${test.title}</legend>
+		<legend><span class="sc-mono">${test.id}</span> ${test.title}</legend>
 		${inputField('Title', `t${i}.title`, test.title)}
 		<div class="edit-row">
 			${inputField('Capability', `t${i}.capability`, test.capability)}
@@ -185,8 +185,8 @@ function testFields(test: Test, i: number) {
 		)}
 		${areaField('Preconditions', `t${i}.preconditions`, test.preconditions.join('\n'), 2, 'One per line.')}
 		${areaField('Action', `t${i}.action`, test.action, 2)}
-		<div class="field-group">
-			<p class="lab">Assertions</p>
+		<div class="sc-field">
+			<p class="sc-label">Assertions</p>
 			${
 				test.assertions.length
 					? html`<ul class="edit-asrs">
@@ -196,7 +196,7 @@ function testFields(test: Test, i: number) {
 										<label class="aid" for="t${i}.a${j}.check">${assertion.id}</label>
 										<textarea id="t${i}.a${j}.check" name="t${i}.a${j}.check" rows="1">
 ${assertion.check}</textarea>
-										<label class="sr-only" for="t${i}.a${j}.kind"
+										<label class="sc-sr" for="t${i}.a${j}.kind"
 											>Check kind of ${assertion.id}</label
 										>
 										<select id="t${i}.a${j}.kind" name="t${i}.a${j}.kind">
@@ -213,7 +213,7 @@ ${assertion.check}</textarea>
 									</li>`
 							)}
 						</ul>`
-					: html`<p class="help">No assertions. Add them in the JSON editor.</p>`
+					: html`<p class="sc-help">No assertions. Add them in the JSON editor.</p>`
 			}
 		</div>
 	</fieldset>`
@@ -221,15 +221,15 @@ ${assertion.check}</textarea>
 
 function coverageMatrix(candidate: Candidate) {
 	return dataTable({
-		columns: ['Requirement', ...candidate.tests.map((test) => ({ label: test.id, attrs: { class: 'mono' } }))],
+		columns: ['Requirement', ...candidate.tests.map((test) => ({ label: test.id, attrs: { class: 'is-mono' } }))],
 		scroll: true,
-		attrs: { class: 'matrix' },
+		attrs: { class: 'is-matrix' },
 		rows: candidate.requirements.map(
 			(requirement) =>
 				html`<tr>
 					<th scope="row">
-						<span class="mono">${requirement.id}</span>
-						<span class="muted small matrix-text">${requirement.text}</span>
+						<span class="sc-mono">${requirement.id}</span>
+						<span class="sc-muted sc-note matrix-text">${requirement.text}</span>
 					</th>
 					${candidate.tests.map(
 						(test) =>
@@ -258,7 +258,7 @@ function hidden(context: Context, sha256: string, mode: string, orig: string) {
 
 function actorLine(context: Context, state: EditState, path: string, mode: string) {
 	if (context.actor)
-		return html`<p class="help">
+		return html`<p class="sc-help">
 			Saving as <strong>${context.actor}</strong>.
 			<a class="tap" href="/actor?back=${encodeURIComponent(path)}">Change name</a>
 		</p>`
@@ -282,7 +282,7 @@ export function editPage(
 			section: 'home',
 			subjects: [`plan:${planId}`],
 			body: html`${heading({ title, sub: detail.plan.objective })}
-			${banner({
+			${notice({
 				kind: 'info',
 				content: html`Only the latest revision can change.
 					<a href="/plans/${planId}@${detail.latestRevision}/edit"
@@ -300,15 +300,15 @@ export function editPage(
 			: frozen === 'promotion'
 				? `${subject} was promoted.`
 				: `${subject} is approved.`
-	const notice = frozen
-		? banner({
+	const status = frozen
+		? notice({
 				kind: 'warn',
 				content: html`<strong
 						>${why} Saving creates revision ${next}${needsApproval ? ', which needs approval' : ''}.</strong
 					>
 					${subject} stays as it is.`,
 			})
-		: banner({
+		: notice({
 				kind: 'info',
 				content: html`<strong>Edits change this revision in place.</strong> ${subject} is not approved and no
 					run uses it.`,
@@ -325,10 +325,10 @@ export function editPage(
 		removed: [],
 		rationale: '',
 	}
-	const messages = html`${shown.stale ? banner({ kind: 'warn', content: shown.stale }) : ''}
-	${shown.error ? html`<p class="form-error" role="alert" data-field="${shown.field ?? ''}">${shown.error}</p>` : ''}`
+	const messages = html`${shown.stale ? notice({ kind: 'warn', content: shown.stale }) : ''}
+	${shown.error ? html`<p class="sc-error" role="alert" data-field="${shown.field ?? ''}">${shown.error}</p>` : ''}`
 	const buttons = (mode: string) =>
-		html`<div class="btns">
+		html`<div class="sc-row-btns">
 				${formButton({ label: save, emphasis: 'primary' })}
 				${formButton({ label: 'Cancel', href: `/plans/${subject}` })}
 			</div>
@@ -336,31 +336,29 @@ export function editPage(
 	const body = html`${heading({
 			title,
 			sub: detail.plan.objective,
-			extra: html`<div class="meta">
-				<a class="pill" href="/plans/${subject}">${subject}</a>
-				<span class="pill" title="${detail.sha256}"
-					>sha256 <span class="mono">${short(detail.sha256)}</span></span
-				>
-			</div>`,
+			meta: html`
+				<a class="sc-mono" href="/plans/${subject}">${subject}</a>
+				<span title="${detail.sha256}">sha256 <code>${short(detail.sha256)}</code></span>
+			`,
 		})}
 		${shown.unsaved === null ? '' : unsavedPanel(shown.unsaved)}
 		<div data-region="edit" data-stale-message="${planId} changed. Review it before you save.">
-			<div data-stale-slot>${notice} ${messages}</div>
+			<div data-stale-slot>${status} ${messages}</div>
 			<form method="post" action="${path}" class="edit-form" data-edit-form>
 				${hidden(context, detail.sha256, 'form', shown.orig)}
 				<section aria-labelledby="edit-requirements">
 					<h2 id="edit-requirements">
-						Requirements <span class="n">${shown.candidate.requirements.length}</span>
+						Requirements <span class="sc-count-n">${shown.candidate.requirements.length}</span>
 					</h2>
 					<div class="stack">${shown.candidate.requirements.map(requirementFields)}</div>
 				</section>
 				<section aria-labelledby="edit-tests">
-					<h2 id="edit-tests">Tests <span class="n">${shown.candidate.tests.length}</span></h2>
+					<h2 id="edit-tests">Tests <span class="sc-count-n">${shown.candidate.tests.length}</span></h2>
 					<div class="stack">${shown.candidate.tests.map(testFields)}</div>
 				</section>
 				<section aria-labelledby="edit-coverage">
 					<h2 id="edit-coverage">Coverage</h2>
-					<p class="help">Mark the requirements that each test covers. Each test covers one or more.</p>
+					<p class="sc-help">Mark the requirements that each test covers. Each test covers one or more.</p>
 					${coverageMatrix(shown.candidate)}
 				</section>
 				<div class="edit-save">${buttons('form')}</div>
@@ -375,12 +373,12 @@ export function editPage(
 					data-test-ids="${detail.plan.tests.map((test) => test.id).join(' ')}"
 				>
 					${hidden(context, detail.sha256, 'json', shown.orig)}
-					<p class="help">
+					<p class="sc-help">
 						Add or remove requirements, tests, assertions, and gaps. The JSON has the fields of a plan
 						candidate:
 						<code>requirements</code>, <code>tests</code>, and <code>gaps</code>.
 					</p>
-					<label class="sr-only" for="json">Plan candidate JSON</label>
+					<label class="sc-sr" for="json">Plan candidate JSON</label>
 					<textarea id="json" name="json" rows="24" class="code" spellcheck="false">${shown.json}</textarea>
 					${removalField(shown)} ${buttons('json')}
 				</form>

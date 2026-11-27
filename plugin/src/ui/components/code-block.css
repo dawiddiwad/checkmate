@@ -1,10 +1,11 @@
-.sp-code {
-	margin: 0 0 12px;
-	padding: 8px 12px;
+.sc-code {
+	min-width: 0;
+	margin: 0;
+	padding: 12px var(--space-4);
 	max-height: 360px;
 	overflow: auto;
-	border: 1px solid var(--hair);
 	background: var(--surface-2);
+	border: var(--hairline) solid var(--hair);
 	color: var(--ink);
 	font: 400 13px/20px var(--font-mono);
 	white-space: pre-wrap;

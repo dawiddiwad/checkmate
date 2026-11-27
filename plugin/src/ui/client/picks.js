@@ -76,7 +76,7 @@ export function applyPicks() {
 	showBulk()
 	for (const row of rows) {
 		const on = picks.has(row.dataset.pick)
-		row.classList.toggle('sel', on)
+		row.classList.toggle('is-picked', on)
 		const box = row.querySelector('[data-pick-box]')
 		if (box) box.checked = on
 	}

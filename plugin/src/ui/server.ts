@@ -118,7 +118,7 @@ import { chatMessagePage } from './screens/chat-message.ts'
 import { chatPage, chatsPage, planChat } from './screens/chats.ts'
 import { claimPage, explorationPage, explorerFile, explorerFilePage, questionPage } from './screens/exploration.ts'
 import { logPage } from './screens/log.ts'
-import { assumedRows, firstRunPage, newChangePage } from './screens/new-change.ts'
+import { assumedRows, firstRunPage, newChangePage, setupForm } from './screens/new-change.ts'
 import { emptyRecord, permissionPage } from './screens/permission.ts'
 import {
 	candidateFromForm,
@@ -131,6 +131,7 @@ import {
 import { reviewPage } from './screens/plan-review.ts'
 import { gapPage, planHistoryList, planPage, requestPage } from './screens/plan.ts'
 import { homePage } from './screens/plans.ts'
+import { cataloguePage } from './screens/catalogue.ts'
 import { invalidRecipePage, recipePage, recipesPage } from './screens/recipes.ts'
 import { runPage } from './screens/run.ts'
 import { runsPage } from './screens/runs.ts'
@@ -150,6 +151,7 @@ export type UiOptions = HookOptions & {
 	defaultActor?: string
 	env?: Env
 	stopDelays?: StopDelays
+	catalogue?: boolean
 }
 
 export type Ui = { url: string; close(): Promise<void> }
@@ -201,10 +203,9 @@ const routes = {
 	claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
 	claimEvidence: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})/evidence/([0-9]{1,3})$`),
 	entryEvidence: new RegExp(`^/explorations/(${id})/entries/(${id}/${id})/evidence/([0-9]{1,3})$`),
-	font: /^\/assets\/fonts\/(ibm-plex-sans-(?:400|600)|ibm-plex-mono-(?:400|500|600))\.woff2$/,
 }
 const contentSecurityPolicy =
-	"default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'"
+	"default-src 'self'; img-src 'self' data:; style-src 'self' https://fonts.googleapis.com; script-src 'self'; connect-src 'self'; font-src https://fonts.gstatic.com; frame-ancestors 'none'; form-action 'self'"
 const previewPolicy =
 	"sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
 const documentTypes: Record<string, string> = {
@@ -226,7 +227,6 @@ function directory(candidates: string[], file: string) {
 
 function assets() {
 	const files = directory(['./assets/', '../src/ui/assets/', '../plugin/src/ui/assets/'], 'favicon.svg')
-	const fonts = `${files}fonts/`
 	const read = (name: string) => readFileSync(files + name)
 	const client = directory(['./', '../../dist/'], 'client.js')
 	// scripts/build-plugin.ts joins the stylesheets of plugin/src/ui/ into plugin/dist/style.css.
@@ -235,7 +235,6 @@ function assets() {
 		'/assets/style.css': { type: 'text/css; charset=utf-8', body: readFileSync(`${styles}style.css`) },
 		'/assets/client.js': { type: 'text/javascript; charset=utf-8', body: readFileSync(`${client}client.js`) },
 		'/assets/favicon.svg': { type: 'image/svg+xml', body: read('favicon.svg') },
-		font: (name: string) => readFileSync(`${fonts}${name}.woff2`),
 	}
 }
 
@@ -483,7 +482,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			status,
 			back: '/',
 			body: html`${heading({ title, sub: message })}
-				<p class="actions">
+				<p class="sc-row-btns">
 					${formButton({ label: 'Needs you', href: '/', emphasis: 'primary' })}
 					${formButton({ label: 'Plans', href: '/plans' })} ${formButton({ label: 'Runs', href: '/runs' })}
 				</p>`,
@@ -596,11 +595,6 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const asset = files[pathname as keyof typeof files]
 		if (asset && typeof asset === 'object')
 			return send(request.res, 200, asset.type, asset.body, { 'Cache-Control': 'no-cache' })
-		const font = routes.font.exec(pathname)
-		if (font)
-			return send(request.res, 200, 'font/woff2', files.font(font[1]), {
-				'Cache-Control': 'public, max-age=31536000, immutable',
-			})
 		if (pathname === '/events') return events(request)
 		if (pathname === '/settings/harness/models') return modelCatalog(request)
 		if (pathname === '/settings/harness/tester-count') return testerCount(request)
@@ -620,11 +614,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/' && searchParams.has('item')) return redirect(request.res, oldItem(searchParams))
 		if (pathname === '/') return render(request, startOfHome(shown))
 		if (pathname === '/setup')
-			return render(request, firstRunPage(store.workspace, shown, false, cameFrom(request)))
+			return render(request, targetsPage(store, shown, setupForm(shown, store.workspace, undefined, true)))
 		if (pathname === '/new')
 			return render(request, newChangePage(shown, changeDefaults(searchParams.get('target')), false))
 		if (pathname === '/inbox' || pathname === '/plans') return redirect(request.res, '/')
 		if (pathname === '/claims') return redirect(request.res, oldItem(searchParams, 'all'))
+		if (options.catalogue && pathname === '/catalogue') return render(request, cataloguePage())
 		if (pathname === '/runs') return render(request, runsPage(store, searchParams))
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
 		if (pathname === '/activity')
@@ -633,7 +628,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const asked = routes.permit.exec(pathname)
 		if (asked) return permissionRecord(request, asked[1], asked[2])
 		if (pathname === '/settings/claude') return redirect(request.res, '/settings/harness')
-		if (pathname === '/settings/harness') return render(request, harnessPage(store, shown, env))
+		if (pathname === '/settings/harness')
+			return render(request, harnessPage(store, shown, env, null, null, null, searchParams.get('section') ?? ''))
 		if (pathname === '/chats') return render(request, chatsPage(store, shown, searchParams, env))
 		const chat = routes.chatPage.exec(pathname)
 		if (chat) return openChat(request, chat[1])
@@ -644,7 +640,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (askedRequest) return messageRecord(request, askedRequest[1])
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
 		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
-		if (pathname === '/settings/targets') return render(request, targetsPage(store))
+		if (pathname === '/settings/targets') return render(request, targetsPage(store, shown))
 		if (pathname === '/settings/recipes') return render(request, recipesPage(options.workspace))
 		if (pathname === '/settings/invalid-recipes') {
 			const file = searchParams.get('file') ?? ''
@@ -805,10 +801,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			section: null,
 			subjects: ['inbox'],
 			body: html`${heading({ title: 'Your name', sub: 'Checkmate records this name with each decision you make in this browser.' })}
-				<form method="post" action="/actor" class="panel narrow">
+				<form method="post" action="/actor" class="sc-card narrow">
 					<input type="hidden" name="csrf" value="${csrf}" />
 					<input type="hidden" name="back" value="${back}" />
-					<label class="lab" for="actor-name">Name</label>
+					<label class="sc-label" for="actor-name">Name</label>
 					<input
 						id="actor-name"
 						name="actor"
@@ -817,7 +813,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 						autocomplete="name"
 						value="${shown.actor ?? ''}"
 					/>
-					<div class="btns">
+					<div class="sc-row-btns">
 						${formButton({ label: 'Save name', emphasis: 'primary' })}
 						${formButton({ label: 'Cancel', href: back })}
 					</div>
@@ -1158,8 +1154,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			status: 422,
 			back,
 			body: html`${heading({ title: 'Nothing was done' })}
-				<p class="form-error" role="alert" ${field ? html`data-field="${field}"` : ''}>${message}</p>
-				<p class="actions">${formButton({ label: 'Go back', href: back, emphasis: 'primary' })}</p>`,
+				<p class="sc-error" role="alert" ${field ? html`data-field="${field}"` : ''}>${message}</p>
+				<p class="sc-row-btns">${formButton({ label: 'Go back', href: back, emphasis: 'primary' })}</p>`,
 		})
 	}
 
@@ -1844,7 +1840,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		} catch (error) {
 			return refuse(request, page(engineText(error)), cookies)
 		}
-		redirect(request.res, '/settings/harness', [
+		redirect(request.res, '/settings/harness?section=models', [
 			...cookies,
 			cookie(
 				'checkmate_toast',
@@ -1894,7 +1890,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		} catch (error) {
 			return refuse(request, page(engineText(error)), cookies)
 		}
-		redirect(request.res, '/settings/harness', [...cookies, cookie('checkmate_toast', 'Saved the models', 60)])
+		redirect(request.res, '/settings/harness?section=models', [
+			...cookies,
+			cookie('checkmate_toast', 'Saved the models', 60),
+		])
 	}
 
 	function saveRules(request: Request, form: URLSearchParams) {
@@ -1918,7 +1917,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		} catch (error) {
 			return refuse(request, page(engineText(error)), cookies)
 		}
-		redirect(request.res, '/settings/harness', [
+		redirect(request.res, '/settings/harness?section=rules', [
 			...cookies,
 			cookie('checkmate_toast', 'Saved the tool rules of testers', 60),
 		])
@@ -1996,7 +1995,14 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			])
 			return render(
 				request,
-				firstRunPage(store.workspace, context(request), onHome, cameFrom(request), submitted),
+				onHome
+					? firstRunPage(store.workspace, context(request), onHome, cameFrom(request), submitted)
+					: targetsPage(
+							store,
+							context(request),
+							setupForm(context(request), store.workspace, submitted, true),
+							422
+						),
 				cookies
 			)
 		}

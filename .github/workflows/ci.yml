@@ -18,6 +18,8 @@ permissions:
   contents: read
 jobs:
   verify:
+    needs: release-source
+    if: ${{ !cancelled() && (needs.release-source.result == 'success' || needs.release-source.result == 'skipped') }}
     runs-on: ubuntu-latest
     concurrency:
       group: verify-${{ github.event.pull_request.number || github.run_id }}
@@ -42,7 +44,7 @@ jobs:
         run: node scripts/check-catalogue.ts
         env:
           CHECKMATE_CATALOGUE_BASELINE: ${{ github.event_name == 'push' && github.event.before || '' }}
-          CHECKMATE_CATALOGUE_ACCEPT: ${{ contains(github.event.pull_request.labels.*.name, 'ui-change') }}
+          CHECKMATE_CATALOGUE_ACCEPT: ${{ needs.release-source.outputs.ui_change == 'true' || contains(github.event.pull_request.labels.*.name, 'ui-change') }}
           CHECKMATE_CATALOGUE_OUTPUT: ${{ runner.temp }}/checkmate-catalogue-diff
       - if: ${{ !cancelled() && steps.catalogue.outcome != 'skipped' }}
         uses: actions/upload-artifact@v4
@@ -62,6 +64,7 @@ jobs:
       pull-requests: read
     outputs:
       source: ${{ steps.source.outputs.source }}
+      ui_change: ${{ steps.source.outputs.ui_change }}
     steps:
       - name: Identify the merged PR or manual release
         id: source
@@ -92,6 +95,7 @@ jobs:
                 pull.merged_at && pull.base.ref === branch && pull.merge_commit_sha === context.sha
               )
               if (!pull) return
+              core.setOutput('ui_change', pull.labels.some(label => label.name === 'ui-change'))
               if (pull.labels.some(label => label.name === 'skip-release')) {
                 core.info(`PR #${pull.number} has the skip-release label. No npm or GitHub release.`)
                 return

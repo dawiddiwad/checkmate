@@ -844,6 +844,13 @@ test(
 		assert(historyBefore > 0, 'the existing run has recorded operation history')
 		const first = await startUi(t, workspace)
 		const { page } = await pageFor(t, first.url)
+		await page.goto(new URL('/runs/run-7?item=finding%3AF1', first.url).href)
+		assert.deepEqual(await page.locator('ol.sc-steps li:visible').allTextContents(), [
+			'Sign in as anna@example.test.',
+			'Add LAMP-01 (400 PLN) to the cart.',
+			'Apply the code SPRING40.',
+			'Read totalPLN in the quote response.',
+		])
 		await page.goto(new URL('/plans/checkout?item=g%3AG2', first.url).href)
 		const token = await page.locator('input[name="csrf"]').first().inputValue()
 		first.server.kill('SIGTERM')

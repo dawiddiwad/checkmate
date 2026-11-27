@@ -2,15 +2,43 @@ import type { Store } from '../plugin/src/store.ts'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { answerGap, closeStore, openPlan, openStore } from '../plugin/src/index.ts'
+import {
+	addInstance,
+	answerGap,
+	beginRun,
+	closeStore,
+	closeTest,
+	finishRun,
+	openPlan,
+	openStore,
+	openTarget,
+	recordFinding,
+	rejectResult,
+	saveTarget,
+} from '../plugin/src/index.ts'
+import { addRequestActivity, askRequest, requestOf, setRequestState } from '../plugin/src/requests.ts'
+import { requestPermission } from '../plugin/src/permissions.ts'
 import { openExploration } from '../plugin/src/explorations.ts'
 import { decideClaim, handOffClaims } from '../plugin/src/journal.ts'
 import { harvestExploration } from '../plugin/src/harvest.ts'
+import { planRules } from '../plugin/src/rules.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { done, ended, entries, event, launch, launched, report } from '../test/explorations.ts'
 import type { ChildProcess } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
-import { agent, human, minutesAgo, pageShot, seedDemo, withDemoClock } from './ui-demo.ts'
+import {
+	acceptedPlan,
+	agent,
+	check,
+	human,
+	json,
+	minutesAgo,
+	pageShot,
+	profile,
+	seedDemo,
+	showcasePlans,
+	withDemoClock,
+} from './ui-demo.ts'
 
 type Defect = [title: string, expected: string, actual: string, steps: string[]]
 type Fate = 'observed' | 'suspected' | 'confirmed' | 'unresolved' | 'accepted' | 'rejected'
@@ -23,6 +51,7 @@ type Spec = {
 	explorers: string[]
 	defects: Array<{ defect: Defect; severity: string; fate: Fate; image: boolean }>
 	questions: Array<{ question: string; blocking: boolean; answer: string | null }>
+	criteria?: boolean
 }
 
 const day = 24 * 60
@@ -361,6 +390,13 @@ function explore(store: Store, spec: Spec) {
 	event(store, spec.explorationId, { step: 'supervisor', detail: { pid: process.pid } })
 	for (const explorer of spec.explorers) launched(store, spec.explorationId, explorer)
 	const ids = new Map<string, string>()
+	const rules = planRules(store, spec.planId).rules.map((rule) => rule.id)
+	const ruleOf = (index: number, every: number) =>
+		rules.length
+			? index % every === 0
+				? rules[(index / every + spec.daysAgo) % rules.length]
+				: 'outside'
+			: undefined
 	spec.explorers.forEach((explorer, which) => {
 		minutesAgo(start - 20 - which * 5)
 		const found = spec.defects
@@ -383,6 +419,7 @@ function explore(store: Store, spec: Spec) {
 					kind: 'defect',
 					id: `D${index + 1}`,
 					title: item.defect[0],
+					...(ruleOf(index, 100) ? { rule: ruleOf(index, 100) } : {}),
 					expected: item.defect[1],
 					actual: item.defect[2],
 					severity: item.severity,
@@ -397,9 +434,21 @@ function explore(store: Store, spec: Spec) {
 				kind: 'question',
 				id: `Q${index + 1}`,
 				question: item.question,
+				...(ruleOf(index + 5, 8) ? { rule: ruleOf(index + 5, 8) } : {}),
 				...(item.blocking ? { blocking: true } : {}),
 			}))
-		ended(store, spec.explorationId, explorer, [...found, ...asked])
+		const checked =
+			which === 0 && spec.criteria !== false
+				? rules.map((rule, index) => ({
+						kind: 'criterion',
+						id: `C${index + 1}`,
+						rule,
+						text: `Checked ${rule} on ${spec.build}.`,
+						verdict: (index + spec.daysAgo) % 5 === 0 ? 'wrong' : 'ok',
+						saw: (index + spec.daysAgo) % 5 === 0 ? 'The shop broke the rule.' : 'The shop kept the rule.',
+					}))
+				: []
+		ended(store, spec.explorationId, explorer, [...found, ...asked, ...checked])
 	})
 	const checks = spec.defects.flatMap((item, index): Array<Record<string, string>> => {
 		const claim = ids.get(`${index}`)!
@@ -893,10 +942,228 @@ export function seedVolume(workspace: string) {
 			running(store)
 			processRuns(store)
 			coupons(store)
+			variety(store)
 		})
 	} finally {
 		closeStore(store)
 	}
+}
+
+function rejectedRun(store: Store) {
+	minutesAgo(300)
+	beginRun(store, agent, {
+		runId: 'run-9',
+		reference: 'checkout@2',
+		tests: ['T1', 'T2', 'T4'],
+		build: 'fixture-build-2',
+		instance: 'staging',
+		partial: 'ready_only',
+	})
+	check(store, 'run-9', 'T1.A1', 'passed', 'Confirmation shows "Total: 400.00 PLN".', [
+		'T1-confirmation.png',
+		pageShot('confirmation'),
+	])
+	check(store, 'run-9', 'T1.A2', undefined, '1', ['T1-orders.json', json({ orders: 1 })])
+	closeTest(store, agent, { runId: 'run-9', testId: 'T1' })
+	const quote = json({ response: { status: 200, body: { subtotalPLN: 400, loyaltyPLN: 20, totalPLN: 200 } } })
+	check(store, 'run-9', 'T2.A1', undefined, '200', ['T2-quote-status.json', quote])
+	const failed = check(store, 'run-9', 'T2.A4', undefined, '200', ['T2-quote.json', quote])
+	check(store, 'run-9', 'T2.A5', undefined, 'none', ['T2-lines.txt', 'Lines: SPRING40 −160 PLN, WELCOME10 −40 PLN\n'])
+	recordFinding(store, agent, {
+		runId: 'run-9',
+		finding: {
+			id: 'F1',
+			type: 'defect',
+			severity: 'critical',
+			assertionIds: ['T2.A4'],
+			requirementIds: ['R2'],
+			title: 'Two coupons and the loyalty credit apply to one order',
+			expected: 'totalPLN is 240: one promotion applies, and it replaces the loyalty credit.',
+			observed: 'totalPLN is 200: SPRING40, WELCOME10, and the 20 PLN credit all apply.',
+			reproduction: [
+				'Sign in as anna@example.test.',
+				'Add LAMP-01 (400 PLN) to the cart.',
+				'Apply the code SPRING40.',
+				'Apply the code WELCOME10.',
+				'Read totalPLN in the quote response.',
+			],
+			evidenceIds: failed.data.evidenceIds as string[],
+			metadata: { jiraKey: 'SHOP-151', component: 'pricing' },
+		},
+	})
+	closeTest(store, agent, { runId: 'run-9', testId: 'T2' })
+	check(store, 'run-9', 'T4.A1', 'passed', 'Banner visible above the cart.', ['T4-banner.png', pageShot('banner')])
+	check(
+		store,
+		'run-9',
+		'T4.A2',
+		'inconclusive',
+		'The banner is hidden behind the cookie notice.',
+		['T4-banner-hidden.png', pageShot('banner')],
+		'The cookie notice covers the banner, so the rate cannot be read.'
+	)
+	closeTest(store, agent, { runId: 'run-9', testId: 'T4' })
+	minutesAgo(280)
+	finishRun(store, agent, {
+		runId: 'run-9',
+		completion: 'completed',
+		cleanup: 'completed',
+		cleanupReason: 'Closed the run browser session.',
+	})
+	minutesAgo(270)
+	rejectResult(store, human, {
+		runId: 'run-9',
+		rationale: 'The stacking defect blocks the release. Retest after the fix.',
+	})
+}
+
+function interruptedRun(store: Store) {
+	minutesAgo(600)
+	beginRun(store, agent, {
+		runId: 'run-10',
+		reference: 'login@1',
+		tests: ['T1', 'T2'],
+		build: 'fixture-build-1',
+		instance: 'local',
+	})
+	check(store, 'run-10', 'T1.A1', 'passed', 'Account page shows "Anna Nowak".', [
+		'T1-account.png',
+		pageShot('account'),
+	])
+	minutesAgo(590)
+	finishRun(store, agent, {
+		runId: 'run-10',
+		completion: 'interrupted',
+		cause: 'host_stopped',
+		reason: 'The host stopped before T2 started.',
+		cleanup: 'not_applicable',
+		cleanupReason: 'The run created no records.',
+	})
+}
+
+function planChats(store: Store) {
+	minutesAgo(180)
+	const rule = askRequest(store, human, {
+		text: 'G2 asks which orders a customer can refund. Add a rule: a customer can refund a delivered order within 14 days.',
+		context: { planId: 'checkout', record: null },
+		chatId: null,
+		model: 'sonnet',
+	})
+	setRequestState(store, rule, 'running')
+	addRequestActivity(store, rule, 'Read the plan checkout@2 and gap G2.')
+	minutesAgo(176)
+	setRequestState(store, rule, 'answered', {
+		reply: 'I added rule R5 and answered gap G2. T3 can run now.\n\n- R5 covers delivered orders only.\n- An order that is not delivered shows no refund button. This is finding a2/D8.',
+		costUsd: 0.04,
+		changes: [
+			{
+				text: 'Answered gap G2',
+				command: 'plan answer',
+				subject: 'plan:checkout',
+				at: new Date().toISOString(),
+				href: '/plans/checkout',
+			},
+		],
+	})
+	const chat = requestOf(store, rule)!.conversation
+	minutesAgo(30)
+	const follow = askRequest(store, human, {
+		text: 'Check whether T3 covers the 14 day limit.',
+		context: { planId: 'checkout', record: null },
+		chatId: chat,
+	})
+	setRequestState(store, follow, 'running')
+	addRequestActivity(store, follow, 'Reading T3 and its two checks.')
+	minutesAgo(200)
+	const why = askRequest(store, human, {
+		text: 'Why is T3 not ready to run?',
+		context: { planId: 'checkout', record: null },
+		chatId: null,
+	})
+	setRequestState(store, why, 'running')
+	setRequestState(store, why, 'answered', {
+		reply: 'T3 waits on gap G2. The plan does not say which orders a customer can refund.',
+		costUsd: 0.01,
+	})
+	minutesAgo(1400)
+	const merge = askRequest(store, human, {
+		text: 'Merge the coupon rules into R2.',
+		context: { planId: 'checkout', record: null },
+		chatId: null,
+	})
+	setRequestState(store, merge, 'running')
+	setRequestState(store, merge, 'stopped', { reason: 'Stopped by qa-lead.' })
+}
+
+function backOffice(store: Store) {
+	minutesAgo(4000)
+	const value = {
+		...profile(),
+		targetId: 'back-office',
+		capabilities: ['browser'],
+	}
+	openTarget(store, agent, {
+		targetId: value.targetId,
+		entryPoints: value.entryPoints,
+		capabilities: value.capabilities,
+		allowedOperations: value.allowedOperations,
+	})
+	saveTarget(store, agent, { targetId: value.targetId, profile: value })
+	addInstance(store, agent, {
+		targetId: value.targetId,
+		instanceId: 'local',
+		instance: { entries: { web: 'http://127.0.0.1:4300' }, environment: 'Local back office' },
+	})
+	addInstance(store, agent, {
+		targetId: value.targetId,
+		instanceId: 'staging',
+		instance: { entries: { web: 'https://staging.admin.shop.example' }, environment: 'Shared staging' },
+	})
+}
+
+function variety(store: Store) {
+	explore(store, {
+		planId: 'checkout',
+		explorationId: 'x-19',
+		build: 'fixture-build-3',
+		instance: 'staging',
+		daysAgo: 1,
+		explorers: ['h1'],
+		defects: [{ defect: defects[2], severity: 'critical', fate: 'observed', image: true }],
+		questions: [],
+		criteria: false,
+	})
+	acceptedPlan(store, showcasePlans[0], 900, 'run-4')
+	acceptedPlan(store, showcasePlans[1], 700, 'run-5')
+	minutesAgo(120)
+	openPlan(store, agent, {
+		planId: 'wishlist',
+		target: 'shop-local@1',
+		request: {
+			objective: 'Verify that a signed-in customer can save, share, and empty a wishlist.',
+			context: { sources: ['ticket://SHOP-430'] },
+		},
+	})
+	rejectedRun(store)
+	interruptedRun(store)
+	planChats(store)
+	backOffice(store)
+	minutesAgo(2)
+	requestPermission(store, {
+		askerId: 'x-14',
+		who: 'a1',
+		tool: 'Bash',
+		input: { command: 'npm test -- --grep lockout' },
+		suggestions: [
+			{
+				type: 'addRules',
+				rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }],
+				behavior: 'allow',
+				destination: 'localSettings',
+			},
+		],
+		checkmate: '/x/cli.ts',
+	})
 }
 
 function words(length: number, word = 'word') {

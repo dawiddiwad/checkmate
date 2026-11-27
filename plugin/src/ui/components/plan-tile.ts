@@ -7,11 +7,10 @@ export type PlanTile = {
 	planId: string
 	href: string
 	status: Html | ''
-	when: Html | string
-	whenTitle: string
+	when: Html | string | null
 	waitsOn: string | null
 	objective: string
-	verdict: { head: string; tail: string }
+	summary: string
 	cost: string | null
 	board: Html
 	metrics: Html
@@ -32,12 +31,11 @@ export function planTile(tile: PlanTile) {
 		<div class="sc-plan-main">
 			<div class="sc-plan-top">
 				<span class="sc-plan-id">${tile.planId}</span>
-				${tile.status}
-				<span class="sc-plan-when" title="${tile.whenTitle}">${tile.when}</span>
+				${tile.status} ${tile.when ? html`<span class="sc-plan-when">${tile.when}</span>` : ''}
 				${tile.waitsOn ? html`<span class="sc-plan-waits">· ${tile.waitsOn}</span>` : ''}
 			</div>
 			<h2 class="sc-plan-title" title="${tile.objective}">${tile.objective}</h2>
-			<p class="sc-plan-sum">${tile.verdict.head} ${tile.verdict.tail}</p>
+			<p class="sc-plan-sum is-line" title="${tile.summary}">${tile.summary}</p>
 			${
 				tile.cost === null
 					? ''

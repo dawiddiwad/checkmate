@@ -23,7 +23,7 @@
 	background: var(--row-hover);
 }
 .sc-file:focus-visible {
-	outline-offset: calc(var(--focus-w) * -1);
+	outline: none;
 }
 .sc-file.is-sel {
 	background: var(--surface-2);
@@ -117,11 +117,22 @@
 }
 .sc-evidence-item figcaption {
 	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin-top: var(--space-1);
+	font: 400 12px/16px var(--font-mono);
+}
+.sc-evidence-title {
+	display: flex;
 	flex-wrap: wrap;
 	align-items: baseline;
-	gap: 8px;
-	margin-top: 4px;
-	font: 400 12px/16px var(--font-mono);
+	gap: 0 var(--space-2);
+	min-width: 0;
+}
+.sc-evidence-acts {
+	display: flex;
+	gap: var(--space-3);
+	white-space: nowrap;
 }
 .is-image > a,
 .is-text pre,

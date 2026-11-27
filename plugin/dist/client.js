@@ -2658,7 +2658,7 @@
     link.setAttribute("role", "option");
     link.tabIndex = -1;
     const kind = document.createElement("span");
-    kind.className = "sc-mark is-question";
+    kind.className = "f";
     kind.textContent = "ask";
     const title = document.createElement("span");
     title.className = "t";
@@ -2679,7 +2679,7 @@
         link.setAttribute("role", "option");
         link.tabIndex = -1;
         const kind = document.createElement("span");
-        kind.className = "sc-mark is-question";
+        kind.className = "f";
         kind.textContent = entry.kind;
         const id = document.createElement("span");
         id.className = "k";

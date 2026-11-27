@@ -1,12 +1,4 @@
-.sc-scrim {
-	position: fixed;
-	z-index: 49;
-	inset: 0 0 calc(var(--bar-h) + var(--dock-h, 0px)) 0;
-	background: var(--scrim);
-	animation: sc-fade 120ms ease-out;
-}
 .sc-drawer {
-	animation: sc-slide 160ms ease-out;
 	position: fixed;
 	z-index: 50;
 	top: 0;
@@ -37,10 +29,10 @@
 	flex: 1;
 	min-height: 0;
 	overflow: auto;
-	padding: var(--space-3) var(--space-5) var(--space-5);
+	padding: var(--space-4) var(--space-5) var(--space-5);
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-5);
+	gap: var(--space-4);
 }
 .sc-drawer-top {
 	display: flex;
@@ -50,13 +42,17 @@
 .sc-drawer-top:focus {
 	outline: none;
 }
-.sc-drawer-top {
-	gap: var(--space-5);
+.sc-drawer-body .sc-facts {
+	border-top: 0;
+}
+.sc-drawer-body .sc-facts :is(dt, dd) {
+	padding: var(--space-1) 0;
+	border-bottom: 0;
 }
 .sc-drawer-body .sc-form {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: var(--space-3);
 }
 .sc-drawer-id {
 	display: flex;
@@ -71,37 +67,21 @@
 }
 .sc-opts {
 	display: flex;
-	flex-direction: column;
-	border: var(--hairline) solid var(--edge);
+	flex-wrap: wrap;
+	gap: var(--space-2);
 }
 .sc-opts > .sc-opt-form {
 	display: contents;
 }
-.sc-opts .sc-btn {
-	justify-content: flex-start;
-	gap: var(--space-3);
-	width: 100%;
-	height: auto;
-	min-height: var(--ctl-lg);
-	padding: 0 var(--space-3);
-	border: 0;
-	border-bottom: var(--hairline) solid var(--hair);
-	background: var(--surface);
-	color: var(--ink);
-	text-align: left;
-	text-decoration: none;
-}
-.sc-opts > :last-child .sc-btn,
-.sc-opts > .sc-btn:last-child {
-	border-bottom: 0;
-}
-.sc-opts .sc-btn:hover {
-	background: var(--row-hover);
-}
 .sc-opts .sc-btn.is-sel {
 	background: var(--surface-2);
-	box-shadow: inset var(--bar) 0 0 var(--ink);
+	border-color: var(--ink);
 	font-weight: 600;
+}
+@media (min-width: 1200px) {
+	.sc-shell.has-drawer .sc-main {
+		margin-right: var(--drawer-w);
+	}
 }
 @media (max-width: 760px) {
 	.sc-drawer {
@@ -167,21 +147,4 @@
 	margin: 0;
 	padding-left: 24px;
 	font: 400 14px/20px var(--font-sans);
-}
-@keyframes sc-slide {
-	from {
-		transform: translateX(24px);
-		opacity: 0;
-	}
-}
-@keyframes sc-fade {
-	from {
-		opacity: 0;
-	}
-}
-@media (prefers-reduced-motion: reduce) {
-	.sc-drawer,
-	.sc-scrim {
-		animation: none;
-	}
 }

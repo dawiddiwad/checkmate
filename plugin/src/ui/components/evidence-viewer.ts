@@ -30,9 +30,13 @@ function download(file: EvidenceFile) {
 }
 
 function caption(file: EvidenceFile, open: Html | '' = '') {
+	const acts = download(file)
 	return html`<figcaption>
-		<span class="sc-evidence-name">${file.name}</span>
-		${file.size ? html`<span class="sc-muted">${size(file.size)}</span>` : ''} ${open} ${download(file)}
+		<span class="sc-evidence-title"
+			><span class="sc-evidence-name">${file.name}</span>
+			${file.size ? html`<span class="sc-muted">${size(file.size)}</span>` : ''}</span
+		>
+		${open || acts ? html`<span class="sc-evidence-acts">${open} ${acts}</span>` : ''}
 	</figcaption>`
 }
 

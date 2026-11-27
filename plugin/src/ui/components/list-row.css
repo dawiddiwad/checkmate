@@ -47,10 +47,6 @@
 .sc-row:focus {
 	outline: none;
 }
-.sc-row:focus-visible {
-	outline: var(--focus-w) solid var(--focus);
-	outline-offset: calc(var(--focus-w) * -1);
-}
 .sc-c-cb {
 	display: grid;
 	place-items: center;
@@ -174,7 +170,8 @@
 	display: none;
 }
 .sc-row.is-open:not(.is-sel) {
-	box-shadow: inset var(--bar) 0 0 var(--edge);
+	outline: var(--hairline) solid var(--ink);
+	outline-offset: calc(var(--hairline) * -1);
 }
 .sc-row.is-dim > .sc-c-title,
 .sc-row.is-dim > .sc-c-id {

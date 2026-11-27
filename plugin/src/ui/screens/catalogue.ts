@@ -18,6 +18,7 @@ import { examples as facts } from '../components/facts.catalogue.ts'
 import { examples as field } from '../components/field.catalogue.ts'
 import { examples as findPalette } from '../components/find-palette.catalogue.ts'
 import { examples as fold } from '../components/fold.catalogue.ts'
+import { examples as instanceCard } from '../components/instance-card.catalogue.ts'
 import { examples as key } from '../components/key.catalogue.ts'
 import { examples as keysHelp } from '../components/keys-help.catalogue.ts'
 import { examples as listRow } from '../components/list-row.catalogue.ts'
@@ -50,6 +51,7 @@ const entries: Array<[string, Array<[string, Html | string]>]> = [
 	['field', field],
 	['find-palette', findPalette],
 	['fold', fold],
+	['instance-card', instanceCard],
 	['key', key],
 	['keys-help', keysHelp],
 	['list-row', listRow],

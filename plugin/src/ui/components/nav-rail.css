@@ -47,17 +47,11 @@
 .sc-rail-row:focus {
 	outline: none;
 }
-.sc-rail-row:focus-visible {
-	outline: var(--focus-w) solid var(--focus);
-	outline-offset: calc(var(--focus-w) * -1);
-}
 .sc-rail-row[aria-selected='true'] {
-	background: var(--surface-2);
 	box-shadow: inset var(--bar) 0 0 var(--ink);
-	font-weight: 600;
 }
 .sc-rail-row.is-sel {
-	box-shadow: inset var(--bar) 0 0 var(--focus);
+	background: var(--surface-2);
 }
 .sc-rail-id {
 	font: 500 13px/20px var(--font-mono);
@@ -104,6 +98,7 @@
 	color: var(--muted);
 }
 .sc-rail-board-h .sc-board-col {
+	position: relative;
 	display: grid;
 	place-items: center;
 	width: var(--cell-sm);
@@ -112,6 +107,8 @@
 	display: none;
 }
 .sc-rail.is-keys-on .sc-rail-board-h .sc-key {
+	position: absolute;
+	bottom: calc(100% + var(--space-1));
 	display: inline-grid;
 }
 @media (max-width: 900px) {

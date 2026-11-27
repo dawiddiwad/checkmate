@@ -33,6 +33,9 @@
 .sc-table tbody tr:hover {
 	background: var(--row-hover);
 }
+.sc-table tr[data-row]:focus {
+	outline: none;
+}
 .sc-table tr.is-sel td {
 	background: var(--surface-2);
 }

@@ -45,7 +45,6 @@ export function composer({ csrf, action, selection, screen = '', back = '' }: Co
 						<option value="">Host default</option>
 					</select></label
 				>
-				<span class="sc-grow"></span>
 				${formButton({ label: 'Send', emphasis: 'primary', attrs: { type: 'submit' } })}
 			</div>
 		</div>

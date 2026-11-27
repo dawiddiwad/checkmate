@@ -23,6 +23,7 @@ import { field, textArea, textInput } from '../components/field.ts'
 import { listPageRow } from '../components/list-row.ts'
 import { notice } from '../components/notice.ts'
 import { heading } from '../components/page-heading.ts'
+import { instanceCard, instanceCards } from '../components/instance-card.ts'
 import { statusMark } from '../components/status-mark.ts'
 import { jumpLinks, pageTabs } from '../components/tabs.ts'
 import { html, join, plural, short, time } from '../html.ts'
@@ -221,25 +222,6 @@ function historyList(store: Store, targetId: string, shown: number) {
 	</ol>`
 }
 
-function entryList(instance: InstanceRecord) {
-	return html`<dl class="entries">
-		${Object.entries(instance.entries).map(
-			([name, value]) =>
-				html`<div>
-					<dt class="sc-mono">${name}</dt>
-					<dd>
-						<code
-							>${join(
-								value.split(' ').map((word) => html`<span class="word">${word}</span>`),
-								' '
-							)}</code
-						>
-					</dd>
-				</div>`
-		)}
-	</dl>`
-}
-
 function actorInput(context: Context, id: string) {
 	if (context.actor) return ''
 	return html`${field({ id: id, label: 'Your name', control: textInput({ id: id, name: 'actor', attrs: { required: true, autocomplete: 'name' } }) })}`
@@ -265,34 +247,23 @@ function retireControl(context: Context, targetId: string, instance: InstanceRec
 	</details>`
 }
 
-function instancesTable(context: Context, targetId: string, instances: InstanceRecord[], retire: RetireState) {
+function instancesList(context: Context, targetId: string, instances: InstanceRecord[], retire: RetireState) {
 	if (!instances.length) return html`<p class="sc-empty is-line">No instance yet. Add one to start runs.</p>`
-	return dataTable({
-		columns: [
-			'Instance',
-			'Entries',
-			'Environment',
-			'References',
-			'Added',
-			'Status',
-			html`<span class="sc-sr">Actions</span>`,
-		],
-		rows: instances.map((instance) =>
-			tableRow({
-				cells: [
-					{ content: instance.instanceId, attrs: { class: 'is-mono' } },
-					entryList(instance),
-					instance.environment ?? none(),
-					words(instance.references),
-					html`${instance.addedBy} · ${time(instance.addedAt)}`,
-					instance.retired ? statusMark({ state: 'retired' }) : statusMark({ state: 'active' }),
-					retireControl(context, targetId, instance, retire),
+	return instanceCards(
+		instances.map((instance) =>
+			instanceCard({
+				id: instance.instanceId,
+				mark: instance.retired ? statusMark({ state: 'retired' }) : statusMark({ state: 'active' }),
+				added: html`Added by ${instance.addedBy} · ${time(instance.addedAt)}`,
+				action: retireControl(context, targetId, instance, retire),
+				entries: Object.entries(instance.entries),
+				rows: [
+					['Environment', instance.environment ?? none()],
+					['References', words(instance.references)],
 				],
-				attrs: { id: `instance-${instance.instanceId}`, 'data-key': `instance:${instance.instanceId}` },
 			})
-		),
-		scroll: true,
-	})
+		)
+	)
 }
 
 function addForm(context: Context, targetId: string, entryPoints: EntryPoint[], form: InstanceForm | null) {
@@ -402,7 +373,7 @@ function targetDetail(
 					? html`<p class="sc-error" role="alert">${retire.error}</p>`
 					: ''
 			}
-			${instancesTable(context, targetId, instances, retire)}
+			${instancesList(context, targetId, instances, retire)}
 		</section>
 		${shape}
 		<section aria-labelledby="history" data-region="target-history">
@@ -557,7 +528,7 @@ export function harnessPage(
 			<form method="post" action="/settings/harness/models" class="sc-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
 				<input type="hidden" name="harness" value="${harness}" />
-				<div class="sc-pair">
+				<div class="sc-pair is-model">
 					<div class="sc-field">
 						<label class="sc-label" for="tester-model">Model for testers</label>
 						<select
@@ -588,7 +559,7 @@ export function harnessPage(
 					</div>
 				</div>
 
-				<div class="sc-pair">
+				<div class="sc-pair is-model">
 					<div class="sc-field">
 						<label class="sc-label" for="request-model">Model for chats</label>
 						<select

@@ -65,18 +65,21 @@
 	color: var(--ink);
 }
 .sc-plan-title {
-	max-height: 44px;
 	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 	font: 600 17px/22px var(--font-sans);
 	letter-spacing: 0;
 	color: var(--ink);
-	mask:
-		linear-gradient(var(--ink), var(--ink)) top / 100% 22px no-repeat,
-		linear-gradient(to right, var(--ink) calc(100% - 72px), transparent) bottom / 100% 22px no-repeat;
 }
 .sc-plan-sum {
 	font: 400 14px/20px var(--font-sans);
 	color: var(--muted);
+}
+.sc-plan-sum.is-line {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 .sc-plan-act {
 	display: flex;

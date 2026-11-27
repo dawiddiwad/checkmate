@@ -63,7 +63,7 @@ export function railBuilds({ builds }: { builds: Array<{ build: string; label: s
 			>${builds.map(
 				(item, index) =>
 					html`<span class="sc-board-col" title="${item.build}"
-						>${key({ name: index + 1 })}${item.label}</span
+						>${key({ name: index + 1 })}<span class="sc-board-label">${item.label}</span></span
 					>`
 			)}</span
 		>

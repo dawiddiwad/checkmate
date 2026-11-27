@@ -11,11 +11,10 @@ const tile: PlanTile = {
 	planId: 'checkout',
 	href: '#',
 	status: statusMark({ state: 'needs_answers' }),
-	when: 'B2 build-2 · 3 h',
-	whenTitle: 'build-2',
+	when: null,
 	waitsOn: 'waits on oracle',
 	objective: 'Checkout applies coupons before tax',
-	verdict: { head: 'Build build-2: 2 open defects.', tail: '3 questions open, 1 blocks testing.' },
+	summary: '2 open defects · 3 questions open',
 	cost: '$0.42',
 	board: board({
 		label: 'Rules against the last 2 builds',

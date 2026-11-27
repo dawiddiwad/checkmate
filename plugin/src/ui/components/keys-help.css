@@ -1,5 +1,5 @@
 .sc-confirm.is-keys {
-	width: 640px;
+	width: 850px;
 	max-height: calc(100vh - var(--bar-h) - var(--space-7));
 	overflow: auto;
 }

@@ -837,6 +837,9 @@ test(
 		const { page } = await pageFor(t, first.url)
 		await page.goto(new URL('/', first.url).href)
 		await page.locator('[data-live]:not([hidden])').first().waitFor()
+		assert.equal(await page.locator('.sc-plan').first().getAttribute('data-key'), 'plan:checkout')
+		await page.goto(new URL('/?at=plan%3Asearch', first.url).href)
+		await page.locator('[data-live]:not([hidden])').first().waitFor()
 		const blocked = page.locator('[data-key="plan:checkout"]')
 		assert.equal(await blocked.evaluate((tile) => tile.classList.contains('is-sel')), false)
 		const filled = await blocked.locator('.sc-plan-act .sc-btn').evaluate((button) => ({
@@ -894,6 +897,24 @@ test(
 		assert.ok(
 			areas.slice(1, -1).every((code) => code.length === 2),
 			`area codes are two letters: ${areas}`
+		)
+		await page.goto(new URL('/plans/login?view=all', wide.url).href)
+		assert.deepEqual(
+			await page
+				.locator('[data-panel="all"] .sc-group-h')
+				.evaluateAll((heads) => heads.map((head) => head.firstChild!.textContent!.trim())),
+			[
+				'Questions that block testing',
+				'Is this a defect?',
+				'critical defects',
+				'high defects',
+				'medium defects',
+				'low defects',
+				'Approvals',
+				'Questions',
+				'Answered questions',
+				'Rejected findings',
+			]
 		)
 		wide.server.kill('SIGTERM')
 		await page.goto(new URL('/plans/checkout?item=g%3AG2', first.url).href)

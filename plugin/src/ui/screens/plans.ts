@@ -8,7 +8,7 @@ import { metrics } from '../components/metric.ts'
 import { heading } from '../components/page-heading.ts'
 import { newChangeTile, planTile } from '../components/plan-tile.ts'
 import { statusMark, wordMark } from '../components/status-mark.ts'
-import { costText, duration, html, plural, time, words } from '../html.ts'
+import { costText, duration, html, plural, words } from '../html.ts'
 import { boardColumns, buildLabel, reviewHref, reviewOf, verdictLine } from '../review.ts'
 
 function planBoard(review: Review) {
@@ -50,6 +50,17 @@ const roleWords: Record<string, string> = {
 	none: 'nobody',
 }
 
+function buildSummary(verdict: ReturnType<typeof verdictLine>, tested: boolean) {
+	const parts = [
+		verdict.defects
+			? `${plural(verdict.defects, 'open defect')}${verdict.critical ? `, ${verdict.critical} critical` : ''}`
+			: null,
+		verdict.open ? `${plural(verdict.open, 'question')} open` : null,
+	].filter(Boolean)
+	if (parts.length) return parts.join(' · ')
+	return tested ? 'Nothing open' : 'No build tested yet'
+}
+
 function tile(review: Review, plan: PlanListRow, runDefects: number, index: number) {
 	const { loop, costUsd, costPartial } = plan
 	const verdict = verdictLine(review)
@@ -68,9 +79,7 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 				<span data-since="${review.running.startedAt}"
 					>${duration(Date.now() - Date.parse(review.running.startedAt))}</span
 				>`
-		: latest
-			? html`${buildLabel(review, latest.build)} ${latest.build} · ${time(latest.firstTestedAt)}`
-			: review.target
+		: null
 	return planTile({
 		index,
 		planId: review.planId,
@@ -78,9 +87,8 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 		status,
 		when,
 		waitsOn: loop && !review.running ? `waits on ${roleWords[loop.waitsOn]}` : null,
-		whenTitle: latest ? `${latest.build}, first tested ${latest.firstTestedAt}` : review.target,
 		objective: review.objective,
-		verdict,
+		summary: buildSummary(verdict, Boolean(latest)),
 		cost: costUsd === null ? null : costText(costUsd, costPartial),
 		board: planBoard(review),
 		metrics: metrics({
@@ -102,11 +110,20 @@ export function homePage(store: Store): Page {
 		[since, ...review.explorations.map((item) => item.startedAt)].sort().at(-1)!
 	const listed = planList(store).map((plan) => {
 		const review = reviewOf(store, plan.planId)
-		return { plan, review, needs: review.items.some((item) => item.needs), at: latest(review, plan.since) }
+		return {
+			plan,
+			review,
+			blocking: verdictLine(review).blocking,
+			needs: review.items.some((item) => item.needs),
+			at: latest(review, plan.since),
+		}
 	})
 	listed.sort(
 		(a, b) =>
-			Number(b.needs) - Number(a.needs) || b.at.localeCompare(a.at) || a.plan.planId.localeCompare(b.plan.planId)
+			Number(b.blocking > 0) - Number(a.blocking > 0) ||
+			Number(b.needs) - Number(a.needs) ||
+			b.at.localeCompare(a.at) ||
+			a.plan.planId.localeCompare(b.plan.planId)
 	)
 	const plans = listed.map((each) => each.plan)
 	const reviews = listed.map((each) => each.review)

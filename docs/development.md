@@ -103,16 +103,19 @@ The markup of a component is in `plugin/src/ui/components/<name>.ts`, next to it
 
 The component catalogue shows each component in each state. Run `node scripts/ui-catalogue.ts` and open the URL that it prints. The script starts the UI with the `catalogue` start option of `startUi`. `checkmate ui` does not set this option, so the installed UI does not serve `/catalogue`. Each component has its examples in `plugin/src/ui/components/<name>.catalogue.ts`. An example calls the render function of the component with fixed props. `plugin/src/ui/screens/catalogue.ts` lists the catalogue files. When you add a component, add its catalogue file and list it in the screen. The catalogue test fails when a component has no entry.
 
-In CI the catalogue test also compares the examples in `catalogueReferences` in `test/e2e/oracle-ui.test.ts`. It captures one plan tile in both themes, one drawer in light, and one status bar in dark. Each screenshot uses the example frame at the catalogue width. It omits the heading and caption. The test checks that every component has an example in both themes, and fails if a reference file has no matching capture.
+CI compares the catalogue on the pull request branch with its merge base with `origin/main`. For a push to `main`, CI uses the previous tip from the push event. If the checkout is at `origin/main` and there is no push event, the check uses the first parent of the checkout.
 
-CI sets `CHECKMATE_CATALOGUE_SCREENSHOTS=compare` and uses the Chromium build of the locked `playwright-core`. It compares the PNG files byte for byte. A local run does not compare screenshots by default.
+The check builds the baseline in a temporary worktree. It renders each component section in light and dark with the same Chromium process. It compares decoded pixels exactly. A new or removed component is reported by name. It does not fail the check. A baseline build error or missing catalogue route fails the check.
 
-1. If you remove a capture from the list, delete its PNG from `test/e2e/catalogue/<theme>/`.
-2. Push the change. If a reference is different or missing, the CI `verify` job fails and uploads the new screenshots as the `catalogue-screenshots` artifact.
-3. Download the artifact, for example with `gh run download <run-id> -n catalogue-screenshots`.
-4. Review each PNG. Copy it to the matching theme directory in `test/e2e/catalogue/` and commit it.
+Review the `catalogue-diff` artifact for changes. Each changed component has `before.png`, `after.png`, and `diff.png`. The diff marks changed pixels in magenta. If you accept a deliberate visual change, add the `ui-change` label to the pull request. Verify runs again when you add or remove the label. With the label, pixel differences are reported and the check passes. The label does not suppress build or render errors.
 
-Do not make baselines on your own computer.
+To inspect the results on your computer:
+
+1. Run `git fetch origin main`.
+2. Run `npm ci` and `npm run build`.
+3. Run `npx playwright-core install chromium-headless-shell`.
+4. Run `node scripts/check-catalogue.ts --report-only`.
+5. Open the image directory printed by the command if there are differences.
 
 ## Documentation media
 

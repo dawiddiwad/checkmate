@@ -2,20 +2,10 @@ import test from 'node:test'
 import type { TestContext } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import {
-	chmodSync,
-	existsSync,
-	mkdirSync,
-	readdirSync,
-	readFileSync,
-	realpathSync,
-	rmSync,
-	writeFileSync,
-} from 'node:fs'
+import { chmodSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
-import { dirname, join, relative } from 'node:path'
-import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { chromium, type Browser, type BrowserContext } from 'playwright-core'
 import { closeStore, openStore } from '../../plugin/src/store.ts'
@@ -1080,48 +1070,10 @@ test(
 	}
 )
 
-const screenshots = process.env.CHECKMATE_CATALOGUE_SCREENSHOTS
-const baselines = join(root, 'test/e2e/catalogue')
-const actuals = join(tmpdir(), 'checkmate-catalogue-actual')
-const catalogueReferences = {
-	light: [
-		{ name: 'plan-tile', example: 'planTile long title and long head line' },
-		{ name: 'drawer', example: 'drawer with head and options' },
-	],
-	dark: [
-		{ name: 'plan-tile', example: 'planTile long title and long head line' },
-		{ name: 'status-bar', example: 'statusBar quiet' },
-	],
-}
-
-function checkScreenshot(theme: string, name: string, actual: Buffer) {
-	const expected = join(baselines, theme, `${name}.png`)
-	if (screenshots === 'update') {
-		mkdirSync(dirname(expected), { recursive: true })
-		writeFileSync(expected, actual)
-		return null
-	}
-	if (existsSync(expected) && readFileSync(expected).equals(actual)) return null
-	mkdirSync(join(actuals, theme), { recursive: true })
-	writeFileSync(join(actuals, theme, `${name}.png`), actual)
-	return `${theme}/${name}`
-}
-
 test(
 	'The dev-only component catalogue shows every component in light and dark without console errors, and checkmate ui does not serve it.',
 	{ skip: browserSkip, timeout: 120_000 },
 	async (t) => {
-		const references = Object.entries(catalogueReferences)
-		const expected = new Set(
-			references.flatMap(([theme, entries]) => entries.map(({ name }) => join(theme, `${name}.png`)))
-		)
-		const orphans = readdirSync(baselines, { recursive: true, withFileTypes: true })
-			.filter((file) => !file.isDirectory())
-			.map((file) => relative(baselines, join(file.parentPath, file.name)))
-			.filter((file) => !expected.has(file))
-			.sort()
-		assert.deepEqual(orphans, [], 'Catalogue reference files have no matching capture.')
-
 		const components = readdirSync(join(root, 'plugin/src/ui/components'))
 			.filter((name) => name.endsWith('.ts') && !name.endsWith('.catalogue.ts'))
 			.map((name) => name.slice(0, -'.ts'.length))
@@ -1131,11 +1083,12 @@ test(
 		assert.equal((await fetch(new URL('/catalogue', plain.url))).status, 404)
 		const ui = await startSourceUi({ workspace: directory(t), catalogue: true })
 		t.after(() => ui.close())
-		const pinned = screenshots ? await chromium.launch() : browser!
-		if (screenshots) t.after(() => pinned.close())
-		const changed: string[] = []
-		for (const [theme, entries] of references) {
-			const context = await pinned.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' })
+		assert(browser)
+		for (const theme of ['light', 'dark']) {
+			const context = await browser.newContext({
+				viewport: { width: 1280, height: 900 },
+				reducedMotion: 'reduce',
+			})
 			t.after(() => context.close())
 			await context.addCookies([{ name: 'checkmate_theme', value: theme, url: ui.url }])
 			await context.route('**/settings/harness/models?*', (route) =>
@@ -1150,28 +1103,6 @@ test(
 			await page.goto(new URL('/catalogue', ui.url).href)
 			await page.locator('[data-live]:not([hidden])').first().waitFor()
 			assert.equal(await page.locator('html').getAttribute('data-theme'), theme)
-			if (screenshots) {
-				await page.evaluate(() => document.fonts.ready)
-				assert.ok(
-					await page.evaluate(() =>
-						['IBM Plex Sans', 'IBM Plex Mono'].every((family) =>
-							[...document.fonts].some(
-								(face) => face.family.replace(/"/g, '') === family && face.status === 'loaded'
-							)
-						)
-					),
-					'IBM Plex did not load from Google Fonts'
-				)
-				const height = await page.evaluate(() => document.documentElement.scrollHeight)
-				await page.setViewportSize({ width: 1280, height: height + 200 })
-				await page.mouse.move(0, 0)
-				for (const { name, example } of entries) {
-					const render = page.locator(`[data-catalogue-example="${name}: ${example}"] > .catalogue-render`)
-					const actual = await render.screenshot({ animations: 'disabled', caret: 'hide' })
-					const difference = checkScreenshot(theme, name, actual)
-					if (difference) changed.push(difference)
-				}
-			}
 			for (const name of components) {
 				const entry = page.locator(`[data-catalogue-entry="${name}"]`)
 				assert.equal(await entry.count(), 1, `${name} has no catalogue entry in ${theme}`)
@@ -1179,10 +1110,5 @@ test(
 			}
 			assert.deepEqual(errors, [], `console errors in ${theme}`)
 		}
-		assert.deepEqual(
-			changed,
-			[],
-			`Catalogue screenshots differ from test/e2e/catalogue/. The new ones are in ${actuals}.`
-		)
 	}
 )

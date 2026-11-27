@@ -30,3 +30,13 @@ button.sc-key-hint {
 button.sc-key-hint:hover {
 	color: var(--ink);
 }
+.sc-key .glyph {
+	width: 10px;
+	height: 10px;
+	-webkit-mask-size: 10px 10px;
+	mask-size: 10px 10px;
+	vertical-align: 0;
+}
+.sc-key + .sc-key {
+	margin-left: 2px;
+}

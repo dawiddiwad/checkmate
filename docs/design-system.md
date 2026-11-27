@@ -89,7 +89,6 @@ Each component is one function in `plugin/src/ui/components/<name>.ts`, with its
 | Evidence       | `evidenceFiles`, `evidencePreview`             | `sc-files`, `sc-file`                         |
 | Chat turn      | `chatTurn`                                     | `sc-turn`, `sc-turn-saved`                    |
 | Composer       | `composer`                                     | `sc-composer`                                 |
-| Target card    | `targetCard`                                   | `sc-card`, `sc-target-name`, `sc-instances`   |
 | Tester card    | `testerCard`, `timeline`                       | `sc-tcard`, `sc-timeline`, `sc-event`         |
 
 ## Keys

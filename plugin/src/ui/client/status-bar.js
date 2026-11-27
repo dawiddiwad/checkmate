@@ -63,6 +63,10 @@ export function showPath() {
 
 const hints = document.querySelector('[data-hints]')
 
+function capsOf(cap) {
+	return /^[↑↓←→]+$/.test(cap) ? [...cap] : [cap]
+}
+
 const hintOrder = ['?', '↑↓', '1', '→', '←', '0', 'Space', '/']
 
 function fitHints() {
@@ -114,7 +118,9 @@ export function showHints() {
 		.map(([cap, text]) =>
 			cap === '?'
 				? `<button type="button" class="sc-key-hint" data-cap="?" data-keys-open><kbd class="sc-key">?</kbd><span class="sc-key-text">${text}</span></button>`
-				: `<span class="sc-key-hint" data-cap="${cap}"><kbd class="sc-key">${glyphHtml(cap)}</kbd>${text}</span>`
+				: `<span class="sc-key-hint" data-cap="${cap}">${capsOf(cap)
+						.map((one) => `<kbd class="sc-key">${glyphHtml(one)}</kbd>`)
+						.join('')}${text}</span>`
 		)
 		.join('')
 	if (hints.dataset.source !== source) {

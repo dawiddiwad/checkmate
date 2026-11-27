@@ -20,11 +20,11 @@ import { button, formButton } from '../components/button.ts'
 import { dataTable, tableRow } from '../components/data-table.ts'
 import { emptyNotice } from '../components/empty-state.ts'
 import { field, textArea, textInput } from '../components/field.ts'
+import { listPageRow } from '../components/list-row.ts'
 import { notice } from '../components/notice.ts'
 import { heading } from '../components/page-heading.ts'
 import { statusMark } from '../components/status-mark.ts'
 import { jumpLinks, pageTabs } from '../components/tabs.ts'
-import { targetCard } from '../components/target-card.ts'
 import { html, join, plural, short, time } from '../html.ts'
 
 export type InstanceForm = { values: Record<string, string>; error: string | null; field?: string | null }
@@ -77,37 +77,45 @@ function words(items: string[]) {
 		: none()
 }
 
-export function targetsPage(store: Store, form: Html | '' = '', status?: number): Page {
+function targetsList(store: Store, open: string | null) {
 	const targets = targetList(store)
-	const body = html`${heading({
+	if (!targets.length)
+		return html`<div data-region="targets">
+			${emptyNotice({ what: 'No target yet.', next: html`Record one with <code>checkmate target open</code>.` })}
+		</div>`
+	return html`<ul class="sc-recipes is-list" aria-label="Targets" data-region="targets" data-list>
+		${targets.map((target) =>
+			listPageRow({
+				key: `target:${target.targetId}`,
+				href: `/settings/targets/${target.targetId}`,
+				top: target.targetId,
+				tags: html`<span class="sc-muted"
+					>${target.revision === null ? 'no profile yet' : `@${target.revision}`}</span
+				>`,
+				lines: [
+					html`<code>${target.capabilities.join(' ') || 'no capability'}</code> ·
+						${target.entryPoints.join(', ') || 'no entry point'}`,
+					plural(target.activeInstances, 'active instance'),
+				],
+				open: target.targetId === open,
+			})
+		)}
+	</ul>`
+}
+
+function targetsLayout(store: Store, open: string | null, detail: Html | '') {
+	return html`${heading({
 			title: 'Targets',
 			sub: 'Each target with its latest revision and its active instances.',
 			actions: button({ label: 'New target', href: '/setup' }),
 		})}
-		<div class="${form ? 'sc-split is-wide-side' : ''}">
-			<div class="sc-targets${form ? ' is-one' : ''}" data-region="targets" data-list>
-				${
-					targets.length
-						? targets.map((target) =>
-								targetCard({
-									...target,
-									instances: instanceList(store, target.targetId)
-										.filter((instance) => !instance.retired)
-										.map((instance) => ({
-											instanceId: instance.instanceId,
-											environment: instance.environment,
-											address: Object.values(instance.entries)[0] ?? null,
-										})),
-								})
-							)
-						: emptyNotice({
-								what: 'No target yet.',
-								next: html`Record one with <code>checkmate target open</code>.`,
-							})
-				}
-			</div>
-			${form}
-		</div>`
+		<div class="sc-split is-list-first">${targetsList(store, open)} ${detail}</div>`
+}
+
+export function targetsPage(store: Store, context: Context, form: Html | '' = '', status?: number): Page {
+	const first = form ? null : (targetList(store)[0]?.targetId ?? null)
+	const detail = form || (first ? targetDetail(store, context, first, null) : '')
+	const body = targetsLayout(store, first, detail)
 	return form
 		? settingsPage('/settings/targets', 'New target', ['*', 'inbox', 'settings'], body, status)
 		: settingsPage('/settings/targets', 'Targets', ['*'], body)
@@ -331,14 +339,14 @@ function addForm(context: Context, targetId: string, entryPoints: EntryPoint[], 
 	</section>`
 }
 
-export function targetPage(
+function targetDetail(
 	store: Store,
 	context: Context,
 	targetId: string,
 	revision: number | null,
 	form: InstanceForm | null = null,
 	retire: RetireState = null
-): Page {
+) {
 	const request = targetRequest(store, targetId)
 	const latest = targetHistory(store, targetId).at(-1)?.revision ?? null
 	const shown = latest === null ? null : targetRevision(store, targetId, revision ?? latest)
@@ -360,60 +368,64 @@ export function targetPage(
 					${profileFacts(shown.profile)}
 				</section>`
 		: notice({ kind: 'info', content: html`The setup request is recorded. The profile is not saved yet.` })
-	const body = html`${heading({
-			title: targetId,
-			sub,
-			meta: html`
-				${shown ? html`<span title="${shown.sha256}">sha256 <code>${short(shown.sha256)}</code></span>` : ''}
-			`,
-		})}
-		<div class="sc-split">
-			<div class="sc-stack">
-				${jumpLinks({
-					links: [
-						{ href: '#entry-points', label: 'Entry points' },
-						{ href: '#instances', label: 'Instances' },
-						...(shown
-							? [
-									{ href: '#tools', label: 'Tools' },
-									{ href: '#profile', label: 'Profile' },
-								]
-							: []),
-						{ href: '#history', label: 'History' },
-					],
-				})}
-				<section aria-labelledby="entry-points">
-					<h2 id="entry-points">
-						Entry points <span class="sc-count-n">${request.entryPoints.length}</span>
-					</h2>
-					${entryPointsTable(request.entryPoints)}
-				</section>
-				<section aria-labelledby="instances" data-region="instances">
-					<h2 id="instances">Instances <span class="sc-count-n">${instances.length}</span></h2>
-					${
-						retire &&
-						!instances.some((instance) => instance.instanceId === retire.instanceId && !instance.retired)
-							? html`<p class="sc-error" role="alert">${retire.error}</p>`
-							: ''
-					}
-					${instancesTable(context, targetId, instances, retire)}
-				</section>
-				${shape}
-				<section aria-labelledby="history" data-region="target-history">
-					<h2 id="history">History</h2>
-					${historyList(store, targetId, shown?.revision ?? 0)}
-				</section>
+	return html`<div class="sc-stack" data-region="target">
+		<header class="sc-h is-sub">
+			<div class="sc-h-text">
+				<h2 class="sc-h-title">${targetId}</h2>
+				<p>${sub}</p>
 			</div>
-			<aside class="side" aria-label="Add instance">
-				${addForm(context, targetId, request.entryPoints, form)}
-				<p class="back"><a href="/settings/targets">All targets</a></p>
-			</aside>
-		</div>`
+			<div class="sc-h-act">
+				${shown ? html`<span class="sc-note" title="${shown.sha256}">sha256 <code>${short(shown.sha256)}</code></span>` : ''}
+			</div>
+		</header>
+		${jumpLinks({
+			links: [
+				{ href: '#entry-points', label: 'Entry points' },
+				{ href: '#instances', label: 'Instances' },
+				...(shown
+					? [
+							{ href: '#tools', label: 'Tools' },
+							{ href: '#profile', label: 'Profile' },
+						]
+					: []),
+				{ href: '#history', label: 'History' },
+			],
+		})}
+		<section aria-labelledby="entry-points">
+			<h2 id="entry-points">Entry points <span class="sc-count-n">${request.entryPoints.length}</span></h2>
+			${entryPointsTable(request.entryPoints)}
+		</section>
+		<section aria-labelledby="instances" data-region="instances">
+			<h2 id="instances">Instances <span class="sc-count-n">${instances.length}</span></h2>
+			${
+				retire && !instances.some((instance) => instance.instanceId === retire.instanceId && !instance.retired)
+					? html`<p class="sc-error" role="alert">${retire.error}</p>`
+					: ''
+			}
+			${instancesTable(context, targetId, instances, retire)}
+		</section>
+		${shape}
+		<section aria-labelledby="history" data-region="target-history">
+			<h2 id="history">History</h2>
+			${historyList(store, targetId, shown?.revision ?? 0)}
+		</section>
+		${addForm(context, targetId, request.entryPoints, form)}
+	</div>`
+}
+
+export function targetPage(
+	store: Store,
+	context: Context,
+	targetId: string,
+	revision: number | null,
+	form: InstanceForm | null = null,
+	retire: RetireState = null
+): Page {
 	return settingsPage(
 		'/settings/targets',
 		targetId,
 		[`target:${targetId}`],
-		body,
+		targetsLayout(store, targetId, targetDetail(store, context, targetId, revision, form, retire)),
 		form?.error || retire ? 422 : undefined
 	)
 }
@@ -443,13 +455,23 @@ function harnessProgram(env: Env) {
 	}
 }
 
+const harnessSections = ['program', 'rules', 'models', 'chats'] as const
+type HarnessSection = (typeof harnessSections)[number]
+const harnessTitles: Record<HarnessSection, string> = {
+	program: 'Program',
+	rules: 'Tool rules of testers',
+	models: 'Models',
+	chats: 'Chats',
+}
+
 export function harnessPage(
 	store: Store,
 	context: Context,
 	env: Env,
 	form: RulesForm | null = null,
 	model: RulesForm | null = null,
-	testerModel: RulesForm | null = null
+	testerModel: RulesForm | null = null,
+	section = ''
 ): Page {
 	const effectiveEnv = workspaceUiEnv(store, env)
 	const harness = selectedHarness(effectiveEnv)
@@ -458,61 +480,59 @@ export function harnessPage(
 	const requestValue = model?.value ?? requestModelText(store, harness)
 	const levelModels = [...new Set(Object.values(testLevels).map((level) => level.model))]
 	const testerDefault = !pi && levelModels.length === 1 ? levelModels[0] : ''
-	const body = html`${heading({ title: 'Coding harness', sub: null })}
-		<div class="sc-pair is-top">
-			<section class="sc-card" aria-labelledby="harness-program-h">
-				<h2 class="sc-card-h" id="harness-program-h">Program for this workspace</h2>
-				<form method="post" action="/settings/harness/select" class="sc-form">
-					<input type="hidden" name="csrf" value="${context.csrf}" />
-					${field({
-						id: 'coding-harness',
-						label: 'Program',
-						control: html`<select id="coding-harness" name="harness">
-							<option value="claude" ${harness === 'claude' ? html`selected` : ''}>Claude Code</option>
-							<option value="pi" ${harness === 'pi' ? html`selected` : ''}>Pi</option>
-						</select>`,
-						help: 'Applies to new tests and chats in this workspace.',
-					})}
-					<div class="sc-row-btns">${formButton({ label: 'Save the program' })}</div>
-				</form>
-				<p class="sc-note" id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
-			</section>
-			<section class="sc-card" aria-labelledby="claude-rules">
-				<h2 class="sc-card-h" id="claude-rules">Tool rules of testers</h2>
-				<p class="sc-help" data-key="permission-bash">
-					${pi ? 'With Bash, testers can run commands. Without it, they cannot use Bash.' : 'With Bash, testers run commands without asking. Without it, each command asks you here. A tester waits up to 10 minutes for an answer.'}
-				</p>
-				<p class="sc-help" data-region="permission-hook">
-					${
-						liveUi(context.workspace)
-							? 'Testers that start now can ask you in this UI when a tool needs a permission.'
-							: 'Testers that start now cannot ask you. The UI of this folder does not run. A tool that needs a permission is denied.'
-					}
-				</p>
-				<form method="post" action="/settings/harness/rules" class="sc-form">
-					<input type="hidden" name="csrf" value="${context.csrf}" />
-					<input type="hidden" name="harness" value="${harness}" />
-					<div class="sc-field">
-						<label class="sc-label" for="tester-rules">Default tools for new tests</label>
-						<input
-							id="tester-rules"
-							name="rules"
-							maxlength="400"
-							autocomplete="off"
-							value="${form?.value ?? context.testerRules}"
-							aria-describedby="tester-rules-help"
-							${form ? html`autofocus` : ''}
-						/>
-						<p class="sc-help" id="tester-rules-help">
-							${pi ? 'Enter tool names separated by spaces, for example read bash.' : 'Enter tool rules separated by spaces, for example Read Bash.'}
-						</p>
-						${form ? html`<p class="sc-error" role="alert" data-field="rules">${form.error}</p>` : ''}
-					</div>
-					<div class="sc-row-btns">${formButton({ label: 'Save the rules' })}</div>
-				</form>
-			</section>
-		</div>
-		<section
+	const sections: Record<HarnessSection, Html> = {
+		program: html`<section class="sc-card" aria-labelledby="harness-program-h">
+			<h2 class="sc-card-h" id="harness-program-h">Program for this workspace</h2>
+			<form method="post" action="/settings/harness/select" class="sc-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				${field({
+					id: 'coding-harness',
+					label: 'Program',
+					control: html`<select id="coding-harness" name="harness">
+						<option value="claude" ${harness === 'claude' ? html`selected` : ''}>Claude Code</option>
+						<option value="pi" ${harness === 'pi' ? html`selected` : ''}>Pi</option>
+					</select>`,
+					help: 'Applies to new tests and chats in this workspace.',
+				})}
+				<div class="sc-row-btns">${formButton({ label: 'Save the program' })}</div>
+			</form>
+			<p class="sc-note" id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
+		</section>`,
+		rules: html`<section class="sc-card" aria-labelledby="claude-rules">
+			<h2 class="sc-card-h" id="claude-rules">Tool rules of testers</h2>
+			<p class="sc-help" data-key="permission-bash">
+				${pi ? 'With Bash, testers can run commands. Without it, they cannot use Bash.' : 'With Bash, testers run commands without asking. Without it, each command asks you here. A tester waits up to 10 minutes for an answer.'}
+			</p>
+			<p class="sc-help" data-region="permission-hook">
+				${
+					liveUi(context.workspace)
+						? 'Testers that start now can ask you in this UI when a tool needs a permission.'
+						: 'Testers that start now cannot ask you. The UI of this folder does not run. A tool that needs a permission is denied.'
+				}
+			</p>
+			<form method="post" action="/settings/harness/rules" class="sc-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<input type="hidden" name="harness" value="${harness}" />
+				<div class="sc-field">
+					<label class="sc-label" for="tester-rules">Default tools for new tests</label>
+					<input
+						id="tester-rules"
+						name="rules"
+						maxlength="400"
+						autocomplete="off"
+						value="${form?.value ?? context.testerRules}"
+						aria-describedby="tester-rules-help"
+						${form ? html`autofocus` : ''}
+					/>
+					<p class="sc-help" id="tester-rules-help">
+						${pi ? 'Enter tool names separated by spaces, for example read bash.' : 'Enter tool rules separated by spaces, for example Read Bash.'}
+					</p>
+					${form ? html`<p class="sc-error" role="alert" data-field="rules">${form.error}</p>` : ''}
+				</div>
+				<div class="sc-row-btns">${formButton({ label: 'Save the rules' })}</div>
+			</form>
+		</section>`,
+		models: html`<section
 			class="sc-card"
 			aria-labelledby="model-settings"
 			data-model-catalog="${harness}"
@@ -600,8 +620,8 @@ export function harnessPage(
 				</div>
 				<div class="sc-row-btns">${formButton({ label: 'Save models', emphasis: 'primary' })}</div>
 			</form>
-		</section>
-		<section class="sc-card" aria-labelledby="chat-settings">
+		</section>`,
+		chats: html`<section class="sc-card" aria-labelledby="chat-settings">
 			<h2 class="sc-card-h" id="chat-settings">Chats</h2>
 
 			<p class="sc-help">
@@ -609,6 +629,34 @@ export function harnessPage(
 				effort for the next message in the chat.
 			</p>
 			<div class="sc-row-btns">${formButton({ label: 'Open Chats', href: '/chats' })}</div>
-		</section>`
+		</section>`,
+	}
+	const shown: HarnessSection = form
+		? 'rules'
+		: model || testerModel
+			? 'models'
+			: (harnessSections.find((item) => item === section) ?? 'program')
+	const summary: Record<HarnessSection, Html | string> = {
+		program: pi ? 'Pi' : 'Claude Code',
+		rules: html`<code>${context.testerRules || 'none'}</code>`,
+		models: `Testers: ${testerValue || (pi ? 'Pi default' : 'test level default')} · Chats: ${requestValue || (pi ? 'Pi default' : 'Claude Code default')}`,
+		chats: 'The harness and model of new chats.',
+	}
+	const body = html`${heading({ title: 'Coding harness', sub: null })}
+		<div class="sc-split is-list-first">
+			<ul class="sc-recipes is-list" aria-label="Coding harness settings" data-region="harness-sections">
+				${harnessSections.map((item) =>
+					listPageRow({
+						key: `section:${item}`,
+						href: `/settings/harness?section=${item}`,
+						top: harnessTitles[item],
+						tags: '',
+						lines: [summary[item]],
+						open: item === shown,
+					})
+				)}
+			</ul>
+			<div class="sc-stack" data-region="harness-section">${sections[shown]}</div>
+		</div>`
 	return settingsPage('/settings/harness', 'Coding harness', ['*'], body)
 }

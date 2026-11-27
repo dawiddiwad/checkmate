@@ -54,15 +54,25 @@
 	white-space: nowrap;
 	text-overflow: ellipsis;
 }
+.sc-plan-waits {
+	flex: none;
+	margin-left: calc(-1 * var(--space-2));
+	white-space: nowrap;
+}
 .sc-plan-id {
 	white-space: nowrap;
 	font: 500 13px/20px var(--font-mono);
 	color: var(--ink);
 }
 .sc-plan-title {
+	max-height: 44px;
+	overflow: hidden;
 	font: 600 17px/22px var(--font-sans);
 	letter-spacing: 0;
 	color: var(--ink);
+	mask:
+		linear-gradient(var(--ink), var(--ink)) top / 100% 22px no-repeat,
+		linear-gradient(to right, var(--ink) calc(100% - 72px), transparent) bottom / 100% 22px no-repeat;
 }
 .sc-plan-sum {
 	font: 400 14px/20px var(--font-sans);
@@ -72,12 +82,12 @@
 	display: flex;
 	justify-content: flex-end;
 }
-.sc-plan:not(.is-sel) .sc-plan-act .sc-btn {
+.sc-plan:not(.is-sel) .sc-plan-act .sc-btn:not(.is-you) {
 	background: var(--surface);
 	border-color: var(--edge);
 	color: var(--ink);
 }
-.sc-plan:not(.is-sel) .sc-plan-act .sc-btn .sc-key {
+.sc-plan:not(.is-sel) .sc-plan-act .sc-btn:not(.is-you) .sc-key {
 	border-color: var(--edge);
 	color: var(--muted);
 }

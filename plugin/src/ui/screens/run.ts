@@ -306,56 +306,51 @@ function coverage(store: Store, detail: Detail) {
 function cleanup(detail: Detail) {
 	const result = detail.result
 	return html`<dl class="sc-facts">
-		<div>
-			<dt>Cleanup</dt>
-			<dd>
-				${result ? html`${statusMark({ state: result.cleanup.status })} ${result.cleanup.reason}` : html`<span class="sc-muted">Not finished.</span>`}
-			</dd>
-		</div>
-		<div>
-			<dt>Attempts</dt>
-			<dd>
-				<ul class="sc-plain">
-					${detail.attempts.map(
-						(attempt) =>
-							html`<li>
-								Attempt ${attempt.attempt} · ${time(attempt.startedAt)} · ${attempt.actor}
-								${
-									attempt.workerInterruptedAt
-										? html` · Delegated worker interrupted ${time(attempt.workerInterruptedAt)}`
-										: ''
-								}
-							</li>`
-					)}
-				</ul>
-			</dd>
-		</div>
-		<div>
-			<dt>Tool session</dt>
-			<dd class="sc-mono">${detail.toolSession}</dd>
-		</div>
-		<div>
-			<dt>Target</dt>
-			<dd class="sc-mono">${detail.target}</dd>
-		</div>
-		<div>
-			<dt>Instance</dt>
-			<dd>
-				<a
-					class="sc-mono"
-					href="/settings/targets/${detail.instance.targetId}#instance-${detail.instance.instanceId}"
-					>${detail.instance.instanceId}</a
-				>${detail.instance.environment ? html` · ${detail.instance.environment}` : ''}${detail.instance.retired ? html` · ${statusMark({ state: 'retired' })}` : ''}
-			</dd>
-		</div>
+		<dt>Cleanup</dt>
+		<dd>
+			${result ? html`${statusMark({ state: result.cleanup.status })} ${result.cleanup.reason}` : html`<span class="sc-muted">Not finished.</span>`}
+		</dd>
+
+		<dt>Attempts</dt>
+		<dd>
+			<ul class="sc-plain">
+				${detail.attempts.map(
+					(attempt) =>
+						html`<li>
+							Attempt ${attempt.attempt} · ${time(attempt.startedAt)} · ${attempt.actor}
+							${
+								attempt.workerInterruptedAt
+									? html` · Delegated worker interrupted ${time(attempt.workerInterruptedAt)}`
+									: ''
+							}
+						</li>`
+				)}
+			</ul>
+		</dd>
+
+		<dt>Tool session</dt>
+		<dd class="sc-mono">${detail.toolSession}</dd>
+
+		<dt>Target</dt>
+		<dd class="sc-mono">${detail.target}</dd>
+
+		<dt>Instance</dt>
+		<dd>
+			<a
+				class="sc-mono"
+				href="/settings/targets/${detail.instance.targetId}#instance-${detail.instance.instanceId}"
+				>${detail.instance.instanceId}</a
+			>${detail.instance.environment ? html` · ${detail.instance.environment}` : ''}${detail.instance.retired ? html` · ${statusMark({ state: 'retired' })}` : ''}
+		</dd>
+
 		${
 			detail.request.retestOf
-				? html`<div>
+				? html`
 						<dt>Retest of</dt>
 						<dd>
 							<a class="sc-mono" href="/runs/${detail.request.retestOf}">${detail.request.retestOf}</a>
 						</dd>
-					</div>`
+					`
 				: ''
 		}
 	</dl>`

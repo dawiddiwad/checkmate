@@ -7,7 +7,7 @@
 	border: var(--hairline) solid transparent;
 	background: transparent;
 	color: var(--muted);
-	font: 600 12px/16px var(--font-mono);
+	font: 600 12px/1 var(--font-mono);
 }
 .sc-cell.k-pass {
 	background: var(--pass);
@@ -15,8 +15,23 @@
 }
 .sc-cell.k-fail {
 	border: var(--stroke) solid var(--fail);
-	color: var(--fail);
-	font-size: 15px;
+	color: transparent;
+	font-size: 0;
+	background:
+		linear-gradient(
+				45deg,
+				transparent calc(50% - 0.75px),
+				var(--fail) calc(50% - 0.75px) calc(50% + 0.75px),
+				transparent calc(50% + 0.75px)
+			)
+			center / 62% 62% no-repeat,
+		linear-gradient(
+				-45deg,
+				transparent calc(50% - 0.75px),
+				var(--fail) calc(50% - 0.75px) calc(50% + 0.75px),
+				transparent calc(50% + 0.75px)
+			)
+			center / 62% 62% no-repeat;
 }
 .sc-cell.k-q {
 	background: var(--signal);
@@ -57,7 +72,6 @@
 	line-height: 1;
 }
 .sc-legend .sc-cell.k-fail {
-	font-size: 11px;
 	border-width: var(--stroke);
 }
 .sc-plan-board {
@@ -72,6 +86,11 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-1);
+}
+.sc-plan-board > .sc-plan-cols > span {
+	width: var(--cell, var(--cell-sm));
+	text-align: center;
+	white-space: nowrap;
 }
 .sc-plan-board > div > span:first-child {
 	width: 24px;

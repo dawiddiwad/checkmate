@@ -18,12 +18,17 @@ export const examples: Array<[string, Html | string]> = [
 		'board',
 		board({
 			label: 'Rules against the last 2 builds',
+			columns: [
+				{ label: 'C1', title: 'One coupon applies per order.' },
+				{ label: 'C2', title: 'An expired code is refused.' },
+				{ label: 'Out', title: 'Outside the rules' },
+			],
 			builds: [
 				{ build: 'build-1', label: 'B1', cells: ['passed', 'failed', 'not_checked'] },
 				{ build: 'build-2', label: 'B2', cells: ['passed', 'question', 'failed'] },
 			],
 		}),
 	],
-	['board without builds', board({ builds: [], label: 'No build' })],
+	['board without builds', board({ builds: [], label: 'No build', columns: [] })],
 	['boardKey', boardKey],
 ]

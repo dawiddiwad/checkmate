@@ -47,9 +47,14 @@ export function resultCell({ result }: { result: string | null }) {
 
 export type BoardBuild = { build: string; label: string; cells: CellStatus[] }
 
-export function board({ builds, label }: { builds: BoardBuild[]; label: string }) {
+export type BoardColumn = { label: string; title: string }
+
+export function board({ builds, label, columns }: { builds: BoardBuild[]; label: string; columns: BoardColumn[] }) {
 	if (!builds.length) return html`<span></span>`
 	return html`<div class="sc-plan-board" role="img" aria-label="${label}">
+		<div class="sc-plan-cols" aria-hidden="true">
+			<span></span>${columns.map((column) => html`<span title="${column.title}">${column.label}</span>`)}
+		</div>
 		${builds.map(
 			(build) =>
 				html`<div title="${build.build}">

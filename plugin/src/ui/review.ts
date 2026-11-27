@@ -504,6 +504,22 @@ function marks(review: Review, cells: CellStatus[]) {
 	})
 }
 
+const boardMaxColumns = 9
+
+export function boardColumns(review: Review) {
+	const rules = review.map.rows.filter((row) => row.rule.id !== outside)
+	const out = review.map.rows.find((row) => row.rule.id === outside)!
+	const own =
+		rules.length <= boardMaxColumns
+			? rules.map((row) => ({
+					label: row.rule.id,
+					title: row.rule.text,
+					cells: row.cells.map((cell) => cell.status),
+				}))
+			: review.areas.map((area) => ({ label: area.label.slice(0, 2), title: area.label, cells: area.cells }))
+	return [...own, { label: 'Out', title: 'Outside the rules', cells: out.cells.map((cell) => cell.status) }]
+}
+
 export function ruleBoard(review: Review) {
 	const builds = shown(review)
 	const from = review.map.builds.length - builds.length

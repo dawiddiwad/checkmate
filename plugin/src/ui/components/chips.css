@@ -23,18 +23,20 @@
 a.sc-chip:hover {
 	border-color: var(--ink);
 }
-.next-line {
+.next-line,
+.sc-main > .next-line[data-region] {
 	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--space-3) var(--space-5);
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+	text-align: left;
 	padding: var(--space-4) 20px;
 	background: var(--surface);
 	border: var(--hairline) solid var(--hair);
 	font: 400 14px/20px var(--font-sans);
 }
-.next-line .sc-btn {
-	margin-left: auto;
+.next-line code {
+	overflow-wrap: anywhere;
 }
 .sc-counts,
 .counts {

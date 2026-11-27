@@ -26,3 +26,9 @@
 	color: var(--muted);
 	font: 400 14px/20px var(--font-sans);
 }
+.sc-sec .sc-empty {
+	max-width: none;
+}
+.sc-sec .sc-empty p {
+	max-width: 72ch;
+}

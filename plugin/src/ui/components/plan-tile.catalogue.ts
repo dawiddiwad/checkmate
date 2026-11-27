@@ -13,11 +13,16 @@ const tile: PlanTile = {
 	status: statusMark({ state: 'needs_answers' }),
 	when: 'B2 build-2 · 3 h',
 	whenTitle: 'build-2',
+	waitsOn: 'waits on oracle',
 	objective: 'Checkout applies coupons before tax',
 	verdict: { head: 'Build build-2: 2 open defects.', tail: '3 questions open, 1 blocks testing.' },
 	cost: '$0.42',
 	board: board({
 		label: 'Rules against the last 2 builds',
+		columns: [
+			{ label: 'R1', title: 'A standard order totals 400 PLN.' },
+			{ label: 'Out', title: 'Outside the rules' },
+		],
 		builds: [
 			{ build: 'build-1', label: 'B1', cells: ['passed', 'not_checked'] },
 			{ build: 'build-2', label: 'B2', cells: ['failed', 'question'] },
@@ -47,8 +52,22 @@ export const examples: Array<[string, Html | string]> = [
 				index: 1,
 				planId: 'login',
 				status: wordMark({ state: 'testing', label: 'Testing' }),
+				waitsOn: null,
 				cost: null,
 				next: { label: 'Watch the testers', href: '#', unblocks: false },
+			})
+		),
+	],
+	[
+		'planTile long title and long head line',
+		list(
+			planTile({
+				...tile,
+				index: 3,
+				planId: 'basket',
+				when: 'B2 fixture-build-2-with-a-long-name · 3 h',
+				objective:
+					'Explore the basket, coupons, and the gift card flow: merging a guest basket at sign-in, stacking a coupon with a gift card, and the refund of a split payment.',
 			})
 		),
 	],

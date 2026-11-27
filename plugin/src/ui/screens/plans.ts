@@ -9,30 +9,15 @@ import { heading } from '../components/page-heading.ts'
 import { newChangeTile, planTile } from '../components/plan-tile.ts'
 import { statusMark, wordMark } from '../components/status-mark.ts'
 import { costText, duration, html, plural, time, words } from '../html.ts'
-import { buildLabel, outside, reviewHref, reviewOf, verdictLine } from '../review.ts'
-
-const maxColumns = 9
-
-function columns(review: Review) {
-	const rules = review.map.rows.filter((row) => row.rule.id !== outside)
-	const out = review.map.rows.find((row) => row.rule.id === outside)!
-	const own =
-		rules.length <= maxColumns
-			? rules.map((row) => ({
-					label: row.rule.id,
-					title: row.rule.text,
-					cells: row.cells.map((cell) => cell.status),
-				}))
-			: review.areas.map((area) => ({ label: area.label.slice(0, 2), title: area.label, cells: area.cells }))
-	return [...own, { label: 'Out', title: 'Outside the rules', cells: out.cells.map((cell) => cell.status) }]
-}
+import { boardColumns, buildLabel, reviewHref, reviewOf, verdictLine } from '../review.ts'
 
 function planBoard(review: Review) {
 	const builds = review.map.builds.slice(-2)
 	const from = review.map.builds.length - builds.length
-	const cols = columns(review)
+	const cols = boardColumns(review)
 	return board({
 		label: `Rules against the last ${plural(builds.length, 'build')}`,
+		columns: cols.map((column) => ({ label: column.label, title: column.title })),
 		builds: builds.map((build, index) => ({
 			build: build.build,
 			label: buildLabel(review, build.build),
@@ -91,7 +76,8 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 		planId: review.planId,
 		href: reviewHref(review.planId, 'needs'),
 		status,
-		when: html`${when}${loop && !review.running ? ` · waits on ${roleWords[loop.waitsOn]}` : ''}`,
+		when,
+		waitsOn: loop && !review.running ? `waits on ${roleWords[loop.waitsOn]}` : null,
 		whenTitle: latest ? `${latest.build}, first tested ${latest.firstTestedAt}` : review.target,
 		objective: review.objective,
 		verdict,

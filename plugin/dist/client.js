@@ -727,6 +727,9 @@
     fitPath();
   }
   var hints = document.querySelector("[data-hints]");
+  function capsOf(cap) {
+    return /^[↑↓←→]+$/.test(cap) ? [...cap] : [cap];
+  }
   var hintOrder = ["?", "\u2191\u2193", "1", "\u2192", "\u2190", "0", "Space", "/"];
   function fitHints() {
     const rank = (hint) => hintOrder.findIndex((cap) => hint.dataset.cap.startsWith(cap));
@@ -770,7 +773,7 @@
     const keys = list.find(([cap]) => cap === "?");
     const shown2 = list.length > 3 ? [...list.filter(([cap]) => cap !== "?").slice(0, keys ? 2 : 3), ...keys ? [keys] : []] : list;
     const source2 = shown2.map(
-      ([cap, text]) => cap === "?" ? `<button type="button" class="sc-key-hint" data-cap="?" data-keys-open><kbd class="sc-key">?</kbd><span class="sc-key-text">${text}</span></button>` : `<span class="sc-key-hint" data-cap="${cap}"><kbd class="sc-key">${glyphHtml(cap)}</kbd>${text}</span>`
+      ([cap, text]) => cap === "?" ? `<button type="button" class="sc-key-hint" data-cap="?" data-keys-open><kbd class="sc-key">?</kbd><span class="sc-key-text">${text}</span></button>` : `<span class="sc-key-hint" data-cap="${cap}">${capsOf(cap).map((one) => `<kbd class="sc-key">${glyphHtml(one)}</kbd>`).join("")}${text}</span>`
     ).join("");
     if (hints.dataset.source !== source2) {
       hints.innerHTML = source2;

@@ -6,10 +6,8 @@ export function facts({ rows }: { rows: Array<[string, Html | string | false]> }
 	return html`<dl class="sc-facts">
 		${shown.map(
 			([label, value]) =>
-				html`<div>
-					<dt>${label}</dt>
-					<dd>${value}</dd>
-				</div>`
+				html`<dt>${label}</dt>
+					<dd>${value}</dd>`
 		)}
 	</dl>`
 }

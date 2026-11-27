@@ -20758,10 +20758,10 @@ function piModels(stdout) {
   const lines2 = stripVTControlCharacters2(stdout).trim().split("\n");
   const header = lines2.findIndex((line) => /^provider\s+model\s+context\b/.test(line.trim()));
   if (header === -1) return lines2.some((line) => /^No models available\./.test(line.trim())) ? [] : void 0;
-  const columns2 = lines2[header].trim().split(/\s+/).length;
+  const columns = lines2[header].trim().split(/\s+/).length;
   return lines2.slice(header + 1).flatMap((line) => {
     const fields = line.trim().split(/\s{2,}/);
-    if (fields.length !== columns2) return [];
+    if (fields.length !== columns) return [];
     const [provider, model] = fields;
     const value2 = `${provider}/${model}`;
     return [{ value: value2, label: value2 }];
@@ -26052,14 +26052,14 @@ function evidenceBytes(store, id2) {
   };
 }
 var pageSizes = [25, 50, 100];
-function listQuery(query, columns2, defaults) {
+function listQuery(query, columns, defaults) {
   const limit = query.limit ?? 25;
   const offset = query.offset ?? 0;
   const sort = query.sort ?? defaults.sort;
   const direction = query.direction ?? (query.sort ? "asc" : defaults.direction);
   requireCondition(pageSizes.includes(limit), `Invalid limit: ${limit}. Use one of: ${pageSizes.join(", ")}.`);
   requireCondition(Number.isInteger(offset) && offset >= 0, `Invalid offset: ${offset}. Use 0 or more.`);
-  requireChoice(sort, columns2, "sort column");
+  requireChoice(sort, columns, "sort column");
   requireChoice(direction, ["asc", "desc"], "sort direction");
   return { limit, offset, sort, direction, q: query.q?.trim().toLowerCase() ?? "" };
 }
@@ -26074,13 +26074,13 @@ function filterValue(filters, names) {
   }
   return values;
 }
-function pageOf(rows3, query, columns2, text2) {
+function pageOf(rows3, query, columns, text2) {
   const matched = query.q ? rows3.filter(
     (row2) => text2(row2).some(
       (field2) => String(field2 ?? "").toLowerCase().includes(query.q)
     )
   ) : rows3;
-  const key2 = columns2[query.sort];
+  const key2 = columns[query.sort];
   const order = query.direction === "asc" ? 1 : -1;
   const position = new Map(matched.map((row2, index2) => [row2, index2]));
   const sorted2 = [...matched].sort((a, b) => {
@@ -26105,7 +26105,7 @@ function runStatus(row2) {
   return row2.state === "started" ? "started" : row2.acceptance ?? "finalized";
 }
 function pagedRuns(store, query = {}) {
-  const columns2 = {
+  const columns = {
     run: (row2) => row2.runId,
     plan: (row2) => `${row2.planId}@${String(row2.revision).padStart(9, "0")}`,
     build: (row2) => row2.build,
@@ -26115,12 +26115,12 @@ function pagedRuns(store, query = {}) {
     status: (row2) => runStatus(row2),
     started: (row2) => row2.startedAt
   };
-  const options4 = listQuery(query, Object.keys(columns2), { sort: "started", direction: "desc" });
+  const options4 = listQuery(query, Object.keys(columns), { sort: "started", direction: "desc" });
   const filters = filterValue(query.filters, { plan: null, build: null, status: runStatuses });
   const rows3 = runList(store, { planId: filters.plan, build: filters.build }).filter(
     (row2) => filters.status === void 0 || runStatus(row2) === filters.status
   );
-  return pageOf(rows3, options4, columns2, (row2) => [
+  return pageOf(rows3, options4, columns, (row2) => [
     row2.runId,
     `${row2.planId}@${row2.revision}`,
     row2.build,
@@ -31083,9 +31083,12 @@ function resultCell({ result }) {
 		>${symbol}</span
 	>`;
 }
-function board({ builds, label }) {
+function board({ builds, label, columns }) {
   if (!builds.length) return html2`<span></span>`;
   return html2`<div class="sc-plan-board" role="img" aria-label="${label}">
+		<div class="sc-plan-cols" aria-hidden="true">
+			<span></span>${columns.map((column2) => html2`<span title="${column2.title}">${column2.label}</span>`)}
+		</div>
 		${builds.map(
     (build) => html2`<div title="${build.build}">
 					<span>${build.label}</span>${build.cells.map((state) => boardCell({ state }))}
@@ -31556,6 +31559,17 @@ function marks(review, cells2) {
   return railCells({
     cells: cells2.slice(from).map((status, index2) => cellOf(review, status, builds[from + index2].build))
   });
+}
+var boardMaxColumns = 9;
+function boardColumns(review) {
+  const rules = review.map.rows.filter((row2) => row2.rule.id !== outside);
+  const out = review.map.rows.find((row2) => row2.rule.id === outside);
+  const own = rules.length <= boardMaxColumns ? rules.map((row2) => ({
+    label: row2.rule.id,
+    title: row2.rule.text,
+    cells: row2.cells.map((cell5) => cell5.status)
+  })) : review.areas.map((area) => ({ label: area.label.slice(0, 2), title: area.label, cells: area.cells }));
+  return [...own, { label: "Out", title: "Outside the rules", cells: out.cells.map((cell5) => cell5.status) }];
 }
 function ruleBoard(review) {
   const builds = shown(review);
@@ -32128,12 +32142,12 @@ function tableRow({ cells: cells2, attrs }) {
 		${cells2.map(cell2)}
 	</tr>`;
 }
-function dataTable({ columns: columns2, rows: rows3, scroll = false, attrs }) {
+function dataTable({ columns, rows: rows3, scroll = false, attrs }) {
   const { class: extra, ...rest } = attrs ?? {};
   const table2 = html2`<table class="sc-table${extra ? ` ${extra}` : ""}" ${attributes(rest)}>
 		<thead>
 			<tr>
-				${columns2.map(column)}
+				${columns.map(column)}
 			</tr>
 		</thead>
 		<tbody>
@@ -35417,12 +35431,12 @@ function table(state, startLine, endLine, silent) {
     pos++;
   }
   let lineText = getLine(state, startLine + 1);
-  let columns2 = lineText.split("|");
+  let columns = lineText.split("|");
   const aligns = [];
-  for (let i = 0; i < columns2.length; i++) {
-    const t = columns2[i].trim();
+  for (let i = 0; i < columns.length; i++) {
+    const t = columns[i].trim();
     if (!t) {
-      if (i === 0 || i === columns2.length - 1) continue;
+      if (i === 0 || i === columns.length - 1) continue;
       else return false;
     }
     if (!/^:?-+:?$/.test(t)) return false;
@@ -35433,10 +35447,10 @@ function table(state, startLine, endLine, silent) {
   lineText = getLine(state, startLine).trim();
   if (lineText.indexOf("|") === -1) return false;
   if (state.sCount[startLine] - state.blkIndent >= 4) return false;
-  columns2 = escapedSplit(lineText);
-  if (columns2.length && columns2[0] === "") columns2.shift();
-  if (columns2.length && columns2[columns2.length - 1] === "") columns2.pop();
-  const columnCount = columns2.length;
+  columns = escapedSplit(lineText);
+  if (columns.length && columns[0] === "") columns.shift();
+  if (columns.length && columns[columns.length - 1] === "") columns.pop();
+  const columnCount = columns.length;
   if (columnCount === 0 || columnCount !== aligns.length) return false;
   if (silent) return true;
   const oldParentType = state.parentType;
@@ -35449,11 +35463,11 @@ function table(state, startLine, endLine, silent) {
   token_tho.map = [startLine, startLine + 1];
   const token_htro = state.push("tr_open", "tr", 1);
   token_htro.map = [startLine, startLine + 1];
-  for (let i = 0; i < columns2.length; i++) {
+  for (let i = 0; i < columns.length; i++) {
     const token_ho = state.push("th_open", "th", 1);
     if (aligns[i]) token_ho.attrs = [["style", `text-align:${aligns[i]}`]];
     const token_il = state.push("inline", "", 0);
-    token_il.content = columns2[i].trim();
+    token_il.content = columns[i].trim();
     token_il.children = [];
     state.push("th_close", "th", -1);
   }
@@ -35472,10 +35486,10 @@ function table(state, startLine, endLine, silent) {
     lineText = getLine(state, nextLine2).trim();
     if (!lineText) break;
     if (state.sCount[nextLine2] - state.blkIndent >= 4) break;
-    columns2 = escapedSplit(lineText);
-    if (columns2.length && columns2[0] === "") columns2.shift();
-    if (columns2.length && columns2[columns2.length - 1] === "") columns2.pop();
-    autocompletedCells += columnCount - columns2.length;
+    columns = escapedSplit(lineText);
+    if (columns.length && columns[0] === "") columns.shift();
+    if (columns.length && columns[columns.length - 1] === "") columns.pop();
+    autocompletedCells += columnCount - columns.length;
     if (autocompletedCells > MAX_AUTOCOMPLETED_CELLS) break;
     if (nextLine2 === startLine + 2) {
       const token_tbo = state.push("tbody_open", "tbody", 1);
@@ -35487,7 +35501,7 @@ function table(state, startLine, endLine, silent) {
       const token_tdo = state.push("td_open", "td", 1);
       if (aligns[i]) token_tdo.attrs = [["style", `text-align:${aligns[i]}`]];
       const token_il = state.push("inline", "", 0);
-      token_il.content = columns2[i] ? columns2[i].trim() : "";
+      token_il.content = columns[i] ? columns[i].trim() : "";
       token_il.children = [];
       state.push("td_close", "td", -1);
     }
@@ -38837,32 +38851,27 @@ function explorerDetail(store, live, item, crumbs) {
 		<p class="sc-h-meta">${explorerState(item)} ${inState(item)}</p>
 		${["failed", "operational_error"].includes(item.state ?? "") && item.reason ? html2`<div class="sc-notice is-error" role="alert"><strong>Tester failed.</strong> ${Array.isArray(item.reason) ? item.reason.join(" ") : item.reason} ${item.hint ? html2`<p>${item.hint}</p>` : ""}</div>` : ""}
 		<dl class="sc-facts">
-			${item.model ? html2`<div>
+			${item.model ? html2`
 							<dt>Model</dt>
 							<dd><code>${item.model}</code></dd>
-						</div>` : ""}
-			<div>
-				<dt>Reported cost</dt>
-				<dd>${costText(item.costUsd, item.costPartial)}</dd>
-			</div>
-			<div>
-				<dt>${live.path === "session" ? "Step" : "Turn"}</dt>
-				<dd>${item.turn ?? none2}</dd>
-			</div>
-			<div>
-				<dt>${live.path === "session" ? "Since" : "Started"}</dt>
-				<dd>${item.startedAt ? time(item.startedAt) : none2}</dd>
-			</div>
-			<div>
-				<dt>Last activity</dt>
-				<dd>${item.activity ?? none2}</dd>
-			</div>
-			<div>
-				<dt>Record</dt>
-				<dd>
-					${item.recorded ? html2`${statusMark({ state: item.recorded })} ${plural(item.saved, "entry", "entries")}` : none2}
-				</dd>
-			</div>
+						` : ""}
+
+			<dt>Reported cost</dt>
+			<dd>${costText(item.costUsd, item.costPartial)}</dd>
+
+			<dt>${live.path === "session" ? "Step" : "Turn"}</dt>
+			<dd>${item.turn ?? none2}</dd>
+
+			<dt>${live.path === "session" ? "Since" : "Started"}</dt>
+			<dd>${item.startedAt ? time(item.startedAt) : none2}</dd>
+
+			<dt>Last activity</dt>
+			<dd>${item.activity ?? none2}</dd>
+
+			<dt>Record</dt>
+			<dd>
+				${item.recorded ? html2`${statusMark({ state: item.recorded })} ${plural(item.saved, "entry", "entries")}` : none2}
+			</dd>
 		</dl>
 		${stoppableTester(live, item) ? html2`<section aria-labelledby="options-title" data-key="options:${item.explorer}">
 						<h3 class="sc-card-h" id="options-title">Options</h3>
@@ -39975,10 +39984,8 @@ function facts({ rows: rows3 }) {
   const shown2 = rows3.filter(([, value2]) => value2 !== false);
   return html2`<dl class="sc-facts">
 		${shown2.map(
-    ([label, value2]) => html2`<div>
-					<dt>${label}</dt>
-					<dd>${value2}</dd>
-				</div>`
+    ([label, value2]) => html2`<dt>${label}</dt>
+					<dd>${value2}</dd>`
   )}
 	</dl>`;
 }
@@ -40924,7 +40931,7 @@ function blockingTitle(items) {
   if (items.every((item) => item.kind === "question")) return `${one3 ? "question blocks" : "questions block"} testing`;
   return `${one3 ? "item blocks" : "items block"} testing`;
 }
-function nextLine(planId, gaps, review, found) {
+function planBanner(gaps, review) {
   const waiting = review.items.filter((item) => item.needs);
   const blocking = waiting.filter((item) => item.blocking);
   const first = blocking[0];
@@ -40941,6 +40948,12 @@ function nextLine(planId, gaps, review, found) {
     })}
 		</div>`;
   }
+  return "";
+}
+function nextLine(planId, gaps, review, found) {
+  const banner = planBanner(gaps, review);
+  if (banner) return banner;
+  const waiting = review.items.filter((item) => item.needs);
   const why = found.status.why[0];
   const action2 = waiting.length ? formButton({
     label: `Decide ${plural(waiting.length, "item")} in Needs you`,
@@ -41079,61 +41092,56 @@ function planPage(store, context2, planId, revision2, state = null, allHistory =
   })}
 		${nextLine(planId, plan.gaps, review, found)} ${tabs2}
 		<div data-region="banners">${newerBanner(detail)} ${pending} ${explorationBanners(found.explorations)}</div>
-		<div class="sc-split is-wide-side">
-			<div class="sc-stack is-loose">
-				<p class="sc-lead">${plan.objective}</p>
-				${section("rules", "Rules and builds", rules, rulesTable(review))}
-				${section(
+		<div class="sc-stack is-loose">
+			${approval}
+			<p class="sc-lead">${plan.objective}</p>
+			${section("rules", "Rules and builds", rules, rulesTable(review))}
+			${section(
     "tests",
     "Permanent tests",
     plan.tests.length,
     html2`${testsTable(detail)}
-					${fold({
+				${fold({
       key: "section:test-steps",
       title: "Steps and checks of each test",
       headingId: "test-steps",
       count: null,
       open: approving,
       body: html2`<div class="sc-stack">
-							${plan.tests.map((test) => testCard(detail, test, latest ? removeTest(context2, detail, test) : ""))}
-						</div>`
+						${plan.tests.map((test) => testCard(detail, test, latest ? removeTest(context2, detail, test) : ""))}
+					</div>`
     })}`,
     "tests",
     editLink("edit-tests")
   )}
-				${section(
+			${section(
     "requirements",
     "Requirements and coverage",
     plan.requirements.length,
     html2`<p class="sc-help">${planSummaryLine(plan)}</p>
-						${requirementsTable(plan)}`,
+					${requirementsTable(plan)}`,
     "",
     editLink("edit-requirements")
   )}
-				${section(
+			${section(
     "claims",
     "Claims",
     found.claims.length,
     html2`<p class="sc-help">
-							The merged claims of completed explorations.
-							<a href="/plans/${planId}?view=all">Open them in All items</a>.
-						</p>
-						${claimsTable(planId, found.claims)}`,
+						The merged claims of completed explorations.
+						<a href="/plans/${planId}?view=all">Open them in All items</a>.
+					</p>
+					${claimsTable(planId, found.claims)}`,
     "claims"
   )}
-				${questionsSection(planId, detail, found)}
-				${section("decisions", "Decisions", plan.decisions.length, decisionsList(plan))}
-				${section("explorations", "Explorations", found.explorations.length, explorationsTable(found.explorations), "explorations")}
-				${section("runs", "Runs", detail.runs.length, runsTable(detail), "plan-runs")}
-			</div>
-			<aside class="sc-stack" aria-label="Versions and approval">
-				${approving ? approval : ""}
-				${section("history", "Versions", versions, planHistoryList(store, detail, allHistory), "history")}
-				${approving ? "" : approval}
-				<p class="sc-note" data-region="plan-cost">
-					Total cost ${cost.costUsd === null ? "\u2014" : costText(cost.costUsd, cost.costPartial)}
-				</p>
-			</aside>
+			${questionsSection(planId, detail, found)}
+			${section("decisions", "Decisions", plan.decisions.length, decisionsList(plan))}
+			${section("explorations", "Explorations", found.explorations.length, explorationsTable(found.explorations), "explorations")}
+			${section("runs", "Runs", detail.runs.length, runsTable(detail), "plan-runs")}
+			${section("history", "Versions", versions, planHistoryList(store, detail, allHistory), "history")}
+			<p class="sc-note" data-region="plan-cost">
+				Total cost ${cost.costUsd === null ? "\u2014" : costText(cost.costUsd, cost.costPartial)}
+			</p>
 		</div>`;
   return {
     title: subject,
@@ -41205,7 +41213,12 @@ function requestPage(store, planId, harness) {
     ]
   });
   const review = reviewOf(store, planId);
-  const body = html2`${heading({ title: planId, sub: request3.objective, meta: meta2 })} ${nextLine(planId, [], review, found)}
+  const body = html2`${heading({ title: planId, sub: request3.objective, meta: meta2 })} ${planBanner([], review)}
+		<section class="next-line" aria-labelledby="request-next" data-region="request-next">
+			<h2 class="sc-card-h" id="request-next">Next</h2>
+			${found.status.why.map((line) => html2`<p>${line}</p>`)}
+			${found.status.next.map((line) => html2`<code>${line}</code>`)}
+		</section>
 		${jumpLinks({
     links: [
       { href: "#request", label: "Request" },
@@ -41220,30 +41233,19 @@ function requestPage(store, planId, harness) {
     ]
   })}
 		<div data-region="banners">${explorationBanners(found.explorations)}</div>
-		<div class="sc-split">
-			<div class="sc-stack is-loose">
-				${section("request", "Request", null, overview)}
-				${section(
+		<div class="sc-stack is-loose">
+			${section("request", "Request", null, overview)}
+			${section(
     "claims",
     "Claims",
     found.claims.length,
     html2`<p class="sc-help">The merged claims of completed explorations.</p>
-						${claimsTable(planId, found.claims)}`,
+					${claimsTable(planId, found.claims)}`,
     "claims"
   )}
-				${section("questions", "Questions", found.questions.length, questionsList(planId, found.questions), "questions")}
-				${section("explorations", "Explorations", found.explorations.length, explorationsTable(found.explorations), "explorations")}
-				${section("tests", "Stored tests", 0, storedTestsEmpty(planId, completed2, harness), "tests")}
-			</div>
-			${side(
-    recordPanel(
-      "Next",
-      html2`${found.status.why.map((line) => html2`<p class="sc-help">${line}</p>`)}
-						<ul class="sc-plain">
-							${found.status.next.map((line) => html2`<li><code>${line}</code></li>`)}
-						</ul>`
-    )
-  )}
+			${section("questions", "Questions", found.questions.length, questionsList(planId, found.questions), "questions")}
+			${section("explorations", "Explorations", found.explorations.length, explorationsTable(found.explorations), "explorations")}
+			${section("tests", "Stored tests", 0, storedTestsEmpty(planId, completed2, harness), "tests")}
 		</div>`;
   return {
     title: planId,
@@ -41383,6 +41385,7 @@ function planTile(tile3) {
 				<span class="sc-plan-id">${tile3.planId}</span>
 				${tile3.status}
 				<span class="sc-plan-when" title="${tile3.whenTitle}">${tile3.when}</span>
+				${tile3.waitsOn ? html2`<span class="sc-plan-waits">· ${tile3.waitsOn}</span>` : ""}
 			</div>
 			<h2 class="sc-plan-title" title="${tile3.objective}">${tile3.objective}</h2>
 			<p class="sc-plan-sum">${tile3.verdict.head} ${tile3.verdict.tail}</p>
@@ -41435,23 +41438,13 @@ function newChangeTile({ index: index2 }) {
 }
 
 // plugin/src/ui/screens/plans.ts
-var maxColumns = 9;
-function columns(review) {
-  const rules = review.map.rows.filter((row2) => row2.rule.id !== outside);
-  const out = review.map.rows.find((row2) => row2.rule.id === outside);
-  const own = rules.length <= maxColumns ? rules.map((row2) => ({
-    label: row2.rule.id,
-    title: row2.rule.text,
-    cells: row2.cells.map((cell5) => cell5.status)
-  })) : review.areas.map((area) => ({ label: area.label.slice(0, 2), title: area.label, cells: area.cells }));
-  return [...own, { label: "Out", title: "Outside the rules", cells: out.cells.map((cell5) => cell5.status) }];
-}
 function planBoard(review) {
   const builds = review.map.builds.slice(-2);
   const from = review.map.builds.length - builds.length;
-  const cols = columns(review);
+  const cols = boardColumns(review);
   return board({
     label: `Rules against the last ${plural(builds.length, "build")}`,
+    columns: cols.map((column2) => ({ label: column2.label, title: column2.title })),
     builds: builds.map((build, index2) => ({
       build: build.build,
       label: buildLabel(review, build.build),
@@ -41497,7 +41490,8 @@ function tile(review, plan, runDefects, index2) {
     planId: review.planId,
     href: reviewHref(review.planId, "needs"),
     status,
-    when: html2`${when}${loop2 && !review.running ? ` \xB7 waits on ${roleWords[loop2.waitsOn]}` : ""}`,
+    when,
+    waitsOn: loop2 && !review.running ? `waits on ${roleWords[loop2.waitsOn]}` : null,
     whenTitle: latest ? `${latest.build}, first tested ${latest.firstTestedAt}` : review.target,
     objective: review.objective,
     verdict,
@@ -41595,13 +41589,18 @@ var examples2 = [
     "board",
     board({
       label: "Rules against the last 2 builds",
+      columns: [
+        { label: "C1", title: "One coupon applies per order." },
+        { label: "C2", title: "An expired code is refused." },
+        { label: "Out", title: "Outside the rules" }
+      ],
       builds: [
         { build: "build-1", label: "B1", cells: ["passed", "failed", "not_checked"] },
         { build: "build-2", label: "B2", cells: ["passed", "question", "failed"] }
       ]
     })
   ],
-  ["board without builds", board({ builds: [], label: "No build" })],
+  ["board without builds", board({ builds: [], label: "No build", columns: [] })],
   ["boardKey", boardKey]
 ];
 
@@ -41970,7 +41969,14 @@ var examples16 = [
 // plugin/src/ui/components/key.catalogue.ts
 var examples17 = [
   ["key spoken", key({ name: "Enter" })],
-  ["key hidden from screen readers", key({ name: 1, spoken: false })]
+  ["key hidden from screen readers", key({ name: 1, spoken: false })],
+  [
+    "arrow keys as separate caps",
+    html2`<span class="sc-key-hint">${key({ name: glyph("\u2191") })}${key({ name: glyph("\u2193") })}rows</span>
+			<span class="sc-key-hint">${key({ name: glyph("\u2191") })}up only</span>
+			<span class="sc-key-hint">${key({ name: glyph("\u2190") })}${key({ name: glyph("\u2192") })}back and open</span>
+			<span class="sc-key-hint">${key({ name: "Enter" })}open</span>`
+  ]
 ];
 
 // plugin/src/ui/components/keys-help.catalogue.ts
@@ -42146,11 +42152,16 @@ var tile2 = {
   status: statusMark({ state: "needs_answers" }),
   when: "B2 build-2 \xB7 3 h",
   whenTitle: "build-2",
+  waitsOn: "waits on oracle",
   objective: "Checkout applies coupons before tax",
   verdict: { head: "Build build-2: 2 open defects.", tail: "3 questions open, 1 blocks testing." },
   cost: "$0.42",
   board: board({
     label: "Rules against the last 2 builds",
+    columns: [
+      { label: "R1", title: "A standard order totals 400 PLN." },
+      { label: "Out", title: "Outside the rules" }
+    ],
     builds: [
       { build: "build-1", label: "B1", cells: ["passed", "not_checked"] },
       { build: "build-2", label: "B2", cells: ["failed", "question"] }
@@ -42178,8 +42189,21 @@ var examples25 = [
         index: 1,
         planId: "login",
         status: wordMark({ state: "testing", label: "Testing" }),
+        waitsOn: null,
         cost: null,
         next: { label: "Watch the testers", href: "#", unblocks: false }
+      })
+    )
+  ],
+  [
+    "planTile long title and long head line",
+    list3(
+      planTile({
+        ...tile2,
+        index: 3,
+        planId: "basket",
+        when: "B2 fixture-build-2-with-a-long-name \xB7 3 h",
+        objective: "Explore the basket, coupons, and the gift card flow: merging a guest basket at sign-in, stacking a coupon with a gift card, and the refund of a split payment."
       })
     )
   ],
@@ -42298,68 +42322,8 @@ var examples29 = [
   ["jumpLinks", jumpLinks({ links: tabs })]
 ];
 
-// plugin/src/ui/components/target-card.ts
-function chips(items) {
-  return items.length ? html2`<span class="sc-chips">${items.map((item) => html2`<span class="sc-chip">${item}</span>`)}</span>` : "\u2014";
-}
-function instanceRow(targetId, instance) {
-  return html2`<li class="sc-instance">
-		<span class="sc-mono">${instance.instanceId}</span>
-		<span class="sc-muted">${instance.environment ?? "\u2014"}</span>
-		<code class="sc-ell">${instance.address ?? "\u2014"}</code>
-		<a href="/settings/targets/${targetId}#instance-${instance.instanceId}">Open</a>
-	</li>`;
-}
-function targetCard(target) {
-  return html2`<article class="sc-card" data-key="target:${target.targetId}" data-nav-row>
-		<div class="sc-card-h">
-			<a class="sc-target-name" href="/settings/targets/${target.targetId}" data-nav-item>${target.targetId}</a>
-			<span class="sc-muted sc-mono">${target.revision === null ? "no profile yet" : `@${target.revision}`}</span>
-			<span class="sc-card-aside">${plural(target.activeInstances, "active instance")}</span>
-		</div>
-		<dl class="sc-facts">
-			<dt>Capabilities</dt>
-			<dd>${chips(target.capabilities)}</dd>
-			<dt>Entry points</dt>
-			<dd>${chips(target.entryPoints)}</dd>
-		</dl>
-		${target.instances.length ? html2`<ul class="sc-instances" aria-label="Active instances of ${target.targetId}">
-						${target.instances.map((instance) => instanceRow(target.targetId, instance))}
-					</ul>` : ""}
-	</article>`;
-}
-
-// plugin/src/ui/components/target-card.catalogue.ts
-var examples30 = [
-  [
-    "targetCard",
-    targetCard({
-      targetId: "shop-local",
-      revision: 1,
-      capabilities: ["browser", "http"],
-      entryPoints: ["web"],
-      activeInstances: 2,
-      instances: [
-        { instanceId: "local", environment: "local", address: "http://127.0.0.1:4173" },
-        { instanceId: "staging", environment: "staging", address: null }
-      ]
-    })
-  ],
-  [
-    "targetCard without profile",
-    targetCard({
-      targetId: "mobile",
-      revision: null,
-      capabilities: [],
-      entryPoints: [],
-      activeInstances: 0,
-      instances: []
-    })
-  ]
-];
-
 // plugin/src/ui/components/tester-card.catalogue.ts
-var examples31 = [
+var examples30 = [
   [
     "testerCard running",
     testerCard({
@@ -42446,10 +42410,9 @@ var entries = [
   ["status-bar", examples27],
   ["status-mark", examples28],
   ["tabs", examples29],
-  ["target-card", examples30],
-  ["tester-card", examples31]
+  ["tester-card", examples30]
 ];
-function entry([name2, examples32]) {
+function entry([name2, examples31]) {
   return html2`<section
 		class="catalogue-entry"
 		id="${name2}"
@@ -42457,7 +42420,7 @@ function entry([name2, examples32]) {
 		aria-labelledby="catalogue-${name2}"
 	>
 		<h2 id="catalogue-${name2}">${name2}</h2>
-		${examples32.map(
+		${examples31.map(
     ([state, rendered2]) => html2`<figure class="catalogue-example" data-catalogue-example="${name2}: ${state}">
 					<figcaption>${state}</figcaption>
 					<div class="catalogue-render">${rendered2}</div>
@@ -42523,31 +42486,43 @@ function words4(items) {
     " "
   ) : none3();
 }
-function targetsPage(store, form = "", status) {
+function targetsList(store, open) {
   const targets = targetList(store);
-  const body = html2`${heading({
+  if (!targets.length)
+    return html2`<div data-region="targets">
+			${emptyNotice({ what: "No target yet.", next: html2`Record one with <code>checkmate target open</code>.` })}
+		</div>`;
+  return html2`<ul class="sc-recipes is-list" aria-label="Targets" data-region="targets" data-list>
+		${targets.map(
+    (target) => listPageRow({
+      key: `target:${target.targetId}`,
+      href: `/settings/targets/${target.targetId}`,
+      top: target.targetId,
+      tags: html2`<span class="sc-muted"
+					>${target.revision === null ? "no profile yet" : `@${target.revision}`}</span
+				>`,
+      lines: [
+        html2`<code>${target.capabilities.join(" ") || "no capability"}</code> ·
+						${target.entryPoints.join(", ") || "no entry point"}`,
+        plural(target.activeInstances, "active instance")
+      ],
+      open: target.targetId === open
+    })
+  )}
+	</ul>`;
+}
+function targetsLayout(store, open, detail) {
+  return html2`${heading({
     title: "Targets",
     sub: "Each target with its latest revision and its active instances.",
     actions: button({ label: "New target", href: "/setup" })
   })}
-		<div class="${form ? "sc-split is-wide-side" : ""}">
-			<div class="sc-targets${form ? " is-one" : ""}" data-region="targets" data-list>
-				${targets.length ? targets.map(
-    (target) => targetCard({
-      ...target,
-      instances: instanceList(store, target.targetId).filter((instance) => !instance.retired).map((instance) => ({
-        instanceId: instance.instanceId,
-        environment: instance.environment,
-        address: Object.values(instance.entries)[0] ?? null
-      }))
-    })
-  ) : emptyNotice({
-    what: "No target yet.",
-    next: html2`Record one with <code>checkmate target open</code>.`
-  })}
-			</div>
-			${form}
-		</div>`;
+		<div class="sc-split is-list-first">${targetsList(store, open)} ${detail}</div>`;
+}
+function targetsPage(store, context2, form = "", status) {
+  const first = form ? null : targetList(store)[0]?.targetId ?? null;
+  const detail = form || (first ? targetDetail(store, context2, first, null) : "");
+  const body = targetsLayout(store, first, detail);
   return form ? settingsPage("/settings/targets", "New target", ["*", "inbox", "settings"], body, status) : settingsPage("/settings/targets", "Targets", ["*"], body);
 }
 function entryPointsTable(entryPoints2) {
@@ -42743,7 +42718,7 @@ function addForm(context2, targetId, entryPoints2, form) {
 		</form>
 	</section>`;
 }
-function targetPage(store, context2, targetId, revision2, form = null, retire = null) {
+function targetDetail(store, context2, targetId, revision2, form = null, retire = null) {
   const request3 = targetRequest(store, targetId);
   const latest = targetHistory(store, targetId).at(-1)?.revision ?? null;
   const shown2 = latest === null ? null : targetRevision(store, targetId, revision2 ?? latest);
@@ -42761,16 +42736,17 @@ function targetPage(store, context2, targetId, revision2, form = null, retire = 
 					<h2 id="profile">Profile</h2>
 					${profileFacts(shown2.profile)}
 				</section>` : notice({ kind: "info", content: html2`The setup request is recorded. The profile is not saved yet.` });
-  const body = html2`${heading({
-    title: targetId,
-    sub,
-    meta: html2`
-				${shown2 ? html2`<span title="${shown2.sha256}">sha256 <code>${short2(shown2.sha256)}</code></span>` : ""}
-			`
-  })}
-		<div class="sc-split">
-			<div class="sc-stack">
-				${jumpLinks({
+  return html2`<div class="sc-stack" data-region="target">
+		<header class="sc-h is-sub">
+			<div class="sc-h-text">
+				<h2 class="sc-h-title">${targetId}</h2>
+				<p>${sub}</p>
+			</div>
+			<div class="sc-h-act">
+				${shown2 ? html2`<span class="sc-note" title="${shown2.sha256}">sha256 <code>${short2(shown2.sha256)}</code></span>` : ""}
+			</div>
+		</header>
+		${jumpLinks({
     links: [
       { href: "#entry-points", label: "Entry points" },
       { href: "#instances", label: "Instances" },
@@ -42781,33 +42757,29 @@ function targetPage(store, context2, targetId, revision2, form = null, retire = 
       { href: "#history", label: "History" }
     ]
   })}
-				<section aria-labelledby="entry-points">
-					<h2 id="entry-points">
-						Entry points <span class="sc-count-n">${request3.entryPoints.length}</span>
-					</h2>
-					${entryPointsTable(request3.entryPoints)}
-				</section>
-				<section aria-labelledby="instances" data-region="instances">
-					<h2 id="instances">Instances <span class="sc-count-n">${instances.length}</span></h2>
-					${retire && !instances.some((instance) => instance.instanceId === retire.instanceId && !instance.retired) ? html2`<p class="sc-error" role="alert">${retire.error}</p>` : ""}
-					${instancesTable(context2, targetId, instances, retire)}
-				</section>
-				${shape}
-				<section aria-labelledby="history" data-region="target-history">
-					<h2 id="history">History</h2>
-					${historyList(store, targetId, shown2?.revision ?? 0)}
-				</section>
-			</div>
-			<aside class="side" aria-label="Add instance">
-				${addForm(context2, targetId, request3.entryPoints, form)}
-				<p class="back"><a href="/settings/targets">All targets</a></p>
-			</aside>
-		</div>`;
+		<section aria-labelledby="entry-points">
+			<h2 id="entry-points">Entry points <span class="sc-count-n">${request3.entryPoints.length}</span></h2>
+			${entryPointsTable(request3.entryPoints)}
+		</section>
+		<section aria-labelledby="instances" data-region="instances">
+			<h2 id="instances">Instances <span class="sc-count-n">${instances.length}</span></h2>
+			${retire && !instances.some((instance) => instance.instanceId === retire.instanceId && !instance.retired) ? html2`<p class="sc-error" role="alert">${retire.error}</p>` : ""}
+			${instancesTable(context2, targetId, instances, retire)}
+		</section>
+		${shape}
+		<section aria-labelledby="history" data-region="target-history">
+			<h2 id="history">History</h2>
+			${historyList(store, targetId, shown2?.revision ?? 0)}
+		</section>
+		${addForm(context2, targetId, request3.entryPoints, form)}
+	</div>`;
+}
+function targetPage(store, context2, targetId, revision2, form = null, retire = null) {
   return settingsPage(
     "/settings/targets",
     targetId,
     [`target:${targetId}`],
-    body,
+    targetsLayout(store, targetId, targetDetail(store, context2, targetId, revision2, form, retire)),
     form?.error || retire ? 422 : void 0
   );
 }
@@ -42831,7 +42803,14 @@ function harnessProgram(env) {
     return html2`<span class="sc-error" role="status">${error.message} ${error.hint ?? ""}</span>`;
   }
 }
-function harnessPage(store, context2, env, form = null, model = null, testerModel = null) {
+var harnessSections = ["program", "rules", "models", "chats"];
+var harnessTitles = {
+  program: "Program",
+  rules: "Tool rules of testers",
+  models: "Models",
+  chats: "Chats"
+};
+function harnessPage(store, context2, env, form = null, model = null, testerModel = null, section3 = "") {
   const effectiveEnv = workspaceUiEnv(store, env);
   const harness = selectedHarness(effectiveEnv);
   const pi = harness === "pi";
@@ -42839,57 +42818,55 @@ function harnessPage(store, context2, env, form = null, model = null, testerMode
   const requestValue = model?.value ?? requestModelText(store, harness);
   const levelModels = [...new Set(Object.values(testLevels).map((level) => level.model))];
   const testerDefault = !pi && levelModels.length === 1 ? levelModels[0] : "";
-  const body = html2`${heading({ title: "Coding harness", sub: null })}
-		<div class="sc-pair is-top">
-			<section class="sc-card" aria-labelledby="harness-program-h">
-				<h2 class="sc-card-h" id="harness-program-h">Program for this workspace</h2>
-				<form method="post" action="/settings/harness/select" class="sc-form">
-					<input type="hidden" name="csrf" value="${context2.csrf}" />
-					${field({
-    id: "coding-harness",
-    label: "Program",
-    control: html2`<select id="coding-harness" name="harness">
-							<option value="claude" ${harness === "claude" ? html2`selected` : ""}>Claude Code</option>
-							<option value="pi" ${harness === "pi" ? html2`selected` : ""}>Pi</option>
-						</select>`,
-    help: "Applies to new tests and chats in this workspace."
-  })}
-					<div class="sc-row-btns">${formButton({ label: "Save the program" })}</div>
-				</form>
-				<p class="sc-note" id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
-			</section>
-			<section class="sc-card" aria-labelledby="claude-rules">
-				<h2 class="sc-card-h" id="claude-rules">Tool rules of testers</h2>
-				<p class="sc-help" data-key="permission-bash">
-					${pi ? "With Bash, testers can run commands. Without it, they cannot use Bash." : "With Bash, testers run commands without asking. Without it, each command asks you here. A tester waits up to 10 minutes for an answer."}
-				</p>
-				<p class="sc-help" data-region="permission-hook">
-					${liveUi(context2.workspace) ? "Testers that start now can ask you in this UI when a tool needs a permission." : "Testers that start now cannot ask you. The UI of this folder does not run. A tool that needs a permission is denied."}
-				</p>
-				<form method="post" action="/settings/harness/rules" class="sc-form">
-					<input type="hidden" name="csrf" value="${context2.csrf}" />
-					<input type="hidden" name="harness" value="${harness}" />
-					<div class="sc-field">
-						<label class="sc-label" for="tester-rules">Default tools for new tests</label>
-						<input
-							id="tester-rules"
-							name="rules"
-							maxlength="400"
-							autocomplete="off"
-							value="${form?.value ?? context2.testerRules}"
-							aria-describedby="tester-rules-help"
-							${form ? html2`autofocus` : ""}
-						/>
-						<p class="sc-help" id="tester-rules-help">
-							${pi ? "Enter tool names separated by spaces, for example read bash." : "Enter tool rules separated by spaces, for example Read Bash."}
-						</p>
-						${form ? html2`<p class="sc-error" role="alert" data-field="rules">${form.error}</p>` : ""}
-					</div>
-					<div class="sc-row-btns">${formButton({ label: "Save the rules" })}</div>
-				</form>
-			</section>
-		</div>
-		<section
+  const sections = {
+    program: html2`<section class="sc-card" aria-labelledby="harness-program-h">
+			<h2 class="sc-card-h" id="harness-program-h">Program for this workspace</h2>
+			<form method="post" action="/settings/harness/select" class="sc-form">
+				<input type="hidden" name="csrf" value="${context2.csrf}" />
+				${field({
+      id: "coding-harness",
+      label: "Program",
+      control: html2`<select id="coding-harness" name="harness">
+						<option value="claude" ${harness === "claude" ? html2`selected` : ""}>Claude Code</option>
+						<option value="pi" ${harness === "pi" ? html2`selected` : ""}>Pi</option>
+					</select>`,
+      help: "Applies to new tests and chats in this workspace."
+    })}
+				<div class="sc-row-btns">${formButton({ label: "Save the program" })}</div>
+			</form>
+			<p class="sc-note" id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
+		</section>`,
+    rules: html2`<section class="sc-card" aria-labelledby="claude-rules">
+			<h2 class="sc-card-h" id="claude-rules">Tool rules of testers</h2>
+			<p class="sc-help" data-key="permission-bash">
+				${pi ? "With Bash, testers can run commands. Without it, they cannot use Bash." : "With Bash, testers run commands without asking. Without it, each command asks you here. A tester waits up to 10 minutes for an answer."}
+			</p>
+			<p class="sc-help" data-region="permission-hook">
+				${liveUi(context2.workspace) ? "Testers that start now can ask you in this UI when a tool needs a permission." : "Testers that start now cannot ask you. The UI of this folder does not run. A tool that needs a permission is denied."}
+			</p>
+			<form method="post" action="/settings/harness/rules" class="sc-form">
+				<input type="hidden" name="csrf" value="${context2.csrf}" />
+				<input type="hidden" name="harness" value="${harness}" />
+				<div class="sc-field">
+					<label class="sc-label" for="tester-rules">Default tools for new tests</label>
+					<input
+						id="tester-rules"
+						name="rules"
+						maxlength="400"
+						autocomplete="off"
+						value="${form?.value ?? context2.testerRules}"
+						aria-describedby="tester-rules-help"
+						${form ? html2`autofocus` : ""}
+					/>
+					<p class="sc-help" id="tester-rules-help">
+						${pi ? "Enter tool names separated by spaces, for example read bash." : "Enter tool rules separated by spaces, for example Read Bash."}
+					</p>
+					${form ? html2`<p class="sc-error" role="alert" data-field="rules">${form.error}</p>` : ""}
+				</div>
+				<div class="sc-row-btns">${formButton({ label: "Save the rules" })}</div>
+			</form>
+		</section>`,
+    models: html2`<section
 			class="sc-card"
 			aria-labelledby="model-settings"
 			data-model-catalog="${harness}"
@@ -42904,13 +42881,13 @@ function harnessPage(store, context2, env, form = null, model = null, testerMode
 			</p>
 			<p class="sc-help" role="status" data-model-status>Loading models from ${pi ? "Pi" : "Claude Code"}…</p>
 			${field({
-    id: "model-filter",
-    label: "Filter models",
-    control: textInput({
       id: "model-filter",
-      attrs: { type: "search", autocomplete: "off", placeholder: "Search available models" }
-    })
-  })}
+      label: "Filter models",
+      control: textInput({
+        id: "model-filter",
+        attrs: { type: "search", autocomplete: "off", placeholder: "Search available models" }
+      })
+    })}
 			<form method="post" action="/settings/harness/models" class="sc-form">
 				<input type="hidden" name="csrf" value="${context2.csrf}" />
 				<input type="hidden" name="harness" value="${harness}" />
@@ -42977,8 +42954,8 @@ function harnessPage(store, context2, env, form = null, model = null, testerMode
 				</div>
 				<div class="sc-row-btns">${formButton({ label: "Save models", emphasis: "primary" })}</div>
 			</form>
-		</section>
-		<section class="sc-card" aria-labelledby="chat-settings">
+		</section>`,
+    chats: html2`<section class="sc-card" aria-labelledby="chat-settings">
 			<h2 class="sc-card-h" id="chat-settings">Chats</h2>
 
 			<p class="sc-help">
@@ -42986,7 +42963,31 @@ function harnessPage(store, context2, env, form = null, model = null, testerMode
 				effort for the next message in the chat.
 			</p>
 			<div class="sc-row-btns">${formButton({ label: "Open Chats", href: "/chats" })}</div>
-		</section>`;
+		</section>`
+  };
+  const shown2 = form ? "rules" : model || testerModel ? "models" : harnessSections.find((item) => item === section3) ?? "program";
+  const summary = {
+    program: pi ? "Pi" : "Claude Code",
+    rules: html2`<code>${context2.testerRules || "none"}</code>`,
+    models: `Testers: ${testerValue || (pi ? "Pi default" : "test level default")} \xB7 Chats: ${requestValue || (pi ? "Pi default" : "Claude Code default")}`,
+    chats: "The harness and model of new chats."
+  };
+  const body = html2`${heading({ title: "Coding harness", sub: null })}
+		<div class="sc-split is-list-first">
+			<ul class="sc-recipes is-list" aria-label="Coding harness settings" data-region="harness-sections">
+				${harnessSections.map(
+    (item) => listPageRow({
+      key: `section:${item}`,
+      href: `/settings/harness?section=${item}`,
+      top: harnessTitles[item],
+      tags: "",
+      lines: [summary[item]],
+      open: item === shown2
+    })
+  )}
+			</ul>
+			<div class="sc-stack" data-region="harness-section">${sections[shown2]}</div>
+		</div>`;
   return settingsPage("/settings/harness", "Coding harness", ["*"], body);
 }
 
@@ -43460,49 +43461,44 @@ function coverage(store, detail) {
 function cleanup(detail) {
   const result = detail.result;
   return html2`<dl class="sc-facts">
-		<div>
-			<dt>Cleanup</dt>
-			<dd>
-				${result ? html2`${statusMark({ state: result.cleanup.status })} ${result.cleanup.reason}` : html2`<span class="sc-muted">Not finished.</span>`}
-			</dd>
-		</div>
-		<div>
-			<dt>Attempts</dt>
-			<dd>
-				<ul class="sc-plain">
-					${detail.attempts.map(
+		<dt>Cleanup</dt>
+		<dd>
+			${result ? html2`${statusMark({ state: result.cleanup.status })} ${result.cleanup.reason}` : html2`<span class="sc-muted">Not finished.</span>`}
+		</dd>
+
+		<dt>Attempts</dt>
+		<dd>
+			<ul class="sc-plain">
+				${detail.attempts.map(
     (attempt) => html2`<li>
-								Attempt ${attempt.attempt} · ${time(attempt.startedAt)} · ${attempt.actor}
-								${attempt.workerInterruptedAt ? html2` · Delegated worker interrupted ${time(attempt.workerInterruptedAt)}` : ""}
-							</li>`
+							Attempt ${attempt.attempt} · ${time(attempt.startedAt)} · ${attempt.actor}
+							${attempt.workerInterruptedAt ? html2` · Delegated worker interrupted ${time(attempt.workerInterruptedAt)}` : ""}
+						</li>`
   )}
-				</ul>
-			</dd>
-		</div>
-		<div>
-			<dt>Tool session</dt>
-			<dd class="sc-mono">${detail.toolSession}</dd>
-		</div>
-		<div>
-			<dt>Target</dt>
-			<dd class="sc-mono">${detail.target}</dd>
-		</div>
-		<div>
-			<dt>Instance</dt>
-			<dd>
-				<a
-					class="sc-mono"
-					href="/settings/targets/${detail.instance.targetId}#instance-${detail.instance.instanceId}"
-					>${detail.instance.instanceId}</a
-				>${detail.instance.environment ? html2` · ${detail.instance.environment}` : ""}${detail.instance.retired ? html2` · ${statusMark({ state: "retired" })}` : ""}
-			</dd>
-		</div>
-		${detail.request.retestOf ? html2`<div>
+			</ul>
+		</dd>
+
+		<dt>Tool session</dt>
+		<dd class="sc-mono">${detail.toolSession}</dd>
+
+		<dt>Target</dt>
+		<dd class="sc-mono">${detail.target}</dd>
+
+		<dt>Instance</dt>
+		<dd>
+			<a
+				class="sc-mono"
+				href="/settings/targets/${detail.instance.targetId}#instance-${detail.instance.instanceId}"
+				>${detail.instance.instanceId}</a
+			>${detail.instance.environment ? html2` · ${detail.instance.environment}` : ""}${detail.instance.retired ? html2` · ${statusMark({ state: "retired" })}` : ""}
+		</dd>
+
+		${detail.request.retestOf ? html2`
 						<dt>Retest of</dt>
 						<dd>
 							<a class="sc-mono" href="/runs/${detail.request.retestOf}">${detail.request.retestOf}</a>
 						</dd>
-					</div>` : ""}
+					` : ""}
 	</dl>`;
 }
 function inconclusiveList(detail) {
@@ -43607,11 +43603,11 @@ function itemRow2(runId, key2, selected, label, cells2, href = runItemHref(runId
     )
   });
 }
-function section2(id2, title3, rows3, columns2) {
+function section2(id2, title3, rows3, columns) {
   if (!rows3.length) return "";
   return html2`<section class="sc-sec" aria-labelledby="${id2}">
 		<h2 class="sc-sec-h" id="${id2}">${title3}<b>${rows3.length}</b></h2>
-		${dataTable({ columns: columns2, rows: rows3, scroll: true })}
+		${dataTable({ columns, rows: rows3, scroll: true })}
 	</section>`;
 }
 function passedCount(test) {
@@ -44232,7 +44228,7 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/" && searchParams.has("item")) return redirect(request3.res, oldItem(searchParams));
     if (pathname === "/") return render(request3, startOfHome(shown2));
     if (pathname === "/setup")
-      return render(request3, targetsPage(store, setupForm(shown2, store.workspace, void 0, true)));
+      return render(request3, targetsPage(store, shown2, setupForm(shown2, store.workspace, void 0, true)));
     if (pathname === "/new")
       return render(request3, newChangePage(shown2, changeDefaults(searchParams.get("target")), false));
     if (pathname === "/inbox" || pathname === "/plans") return redirect(request3.res, "/");
@@ -44246,7 +44242,8 @@ data: ${matched.join(",") || "*"}
     const asked2 = routes.permit.exec(pathname);
     if (asked2) return permissionRecord(request3, asked2[1], asked2[2]);
     if (pathname === "/settings/claude") return redirect(request3.res, "/settings/harness");
-    if (pathname === "/settings/harness") return render(request3, harnessPage(store, shown2, env));
+    if (pathname === "/settings/harness")
+      return render(request3, harnessPage(store, shown2, env, null, null, null, searchParams.get("section") ?? ""));
     if (pathname === "/chats") return render(request3, chatsPage(store, shown2, searchParams, env));
     const chat = routes.chatPage.exec(pathname);
     if (chat) return openChat(request3, chat[1]);
@@ -44257,7 +44254,7 @@ data: ${matched.join(",") || "*"}
     if (askedRequest) return messageRecord(request3, askedRequest[1]);
     if (pathname === "/actor") return render(request3, actorPage(shown2, safeBack(searchParams.get("back"))));
     if (pathname === "/settings") return redirect(request3.res, "/settings/targets");
-    if (pathname === "/settings/targets") return render(request3, targetsPage(store));
+    if (pathname === "/settings/targets") return render(request3, targetsPage(store, shown2));
     if (pathname === "/settings/recipes") return render(request3, recipesPage(options4.workspace));
     if (pathname === "/settings/invalid-recipes") {
       const file2 = searchParams.get("file") ?? "";
@@ -45347,7 +45344,7 @@ data: ${matched.join(",") || "*"}
     } catch (error) {
       return refuse4(request3, page2(engineText(error)), cookies);
     }
-    redirect(request3.res, "/settings/harness", [
+    redirect(request3.res, "/settings/harness?section=models", [
       ...cookies,
       cookie(
         "checkmate_toast",
@@ -45394,7 +45391,10 @@ data: ${matched.join(",") || "*"}
     } catch (error) {
       return refuse4(request3, page2(engineText(error)), cookies);
     }
-    redirect(request3.res, "/settings/harness", [...cookies, cookie("checkmate_toast", "Saved the models", 60)]);
+    redirect(request3.res, "/settings/harness?section=models", [
+      ...cookies,
+      cookie("checkmate_toast", "Saved the models", 60)
+    ]);
   }
   function saveRules2(request3, form) {
     const { actor, cookies } = actorFrom(request3, form);
@@ -45416,7 +45416,7 @@ data: ${matched.join(",") || "*"}
     } catch (error) {
       return refuse4(request3, page2(engineText(error)), cookies);
     }
-    redirect(request3.res, "/settings/harness", [
+    redirect(request3.res, "/settings/harness?section=rules", [
       ...cookies,
       cookie("checkmate_toast", "Saved the tool rules of testers", 60)
     ]);
@@ -45483,7 +45483,12 @@ data: ${matched.join(",") || "*"}
       ]);
       return render(
         request3,
-        onHome ? firstRunPage(store.workspace, context2(request3), onHome, cameFrom(request3), submitted) : targetsPage(store, setupForm(context2(request3), store.workspace, submitted, true), 422),
+        onHome ? firstRunPage(store.workspace, context2(request3), onHome, cameFrom(request3), submitted) : targetsPage(
+          store,
+          context2(request3),
+          setupForm(context2(request3), store.workspace, submitted, true),
+          422
+        ),
         cookies
       );
     }
@@ -48206,23 +48211,23 @@ var commands = {
     readOnly: true,
     run: (store, args) => {
       const statement = queryStatement(store, value(args, "sql"));
-      const columns2 = statement.columns().map((column2) => column2.name);
+      const columns = statement.columns().map((column2) => column2.name);
       const rows3 = readOnly2(() => statement.all()).map(
         (row2) => Object.fromEntries(
-          columns2.map((column2) => {
+          columns.map((column2) => {
             const field2 = row2[column2];
             return [column2, field2 instanceof Uint8Array ? `<blob ${field2.length} bytes>` : field2];
           })
         )
       );
-      return completed("query", { columns: columns2, rows: rows3 });
+      return completed("query", { columns, rows: rows3 });
     },
     print: (reply) => {
-      const columns2 = reply.data.columns;
+      const columns = reply.data.columns;
       const rows3 = reply.data.rows;
       return {
         facts: { rows: rows3.length },
-        lines: [columns2, ...rows3.map((row2) => columns2.map((name2) => row2[name2]))]
+        lines: [columns, ...rows3.map((row2) => columns.map((name2) => row2[name2]))]
       };
     }
   }

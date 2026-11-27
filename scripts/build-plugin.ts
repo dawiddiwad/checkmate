@@ -72,7 +72,6 @@ const stylesheets = [
 	'components/chat-workspace.css',
 	'components/chat-turn.css',
 	'components/composer.css',
-	'components/target-card.css',
 	'components/tester-card.css',
 	'screens/catalogue.css',
 ]

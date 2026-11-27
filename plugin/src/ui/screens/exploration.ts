@@ -660,34 +660,29 @@ function explorerDetail(store: Store, live: Live, item: LiveExplorer, crumbs: Ht
 		<dl class="sc-facts">
 			${
 				item.model
-					? html`<div>
+					? html`
 							<dt>Model</dt>
 							<dd><code>${item.model}</code></dd>
-						</div>`
+						`
 					: ''
 			}
-			<div>
-				<dt>Reported cost</dt>
-				<dd>${costText(item.costUsd, item.costPartial)}</dd>
-			</div>
-			<div>
-				<dt>${live.path === 'session' ? 'Step' : 'Turn'}</dt>
-				<dd>${item.turn ?? none}</dd>
-			</div>
-			<div>
-				<dt>${live.path === 'session' ? 'Since' : 'Started'}</dt>
-				<dd>${item.startedAt ? time(item.startedAt) : none}</dd>
-			</div>
-			<div>
-				<dt>Last activity</dt>
-				<dd>${item.activity ?? none}</dd>
-			</div>
-			<div>
-				<dt>Record</dt>
-				<dd>
-					${item.recorded ? html`${statusMark({ state: item.recorded })} ${plural(item.saved, 'entry', 'entries')}` : none}
-				</dd>
-			</div>
+
+			<dt>Reported cost</dt>
+			<dd>${costText(item.costUsd, item.costPartial)}</dd>
+
+			<dt>${live.path === 'session' ? 'Step' : 'Turn'}</dt>
+			<dd>${item.turn ?? none}</dd>
+
+			<dt>${live.path === 'session' ? 'Since' : 'Started'}</dt>
+			<dd>${item.startedAt ? time(item.startedAt) : none}</dd>
+
+			<dt>Last activity</dt>
+			<dd>${item.activity ?? none}</dd>
+
+			<dt>Record</dt>
+			<dd>
+				${item.recorded ? html`${statusMark({ state: item.recorded })} ${plural(item.saved, 'entry', 'entries')}` : none}
+			</dd>
 		</dl>
 		${
 			stoppableTester(live, item)

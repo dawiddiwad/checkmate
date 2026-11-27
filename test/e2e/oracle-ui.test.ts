@@ -21,6 +21,7 @@ import { chromium, type Browser, type BrowserContext } from 'playwright-core'
 import { closeStore, openStore } from '../../plugin/src/store.ts'
 import { startUi as startSourceUi } from '../../plugin/src/ui/server.ts'
 import { seedDemo } from '../../scripts/ui-demo.ts'
+import { endSeededProcesses, seedVolume } from '../../scripts/ui-volume.ts'
 import {
 	actor,
 	directory,
@@ -844,6 +845,46 @@ test(
 		assert(historyBefore > 0, 'the existing run has recorded operation history')
 		const first = await startUi(t, workspace)
 		const { page } = await pageFor(t, first.url)
+		await page.goto(new URL('/', first.url).href)
+		await page.locator('[data-live]:not([hidden])').first().waitFor()
+		const blocked = page.locator('[data-key="plan:checkout"]')
+		assert.equal(await blocked.evaluate((tile) => tile.classList.contains('is-sel')), false)
+		const filled = await blocked.locator('.sc-plan-act .sc-btn').evaluate((button) => ({
+			you: button.classList.contains('is-you'),
+			background: getComputedStyle(button).backgroundColor,
+			surface: getComputedStyle(button.closest('.sc-plan')!).backgroundColor,
+		}))
+		assert.ok(
+			filled.you && filled.background !== filled.surface,
+			`a blocked plan keeps its filled button: ${JSON.stringify(filled)}`
+		)
+		assert.equal(await page.locator('[data-key="plan:search"] .sc-plan-act .sc-btn.is-you').count(), 0)
+		for (const waits of await page.locator('.sc-plan-waits').all()) {
+			assert.match((await waits.textContent()) ?? '', /^· waits on \S/)
+			assert.ok(
+				await waits.evaluate(
+					(element) => element.scrollWidth <= element.clientWidth && element.clientWidth > 0
+				),
+				'the waits on part of a plan head is not cut'
+			)
+		}
+		const arrows = page.locator('[data-hints] .sc-key-hint[data-cap="↑↓"] kbd')
+		await arrows.first().waitFor()
+		assert.equal(await arrows.count(), 2)
+		for (const cap of await arrows.all())
+			assert.ok(
+				await cap.evaluate((kbd) => {
+					const box = kbd.getBoundingClientRect()
+					const glyph = kbd.querySelector('.glyph')!.getBoundingClientRect()
+					return (
+						glyph.left >= box.left &&
+						glyph.right <= box.right &&
+						glyph.top >= box.top &&
+						glyph.bottom <= box.bottom
+					)
+				}),
+				'each arrow sits inside its own key cap'
+			)
 		await page.goto(new URL('/runs/run-7?item=finding%3AF1', first.url).href)
 		assert.deepEqual(await page.locator('ol.sc-steps li:visible').allTextContents(), [
 			'Sign in as anna@example.test.',
@@ -851,6 +892,20 @@ test(
 			'Apply the code SPRING40.',
 			'Read totalPLN in the quote response.',
 		])
+		const volume = directory(t)
+		seedVolume(volume)
+		t.after(endSeededProcesses)
+		const wide = await startUi(t, volume)
+		await page.goto(new URL('/', wide.url).href)
+		const codes = (plan: string) => page.locator(`[data-key="plan:${plan}"] .sc-plan-cols span`).allTextContents()
+		assert.deepEqual(await codes('checkout'), ['', 'R1', 'R2', 'R3', 'R4', 'Out'])
+		const areas = await codes('coupons')
+		assert.equal(areas.at(-1), 'Out')
+		assert.ok(
+			areas.slice(1, -1).every((code) => code.length === 2),
+			`area codes are two letters: ${areas}`
+		)
+		wide.server.kill('SIGTERM')
 		await page.goto(new URL('/plans/checkout?item=g%3AG2', first.url).href)
 		const token = await page.locator('input[name="csrf"]').first().inputValue()
 		first.server.kill('SIGTERM')

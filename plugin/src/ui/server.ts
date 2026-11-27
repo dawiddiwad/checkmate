@@ -614,7 +614,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/' && searchParams.has('item')) return redirect(request.res, oldItem(searchParams))
 		if (pathname === '/') return render(request, startOfHome(shown))
 		if (pathname === '/setup')
-			return render(request, targetsPage(store, setupForm(shown, store.workspace, undefined, true)))
+			return render(request, targetsPage(store, shown, setupForm(shown, store.workspace, undefined, true)))
 		if (pathname === '/new')
 			return render(request, newChangePage(shown, changeDefaults(searchParams.get('target')), false))
 		if (pathname === '/inbox' || pathname === '/plans') return redirect(request.res, '/')
@@ -628,7 +628,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const asked = routes.permit.exec(pathname)
 		if (asked) return permissionRecord(request, asked[1], asked[2])
 		if (pathname === '/settings/claude') return redirect(request.res, '/settings/harness')
-		if (pathname === '/settings/harness') return render(request, harnessPage(store, shown, env))
+		if (pathname === '/settings/harness')
+			return render(request, harnessPage(store, shown, env, null, null, null, searchParams.get('section') ?? ''))
 		if (pathname === '/chats') return render(request, chatsPage(store, shown, searchParams, env))
 		const chat = routes.chatPage.exec(pathname)
 		if (chat) return openChat(request, chat[1])
@@ -639,7 +640,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (askedRequest) return messageRecord(request, askedRequest[1])
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
 		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
-		if (pathname === '/settings/targets') return render(request, targetsPage(store))
+		if (pathname === '/settings/targets') return render(request, targetsPage(store, shown))
 		if (pathname === '/settings/recipes') return render(request, recipesPage(options.workspace))
 		if (pathname === '/settings/invalid-recipes') {
 			const file = searchParams.get('file') ?? ''
@@ -1839,7 +1840,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		} catch (error) {
 			return refuse(request, page(engineText(error)), cookies)
 		}
-		redirect(request.res, '/settings/harness', [
+		redirect(request.res, '/settings/harness?section=models', [
 			...cookies,
 			cookie(
 				'checkmate_toast',
@@ -1889,7 +1890,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		} catch (error) {
 			return refuse(request, page(engineText(error)), cookies)
 		}
-		redirect(request.res, '/settings/harness', [...cookies, cookie('checkmate_toast', 'Saved the models', 60)])
+		redirect(request.res, '/settings/harness?section=models', [
+			...cookies,
+			cookie('checkmate_toast', 'Saved the models', 60),
+		])
 	}
 
 	function saveRules(request: Request, form: URLSearchParams) {
@@ -1913,7 +1917,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		} catch (error) {
 			return refuse(request, page(engineText(error)), cookies)
 		}
-		redirect(request.res, '/settings/harness', [
+		redirect(request.res, '/settings/harness?section=rules', [
 			...cookies,
 			cookie('checkmate_toast', 'Saved the tool rules of testers', 60),
 		])
@@ -1993,7 +1997,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				request,
 				onHome
 					? firstRunPage(store.workspace, context(request), onHome, cameFrom(request), submitted)
-					: targetsPage(store, setupForm(context(request), store.workspace, submitted, true), 422),
+					: targetsPage(
+							store,
+							context(request),
+							setupForm(context(request), store.workspace, submitted, true),
+							422
+						),
 				cookies
 			)
 		}

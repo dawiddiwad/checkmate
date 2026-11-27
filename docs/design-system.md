@@ -12,10 +12,12 @@ A chess scoresheet records every move in plain ink. Only one move is yours to pl
 2. **Words in sans, data in mono.** Use IBM Plex Sans for words. Use IBM Plex Mono for IDs, counts, builds, paths, times, and keys.
 3. **Shape before colour.** Every status has its own mark (`sc-mark`). It reads in grey, in dark mode, and for colour-blind people.
 4. **One primary action per view.** Fill the next move: `sc-btn is-you` when it unblocks testing, `sc-btn is-primary` in other cases. Other actions are outlined or quiet.
-5. **Quiet selection.** The selected row (`is-sel`) gets `--surface-2` and a 3 px `--ink` bar. A row that blocks testing (`is-block`) keeps a 3 px `--signal` bar.
+5. **Quiet selection.** The selected row (`is-sel`) gets `--surface-2` and a 3 px `--ink` bar. The row that is open in the drawer (`is-open`) gets a 1 px `--ink` outline. A row that blocks testing (`is-block`) keeps a 3 px `--signal` bar. In the nav rail, the current view gets the 3 px `--ink` bar and the selected row gets `--surface-2`.
 6. **Square and flat.** Corners are 0. Depth is a 1 px `--hair` line. There are no shadows.
 7. **Say less.** Use sentence case. Show the number first, then the word. Only the brand word and keys are uppercase.
 8. **One bar, at the bottom.** The status bar (`sc-bar`) is the only bar.
+9. **Gaps, not margins.** A container sets the space between its children with `gap`. Components have no outer margin. Use 8 px from a label to its control and help, 12 px from a section heading to its content, 16 px between fields, and 24 px between sections. The main area has 32 px padding.
+10. **Most urgent first.** Lists put what blocks testing first, then findings and defects by severity, then approvals and open questions. Answered, deferred, and rejected items come last.
 
 ## Tokens
 
@@ -72,7 +74,7 @@ Each component is one function in `plugin/src/ui/components/<name>.ts`, with its
 | Nav rail       | `navRail`, `railRow`                           | `sc-rail`                                     |
 | Status bar     | `statusBar`                                    | `sc-bar`                                      |
 | Brand          | `brand`                                        | `sc-brand`                                    |
-| Drawer         | `drawer`, `drawerHead`                         | `sc-scrim`, `sc-drawer`, `sc-opts`            |
+| Drawer         | `drawer`, `drawerHead`                         | `sc-drawer`, `sc-opts`                        |
 | Page heading   | `heading`, `crumbBar`                          | `sc-h`, `sc-h-meta`, `sc-h-act`, `sc-crumb`   |
 | Facts          | `facts`, `recordFacts`                         | `sc-facts`                                    |
 | Field          | `field`, `textInput`, `textArea`               | `sc-field`, `sc-label`, `sc-input`, `sc-help` |
@@ -90,6 +92,7 @@ Each component is one function in `plugin/src/ui/components/<name>.ts`, with its
 | Chat turn      | `chatTurn`                                     | `sc-turn`, `sc-turn-saved`                    |
 | Composer       | `composer`                                     | `sc-composer`                                 |
 | Tester card    | `testerCard`, `timeline`                       | `sc-tcard`, `sc-timeline`, `sc-event`         |
+| Instance card  | `instanceCard`, `instanceCards`                | `sc-instances`, `sc-instance`                 |
 
 ## Keys
 
@@ -98,5 +101,5 @@ Every action has a key, shown as a cap before its word. The status bar shows at 
 ## Accessibility
 
 - Text and background pairs meet a 4.5:1 contrast ratio, and 3:1 for text of 24 px and larger. Control borders meet 3:1.
-- Every interactive element shows the 2 px `--focus` ring on `:focus-visible`.
+- Every interactive element shows the 2 px `--focus` ring on `:focus-visible`. `--focus` has the value of `--ink`. Rows that the arrow keys move through (`[data-row]`, `[data-nav]`, `[data-sub]`, `[data-vfile]`) show `is-sel` instead.
 - A status never relies on colour alone. It always has a mark and a word.

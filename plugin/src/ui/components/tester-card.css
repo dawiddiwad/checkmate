@@ -21,10 +21,6 @@
 .sc-tcard:focus {
 	outline: none;
 }
-.sc-tcard:focus-visible {
-	outline: var(--focus-w) solid var(--focus);
-	outline-offset: calc(-1 * var(--focus-w));
-}
 .sc-tcard-id {
 	grid-row: span 2;
 	font: 600 13px/20px var(--font-mono);
@@ -87,9 +83,6 @@
 .sc-event:focus {
 	outline: none;
 }
-.sc-event:focus-visible {
-	outline: var(--focus-w) solid var(--focus);
-}
 .sc-event > a {
 	text-decoration: none;
 }
@@ -107,8 +100,8 @@
 	content: '';
 	position: absolute;
 	left: 50%;
-	top: 16px;
-	bottom: -11px;
+	top: calc(50% + var(--mark) / 2);
+	bottom: calc(50% + var(--mark) / 2 - 33px);
 	width: var(--hairline);
 	background: var(--edge-soft);
 }

@@ -48,11 +48,9 @@ const blockingLabel = 'Questions that block testing'
 type Group = { label: string; items: Item[] }
 
 function groupsOf(items: Item[]): Group[] {
-	const of = (label: string, chosen: Item[]) => ({ label, items: chosen })
+	const of = (label: string, chosen: Item[]) => ({ label, items: chosen.sort(bySeverity) })
 	const open = (item: Item) => item.kind === 'question' || item.kind === 'gap'
 	const topics = [...new Set(items.filter((item) => open(item) && !item.blocking).map((item) => item.topic))]
-	const bySeverity = (a: Item, b: Item) =>
-		severityOrder.indexOf(a.severity ?? '') - severityOrder.indexOf(b.severity ?? '')
 	return [
 		of(
 			'Permission requests',
@@ -62,7 +60,16 @@ function groupsOf(items: Item[]): Group[] {
 			blockingLabel,
 			items.filter((item) => open(item) && item.blocking)
 		),
-		of('Is this a defect?', items.filter((item) => item.kind === 'finding').sort(bySeverity)),
+		of(
+			'Is this a defect?',
+			items.filter((item) => item.kind === 'finding')
+		),
+		...severityOrder.map((severity) =>
+			of(
+				`${severity} defects`,
+				items.filter((item) => item.kind === 'defect' && item.severity === severity)
+			)
+		),
 		of(
 			'Approvals',
 			items.filter((item) => item.kind === 'approval')
@@ -75,12 +82,6 @@ function groupsOf(items: Item[]): Group[] {
 					items.filter((item) => open(item) && !item.blocking && item.topic === topic)
 				)
 			),
-		...severityOrder.map((severity) =>
-			of(
-				`${severity} defects`,
-				items.filter((item) => item.kind === 'defect' && item.severity === severity)
-			)
-		),
 		of(
 			'Answered questions',
 			items.filter((item) => item.kind === 'answered')
@@ -94,6 +95,15 @@ function groupsOf(items: Item[]): Group[] {
 			items.filter((item) => item.kind === 'rejected')
 		),
 	].filter((group) => group.items.length)
+}
+
+function bySeverity(a: Item, b: Item) {
+	return rank(a) - rank(b)
+}
+
+function rank(item: Item) {
+	const at = severityOrder.indexOf(item.severity ?? '')
+	return at === -1 ? severityOrder.length : at
 }
 
 function ruleGroups(review: Review, view: string, items: Item[]): Group[] {

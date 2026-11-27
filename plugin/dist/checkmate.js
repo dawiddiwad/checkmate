@@ -29460,9 +29460,13 @@ function download(file) {
 	>`;
 }
 function caption(file, open = "") {
+  const acts = download(file);
   return html2`<figcaption>
-		<span class="sc-evidence-name">${file.name}</span>
-		${file.size ? html2`<span class="sc-muted">${size(file.size)}</span>` : ""} ${open} ${download(file)}
+		<span class="sc-evidence-title"
+			><span class="sc-evidence-name">${file.name}</span>
+			${file.size ? html2`<span class="sc-muted">${size(file.size)}</span>` : ""}</span
+		>
+		${open || acts ? html2`<span class="sc-evidence-acts">${open} ${acts}</span>` : ""}
 	</figcaption>`;
 }
 function viewLink(opener, content, label = `View ${opener.name}`, extra = "") {
@@ -29623,11 +29627,11 @@ function keysHelp() {
 // plugin/src/ui/components/brand.ts
 function brand() {
   return html2`<a class="sc-brand" href="/" aria-label="Checkmate, home"
-		><svg class="sc-brand-mark" viewBox="0 0 40 10" aria-hidden="true">
-			<rect class="o" x="0.5" y="0.5" width="9" height="9" />
-			<rect class="o" x="10.5" y="0.5" width="9" height="9" />
-			<rect class="f" x="20" y="0" width="10" height="10" />
-			<rect class="o" x="30.5" y="0.5" width="9" height="9" /></svg
+		><svg class="sc-brand-mark" viewBox="0 0 49 10" aria-hidden="true">
+			<rect class="o" x="0.75" y="0.75" width="8.5" height="8.5" />
+			<rect class="o" x="13.75" y="0.75" width="8.5" height="8.5" />
+			<rect class="f" x="26" y="0" width="10" height="10" />
+			<rect class="o" x="39.75" y="0.75" width="8.5" height="8.5" /></svg
 		><span class="sc-brand-word">Checkmate</span></a
 	>`;
 }
@@ -31139,7 +31143,7 @@ function railBuilds({ builds }) {
 		><span class="sc-rail-cells"
 			>${builds.map(
     (item, index2) => html2`<span class="sc-board-col" title="${item.build}"
-						>${key({ name: index2 + 1 })}${item.label}</span
+						>${key({ name: index2 + 1 })}<span class="sc-board-label">${item.label}</span></span
 					>`
   )}</span
 		>
@@ -32639,21 +32643,20 @@ function closeButton({ href }) {
   return button({ label: "Close", href, keyName: "Esc", quiet: true, attrs: { "data-close": true } });
 }
 function drawer({ back, key: key2, path, slot, head, body }) {
-  return html2`<a class="sc-scrim" href="${back}" tabindex="-1" aria-hidden="true" data-scrim></a>
-		<aside
-			class="sc-drawer"
-			aria-labelledby="record-title"
-			data-drawer
-			data-back="${back}"
-			data-region="record"
-			data-key="${key2}"
-		>
-			<div class="sc-drawer-head">
-				<p class="sc-crumb">${path}</p>
-				${closeButton({ href: back })}
-			</div>
-			<div class="sc-drawer-body">${slot} ${head} ${body}</div>
-		</aside>`;
+  return html2`<aside
+		class="sc-drawer"
+		aria-labelledby="record-title"
+		data-drawer
+		data-back="${back}"
+		data-region="record"
+		data-key="${key2}"
+	>
+		<div class="sc-drawer-head">
+			<p class="sc-crumb">${path}</p>
+			${closeButton({ href: back })}
+		</div>
+		<div class="sc-drawer-body">${slot} ${head} ${body}</div>
+	</aside>`;
 }
 function drawerHead({ label, tags: tags3, title: title3, titleText, facts: facts2 = "", options: options4 = [], onOwnPage = false }) {
   const heading3 = onOwnPage ? html2`<h1
@@ -32665,7 +32668,7 @@ function drawerHead({ label, tags: tags3, title: title3, titleText, facts: facts
 			</h1>` : html2`<h2 id="record-title" class="sc-drawer-title">${title3}</h2>`;
   return html2`<section class="sc-drawer-top" tabindex="-1" data-sub data-label="${label}">
 		<div class="sc-drawer-id">${tags3}</div>
-		${heading3} ${facts2} ${options4.length ? html2`<div class="sc-opts" aria-label="Options">${options4}</div>` : ""}
+		${heading3} ${options4.length ? html2`<div class="sc-opts" aria-label="Options">${options4}</div>` : ""} ${facts2}
 	</section>`;
 }
 
@@ -38032,7 +38035,6 @@ function composer({ csrf, action: action2, selection, screen = "", back = "" }) 
 						<option value="">Host default</option>
 					</select></label
 				>
-				<span class="sc-grow"></span>
 				${formButton({ label: "Send", emphasis: "primary", attrs: { type: "submit" } })}
 			</div>
 		</div>
@@ -38821,9 +38823,7 @@ function summaryDetail(store, live, crumbs, options4) {
       (file) => html2`<li>${item.explorer}: ${viewLink(file.opener, file.label, void 0, "tap")}</li>`
     )
   );
-  return html2`${crumbs}
-		<h2 class="sc-sec-h">Overview</h2>
-		${options4} ${rawSection(store, live, live.unmerged)}
+  return html2`${crumbs} ${options4} ${rawSection(store, live, live.unmerged)}
 		<section aria-labelledby="claims-title">
 			<h3 class="sc-card-h" id="claims-title">Claims <span class="sc-count-n">${live.claims.length}</span></h3>
 			${merged ? claimLinks(live.planId, live.claims) : html2`<p class="sc-empty is-line">The claims show when the exploration is completed.</p>`}
@@ -40229,10 +40229,9 @@ function evidenceViewer(store, review, item, view, index2) {
 // plugin/src/ui/screens/plan-review.ts
 var blockingLabel = "Questions that block testing";
 function groupsOf(items) {
-  const of = (label, chosen) => ({ label, items: chosen });
+  const of = (label, chosen) => ({ label, items: chosen.sort(bySeverity) });
   const open = (item) => item.kind === "question" || item.kind === "gap";
   const topics = [...new Set(items.filter((item) => open(item) && !item.blocking).map((item) => item.topic))];
-  const bySeverity = (a, b) => severityOrder2.indexOf(a.severity ?? "") - severityOrder2.indexOf(b.severity ?? "");
   return [
     of(
       "Permission requests",
@@ -40242,7 +40241,16 @@ function groupsOf(items) {
       blockingLabel,
       items.filter((item) => open(item) && item.blocking)
     ),
-    of("Is this a defect?", items.filter((item) => item.kind === "finding").sort(bySeverity)),
+    of(
+      "Is this a defect?",
+      items.filter((item) => item.kind === "finding")
+    ),
+    ...severityOrder2.map(
+      (severity) => of(
+        `${severity} defects`,
+        items.filter((item) => item.kind === "defect" && item.severity === severity)
+      )
+    ),
     of(
       "Approvals",
       items.filter((item) => item.kind === "approval")
@@ -40251,12 +40259,6 @@ function groupsOf(items) {
       (topic) => of(
         topic ? `Questions \xB7 ${topic}` : "Questions",
         items.filter((item) => open(item) && !item.blocking && item.topic === topic)
-      )
-    ),
-    ...severityOrder2.map(
-      (severity) => of(
-        `${severity} defects`,
-        items.filter((item) => item.kind === "defect" && item.severity === severity)
       )
     ),
     of(
@@ -40272,6 +40274,13 @@ function groupsOf(items) {
       items.filter((item) => item.kind === "rejected")
     )
   ].filter((group) => group.items.length);
+}
+function bySeverity(a, b) {
+  return rank(a) - rank(b);
+}
+function rank(item) {
+  const at3 = severityOrder2.indexOf(item.severity ?? "");
+  return at3 === -1 ? severityOrder2.length : at3;
 }
 function ruleGroups(review, view, items) {
   const area = review.areas.find((each) => each.label === view.slice(5));
@@ -41383,12 +41392,11 @@ function planTile(tile3) {
 		<div class="sc-plan-main">
 			<div class="sc-plan-top">
 				<span class="sc-plan-id">${tile3.planId}</span>
-				${tile3.status}
-				<span class="sc-plan-when" title="${tile3.whenTitle}">${tile3.when}</span>
+				${tile3.status} ${tile3.when ? html2`<span class="sc-plan-when">${tile3.when}</span>` : ""}
 				${tile3.waitsOn ? html2`<span class="sc-plan-waits">· ${tile3.waitsOn}</span>` : ""}
 			</div>
 			<h2 class="sc-plan-title" title="${tile3.objective}">${tile3.objective}</h2>
-			<p class="sc-plan-sum">${tile3.verdict.head} ${tile3.verdict.tail}</p>
+			<p class="sc-plan-sum is-line" title="${tile3.summary}">${tile3.summary}</p>
 			${tile3.cost === null ? "" : html2`<p
 							class="sc-plan-sum"
 							title="Reported cost across this plan’s explorations, chats, and structured runs"
@@ -41474,6 +41482,14 @@ var roleWords = {
   factory: "the factory",
   none: "nobody"
 };
+function buildSummary(verdict, tested) {
+  const parts = [
+    verdict.defects ? `${plural(verdict.defects, "open defect")}${verdict.critical ? `, ${verdict.critical} critical` : ""}` : null,
+    verdict.open ? `${plural(verdict.open, "question")} open` : null
+  ].filter(Boolean);
+  if (parts.length) return parts.join(" \xB7 ");
+  return tested ? "Nothing open" : "No build tested yet";
+}
 function tile(review, plan, runDefects, index2) {
   const { loop: loop2, costUsd, costPartial } = plan;
   const verdict = verdictLine(review);
@@ -41484,7 +41500,7 @@ function tile(review, plan, runDefects, index2) {
   const when = review.running ? html2`${review.phase ?? words2(review.running.state)} ·
 				<span data-since="${review.running.startedAt}"
 					>${duration2(Date.now() - Date.parse(review.running.startedAt))}</span
-				>` : latest ? html2`${buildLabel(review, latest.build)} ${latest.build} · ${time(latest.firstTestedAt)}` : review.target;
+				>` : null;
   return planTile({
     index: index2,
     planId: review.planId,
@@ -41492,9 +41508,8 @@ function tile(review, plan, runDefects, index2) {
     status,
     when,
     waitsOn: loop2 && !review.running ? `waits on ${roleWords[loop2.waitsOn]}` : null,
-    whenTitle: latest ? `${latest.build}, first tested ${latest.firstTestedAt}` : review.target,
     objective: review.objective,
-    verdict,
+    summary: buildSummary(verdict, Boolean(latest)),
     cost: costUsd === null ? null : costText(costUsd, costPartial),
     board: planBoard(review),
     metrics: metrics({
@@ -41514,10 +41529,16 @@ function homePage(store) {
   const latest = (review, since) => [since, ...review.explorations.map((item) => item.startedAt)].sort().at(-1);
   const listed = planList(store).map((plan) => {
     const review = reviewOf(store, plan.planId);
-    return { plan, review, needs: review.items.some((item) => item.needs), at: latest(review, plan.since) };
+    return {
+      plan,
+      review,
+      blocking: verdictLine(review).blocking,
+      needs: review.items.some((item) => item.needs),
+      at: latest(review, plan.since)
+    };
   });
   listed.sort(
-    (a, b) => Number(b.needs) - Number(a.needs) || b.at.localeCompare(a.at) || a.plan.planId.localeCompare(b.plan.planId)
+    (a, b) => Number(b.blocking > 0) - Number(a.blocking > 0) || Number(b.needs) - Number(a.needs) || b.at.localeCompare(a.at) || a.plan.planId.localeCompare(b.plan.planId)
   );
   const plans = listed.map((each) => each.plan);
   const reviews = listed.map((each) => each.review);
@@ -41966,8 +41987,72 @@ var examples16 = [
   ]
 ];
 
-// plugin/src/ui/components/key.catalogue.ts
+// plugin/src/ui/components/instance-card.ts
+function instanceCard({ id: id2, mark: mark2, added, action: action2, entries: entries2, rows: rows3 }) {
+  return html2`<article
+		class="sc-instance"
+		id="instance-${id2}"
+		data-key="instance:${id2}"
+		aria-labelledby="instance-${id2}-id"
+	>
+		<header class="sc-instance-h">
+			<h3 class="sc-instance-id" id="instance-${id2}-id">${id2}</h3>
+			${mark2}
+			<span class="sc-instance-added">${added}</span>
+			<span class="sc-instance-act">${action2}</span>
+		</header>
+		<dl class="sc-instance-facts">
+			${entries2.map(
+    ([name2, value2]) => html2`<dt class="is-entry">${name2}</dt>
+						<dd><code>${value2}</code></dd>`
+  )}
+			${rows3.map(
+    ([label, value2]) => html2`<dt>${label}</dt>
+						<dd>${value2}</dd>`
+  )}
+		</dl>
+	</article>`;
+}
+function instanceCards(cards) {
+  return html2`<div class="sc-instances">${cards}</div>`;
+}
+
+// plugin/src/ui/components/instance-card.catalogue.ts
 var examples17 = [
+  [
+    "instanceCards",
+    instanceCards([
+      instanceCard({
+        id: "staging",
+        mark: statusMark({ state: "active" }),
+        added: "qa-lead \xB7 3 d",
+        action: button({ label: "Retire" }),
+        entries: [
+          ["web", "https://staging--sandbox.example.my.salesforce.com"],
+          ["org", "shop-next-staging"]
+        ],
+        rows: [
+          [
+            "Environment",
+            "Salesforce sandbox staging, Salesforce CLI org alias shop-next-staging. Metadata must not be changed."
+          ],
+          ["References", html2`<code>STAGING_LOGIN</code>`]
+        ]
+      }),
+      instanceCard({
+        id: "preview",
+        mark: statusMark({ state: "retired" }),
+        added: "checkmate-agent \xB7 9 d",
+        action: "",
+        entries: [["web", "http://127.0.0.1:4100"]],
+        rows: [["Environment", "Old preview build"]]
+      })
+    ])
+  ]
+];
+
+// plugin/src/ui/components/key.catalogue.ts
+var examples18 = [
   ["key spoken", key({ name: "Enter" })],
   ["key hidden from screen readers", key({ name: 1, spoken: false })],
   [
@@ -41980,7 +42065,7 @@ var examples17 = [
 ];
 
 // plugin/src/ui/components/keys-help.catalogue.ts
-var examples18 = [["keysHelp (closed until ? is pressed)", keysHelp()]];
+var examples19 = [["keysHelp (closed until ? is pressed)", keysHelp()]];
 
 // plugin/src/ui/components/list-row.catalogue.ts
 var base = {
@@ -42003,7 +42088,7 @@ var options3 = optionsBox([
 function list2(row2) {
   return html2`<div class="sc-list" role="list" aria-label="Example">${row2}</div>`;
 }
-var examples19 = [
+var examples20 = [
   ["listRow plain", list2(listRow({ ...base, id: "catalogue-row-plain" }))],
   ["listRow selected (current)", list2(listRow({ ...base, id: "catalogue-row-current", current: true }))],
   [
@@ -42054,7 +42139,7 @@ var examples19 = [
 ];
 
 // plugin/src/ui/components/menu.catalogue.ts
-var examples20 = [
+var examples21 = [
   ["downloadMenu", downloadMenu({ label: "Download", base: "#plan", note: "The plan as a file." })],
   [
     "downloadMenu with JUnit",
@@ -42068,7 +42153,7 @@ var examples20 = [
 ];
 
 // plugin/src/ui/components/metric.catalogue.ts
-var examples21 = [
+var examples22 = [
   [
     "metrics waits on you, value, zero",
     metrics({
@@ -42089,7 +42174,7 @@ var cells = railCells({
     { state: "running", label: "B3 under test now", build: "build-3", buildLabel: "B3" }
   ]
 });
-var examples22 = [
+var examples23 = [
   [
     "navRail current, waits on you, area open, rule, link",
     navRail({
@@ -42115,14 +42200,14 @@ var examples22 = [
 ];
 
 // plugin/src/ui/components/notice.catalogue.ts
-var examples23 = [
+var examples24 = [
   ["notice info", notice({ kind: "info", content: "The setup request is recorded." })],
   ["notice warn", notice({ kind: "warn", content: "This decision was for another digest." })],
   ["notice fail", notice({ kind: "fail", content: "Checkmate cannot read the recipes." })]
 ];
 
 // plugin/src/ui/components/page-heading.catalogue.ts
-var examples24 = [
+var examples25 = [
   ["heading title only", heading({ title: "Runs" })],
   [
     "heading with sub and extra",
@@ -42150,11 +42235,10 @@ var tile2 = {
   planId: "checkout",
   href: "#",
   status: statusMark({ state: "needs_answers" }),
-  when: "B2 build-2 \xB7 3 h",
-  whenTitle: "build-2",
+  when: null,
   waitsOn: "waits on oracle",
   objective: "Checkout applies coupons before tax",
-  verdict: { head: "Build build-2: 2 open defects.", tail: "3 questions open, 1 blocks testing." },
+  summary: "2 open defects \xB7 3 questions open",
   cost: "$0.42",
   board: board({
     label: "Rules against the last 2 builds",
@@ -42179,7 +42263,7 @@ var tile2 = {
 function list3(content) {
   return html2`<div class="sc-plans" role="list" aria-label="Example">${content}</div>`;
 }
-var examples25 = [
+var examples26 = [
   ["planTile blocked", list3(planTile(tile2))],
   [
     "planTile testing",
@@ -42211,7 +42295,7 @@ var examples25 = [
 ];
 
 // plugin/src/ui/components/radio-group.catalogue.ts
-var examples26 = [
+var examples27 = [
   [
     "radioGroup",
     radioGroup({
@@ -42263,7 +42347,7 @@ var context = {
   testerRules: ""
 };
 var page = { title: "Catalogue", section: null, subjects: [], body: html2`` };
-var examples27 = [
+var examples28 = [
   ["statusBar quiet", statusBar({ context, page })],
   [
     "statusBar with work waiting",
@@ -42295,7 +42379,7 @@ var examples27 = [
 ];
 
 // plugin/src/ui/components/status-mark.catalogue.ts
-var examples28 = [
+var examples29 = [
   ...statusStates.map((state) => [`statusMark ${state}`, statusMark({ state })]),
   ["statusMark unknown state", statusMark({ state: "something_new" })],
   ["statusMark with label", statusMark({ state: "approved", label: "accepted" })],
@@ -42317,13 +42401,13 @@ var tabs = [
   { href: "#recipes", label: "Recipes" },
   { href: "#harness", label: "Coding harness" }
 ];
-var examples29 = [
+var examples30 = [
   ["pageTabs current", pageTabs({ label: "Settings pages", tabs, current: "#recipes" })],
   ["jumpLinks", jumpLinks({ links: tabs })]
 ];
 
 // plugin/src/ui/components/tester-card.catalogue.ts
-var examples30 = [
+var examples31 = [
   [
     "testerCard running",
     testerCard({
@@ -42397,22 +42481,23 @@ var entries = [
   ["field", examples14],
   ["find-palette", examples15],
   ["fold", examples16],
-  ["key", examples17],
-  ["keys-help", examples18],
-  ["list-row", examples19],
-  ["menu", examples20],
-  ["metric", examples21],
-  ["nav-rail", examples22],
-  ["notice", examples23],
-  ["page-heading", examples24],
-  ["plan-tile", examples25],
-  ["radio-group", examples26],
-  ["status-bar", examples27],
-  ["status-mark", examples28],
-  ["tabs", examples29],
-  ["tester-card", examples30]
+  ["instance-card", examples17],
+  ["key", examples18],
+  ["keys-help", examples19],
+  ["list-row", examples20],
+  ["menu", examples21],
+  ["metric", examples22],
+  ["nav-rail", examples23],
+  ["notice", examples24],
+  ["page-heading", examples25],
+  ["plan-tile", examples26],
+  ["radio-group", examples27],
+  ["status-bar", examples28],
+  ["status-mark", examples29],
+  ["tabs", examples30],
+  ["tester-card", examples31]
 ];
-function entry([name2, examples31]) {
+function entry([name2, examples32]) {
   return html2`<section
 		class="catalogue-entry"
 		id="${name2}"
@@ -42420,7 +42505,7 @@ function entry([name2, examples31]) {
 		aria-labelledby="catalogue-${name2}"
 	>
 		<h2 id="catalogue-${name2}">${name2}</h2>
-		${examples31.map(
+		${examples32.map(
     ([state, rendered2]) => html2`<figure class="catalogue-example" data-catalogue-example="${name2}: ${state}">
 					<figcaption>${state}</figcaption>
 					<div class="catalogue-render">${rendered2}</div>
@@ -42610,23 +42695,6 @@ function historyList(store, targetId, shown2) {
   )}
 	</ol>`;
 }
-function entryList3(instance) {
-  return html2`<dl class="entries">
-		${Object.entries(instance.entries).map(
-    ([name2, value2]) => html2`<div>
-					<dt class="sc-mono">${name2}</dt>
-					<dd>
-						<code
-							>${join17(
-      value2.split(" ").map((word) => html2`<span class="word">${word}</span>`),
-      " "
-    )}</code
-						>
-					</dd>
-				</div>`
-  )}
-	</dl>`;
-}
 function actorInput(context2, id2) {
   if (context2.actor) return "";
   return html2`${field({ id: id2, label: "Your name", control: textInput({ id: id2, name: "actor", attrs: { required: true, autocomplete: "name" } }) })}`;
@@ -42650,34 +42718,23 @@ function retireControl(context2, targetId, instance, retire) {
 		</form>
 	</details>`;
 }
-function instancesTable(context2, targetId, instances, retire) {
+function instancesList(context2, targetId, instances, retire) {
   if (!instances.length) return html2`<p class="sc-empty is-line">No instance yet. Add one to start runs.</p>`;
-  return dataTable({
-    columns: [
-      "Instance",
-      "Entries",
-      "Environment",
-      "References",
-      "Added",
-      "Status",
-      html2`<span class="sc-sr">Actions</span>`
-    ],
-    rows: instances.map(
-      (instance) => tableRow({
-        cells: [
-          { content: instance.instanceId, attrs: { class: "is-mono" } },
-          entryList3(instance),
-          instance.environment ?? none3(),
-          words4(instance.references),
-          html2`${instance.addedBy} · ${time(instance.addedAt)}`,
-          instance.retired ? statusMark({ state: "retired" }) : statusMark({ state: "active" }),
-          retireControl(context2, targetId, instance, retire)
-        ],
-        attrs: { id: `instance-${instance.instanceId}`, "data-key": `instance:${instance.instanceId}` }
+  return instanceCards(
+    instances.map(
+      (instance) => instanceCard({
+        id: instance.instanceId,
+        mark: instance.retired ? statusMark({ state: "retired" }) : statusMark({ state: "active" }),
+        added: html2`Added by ${instance.addedBy} · ${time(instance.addedAt)}`,
+        action: retireControl(context2, targetId, instance, retire),
+        entries: Object.entries(instance.entries),
+        rows: [
+          ["Environment", instance.environment ?? none3()],
+          ["References", words4(instance.references)]
+        ]
       })
-    ),
-    scroll: true
-  });
+    )
+  );
 }
 function addForm(context2, targetId, entryPoints2, form) {
   const value2 = (name2) => form?.values[name2] ?? "";
@@ -42764,7 +42821,7 @@ function targetDetail(store, context2, targetId, revision2, form = null, retire 
 		<section aria-labelledby="instances" data-region="instances">
 			<h2 id="instances">Instances <span class="sc-count-n">${instances.length}</span></h2>
 			${retire && !instances.some((instance) => instance.instanceId === retire.instanceId && !instance.retired) ? html2`<p class="sc-error" role="alert">${retire.error}</p>` : ""}
-			${instancesTable(context2, targetId, instances, retire)}
+			${instancesList(context2, targetId, instances, retire)}
 		</section>
 		${shape}
 		<section aria-labelledby="history" data-region="target-history">
@@ -42891,7 +42948,7 @@ function harnessPage(store, context2, env, form = null, model = null, testerMode
 			<form method="post" action="/settings/harness/models" class="sc-form">
 				<input type="hidden" name="csrf" value="${context2.csrf}" />
 				<input type="hidden" name="harness" value="${harness}" />
-				<div class="sc-pair">
+				<div class="sc-pair is-model">
 					<div class="sc-field">
 						<label class="sc-label" for="tester-model">Model for testers</label>
 						<select
@@ -42922,7 +42979,7 @@ function harnessPage(store, context2, env, form = null, model = null, testerMode
 					</div>
 				</div>
 
-				<div class="sc-pair">
+				<div class="sc-pair is-model">
 					<div class="sc-field">
 						<label class="sc-label" for="request-model">Model for chats</label>
 						<select

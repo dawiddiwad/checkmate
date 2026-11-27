@@ -619,9 +619,7 @@ function summaryDetail(store: Store, live: Live, crumbs: Html, options: Html | '
 			(file) => html`<li>${item.explorer}: ${viewLink(file.opener, file.label, undefined, 'tap')}</li>`
 		)
 	)
-	return html`${crumbs}
-		<h2 class="sc-sec-h">Overview</h2>
-		${options} ${rawSection(store, live, live.unmerged)}
+	return html`${crumbs} ${options} ${rawSection(store, live, live.unmerged)}
 		<section aria-labelledby="claims-title">
 			<h3 class="sc-card-h" id="claims-title">Claims <span class="sc-count-n">${live.claims.length}</span></h3>
 			${merged ? claimLinks(live.planId, live.claims) : html`<p class="sc-empty is-line">The claims show when the exploration is completed.</p>`}

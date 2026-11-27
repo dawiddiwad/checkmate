@@ -1,6 +1,7 @@
 name: CI
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
   workflow_dispatch:
@@ -18,10 +19,16 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    concurrency:
+      group: verify-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: true
     env:
       CHECKMATE_BROWSER_EXECUTABLE: /usr/bin/google-chrome
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -30,13 +37,18 @@ jobs:
       - run: npm install -g @earendil-works/pi-coding-agent@1.5.2
       - run: npx playwright-core install --with-deps chromium-headless-shell
       - run: npm run phase:verify
+      - name: Compare catalogue pixels
+        id: catalogue
+        run: node scripts/check-catalogue.ts
         env:
-          CHECKMATE_CATALOGUE_SCREENSHOTS: compare
-      - if: failure()
+          CHECKMATE_CATALOGUE_BASELINE: ${{ github.event_name == 'push' && github.event.before || '' }}
+          CHECKMATE_CATALOGUE_ACCEPT: ${{ contains(github.event.pull_request.labels.*.name, 'ui-change') }}
+          CHECKMATE_CATALOGUE_OUTPUT: ${{ runner.temp }}/checkmate-catalogue-diff
+      - if: ${{ !cancelled() && steps.catalogue.outcome != 'skipped' }}
         uses: actions/upload-artifact@v4
         with:
-          name: catalogue-screenshots
-          path: /tmp/checkmate-catalogue-actual
+          name: catalogue-diff
+          path: ${{ runner.temp }}/checkmate-catalogue-diff
           if-no-files-found: ignore
   release-source:
     if: >-

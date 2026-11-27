@@ -107,7 +107,7 @@ CI compares the catalogue on the pull request branch with its merge base with `o
 
 The check builds the baseline in a temporary worktree. It renders each component section in light and dark with the same Chromium process. It compares decoded pixels exactly. A new or removed component is reported by name. It does not fail the check. A baseline build error or missing catalogue route fails the check.
 
-Review the `catalogue-diff` artifact for changes. Each changed component has `before.png`, `after.png`, and `diff.png`. The diff marks changed pixels in magenta. If you accept a deliberate visual change, add the `ui-change` label to the pull request. Verify runs again when you add or remove the label. With the label, pixel differences are reported and the check passes. The label does not suppress build or render errors.
+Review the `catalogue-diff` artifact for changes. Each changed component has `before.png`, `after.png`, and `diff.png`. The diff marks changed pixels in magenta. If you accept a deliberate visual change, add the `ui-change` label to the pull request. Verify runs again when you add or remove the label. On a push to `main`, verify reads the label from the pull request whose merge commit is the pushed commit. With the label, pixel differences are reported and the check passes. Without a matching pull request, the push check does not accept pixel differences. The label does not suppress build or render errors.
 
 To inspect the results on your computer:
 

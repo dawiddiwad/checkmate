@@ -40,6 +40,18 @@ async function capture(browser: Browser, source: string, workspace: string) {
 				await context.route('**/settings/harness/models?*', (route) =>
 					route.fulfill({ json: { models: [], primary: null, defaultModel: null } })
 				)
+				await context.addInitScript(() => {
+					Object.defineProperty(window, 'EventSource', {
+						value: class extends EventTarget {
+							onopen?: () => void
+							constructor() {
+								super()
+								queueMicrotask(() => this.onopen?.())
+							}
+							close() {}
+						},
+					})
+				})
 				const page = await context.newPage()
 				const address = new URL('/catalogue', ui.url).href
 				const response = await page.goto(address)

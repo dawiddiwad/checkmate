@@ -27,8 +27,8 @@
 	},
 	"devDependencies": {
 		"@eslint/js": "10.0.1",
-		"@playwright/cli": "0.1.24",
-		"@types/node": "26.6.6",
+		"@playwright/cli": "0.1.25",
+		"@types/node": "26.6.10",
 		"@types/pngjs": "6.0.5",
 		"ajv": "8.20.0",
 		"ajv-formats": "3.0.1",
@@ -39,7 +39,7 @@
 		"pngjs": "7.0.0",
 		"prettier": "3.10.1",
 		"typescript": "6.0.3",
-		"typescript-eslint": "8.73.0"
+		"typescript-eslint": "8.74.0"
 	},
 	"overrides": {
 		"@typescript-eslint/typescript-estree": {

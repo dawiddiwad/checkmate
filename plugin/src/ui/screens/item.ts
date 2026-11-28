@@ -12,10 +12,13 @@ import { evidenceFiles, evidencePreview } from '../components/evidence-viewer.ts
 import { recordFacts } from '../components/facts.ts'
 import { wordMark } from '../components/status-mark.ts'
 import { size } from '../evidence.ts'
-import { keptText } from '../forms.ts'
+import { keptText, returnFields } from '../forms.ts'
+import { planDetail } from '../../views.ts'
 import { html, plural, time, words } from '../html.ts'
 import { buildLabel, itemTag, latestClaimBuild, optionsOf, outside, reviewHref } from '../review.ts'
 import { claimEvidenceFiles } from './exploration.ts'
+import { approvalPanel } from './plan.ts'
+import { runDecision, runSummary } from './run.ts'
 
 export type Refusal = { key: string; state: FormState; subject?: string }
 
@@ -235,16 +238,17 @@ function questionBody(context: Context, review: Review, item: Item, back: string
 	}`
 }
 
-function approvalBody(item: Item) {
-	return html`<p class="sc-today">${item.title}</p>
-		<div class="sc-row-btns">
-			${button({
-				label: `Open ${item.kind === 'approval' && item.key.startsWith('p:') ? 'the plan' : 'the run'} to decide`,
-				href: item.href,
-				emphasis: 'primary',
-				attrs: { 'data-sub': true, 'data-href': item.href, 'data-label': 'Open' },
-			})}
-		</div>`
+function approvalBody(store: Store, context: Context, item: Item, back: string, state: FormState | null) {
+	const extra = returnFields(item, back)
+	if (item.key.startsWith('p:')) {
+		const [planId, revision] = item.id.split('@')
+		const detail = planDetail(store, planId, Number(revision))
+		return html`<p class="sc-today">${detail.plan.objective}</p>
+			${approvalPanel(store, context, detail, state, extra)}
+			<p class="sc-help"><a href="${item.href}">Open the full plan</a></p>`
+	}
+	return html`${runSummary(store, item.id)} ${runDecision(store, context, item.id, state, extra)}
+		<p class="sc-help"><a href="${item.href}">Open the full run</a></p>`
 }
 
 export function recordDrawer(
@@ -262,18 +266,19 @@ export function recordDrawer(
 	const body = item.claim
 		? claimBody(context, store, review, item, base, list, state)
 		: item.kind === 'approval'
-			? approvalBody(item)
+			? approvalBody(store, context, item, list, state)
 			: questionBody(context, review, item, list, state)
 	const when = item.claim ? null : (item.question?.at ?? item.waiting?.since ?? null)
 	return drawer({
 		back: list,
 		key: `record:${item.key}`,
 		path: `${review.planId} › ${view === 'needs' ? 'Needs you' : view.replace(/^[a-z]+:/, '')} › ${item.id}`,
-		slot: state
-			? html`<div data-stale-slot>
-					${state.stale ? notice({ kind: 'warn', content: state.stale }) : ''}${state.error ? html`<p class="sc-error" role="alert">${state.error}</p>` : ''}${keptText(state)}
-				</div>`
-			: html`<div data-stale-slot></div>`,
+		slot:
+			state && item.kind !== 'approval'
+				? html`<div data-stale-slot>
+						${state.stale ? notice({ kind: 'warn', content: state.stale }) : ''}${state.error ? html`<p class="sc-error" role="alert">${state.error}</p>` : ''}${keptText(state)}
+					</div>`
+				: html`<div data-stale-slot></div>`,
 		head: drawerHead({
 			label: item.id,
 			tags: html`${itemTag(item)}

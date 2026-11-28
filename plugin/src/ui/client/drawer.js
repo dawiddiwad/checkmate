@@ -7,10 +7,15 @@ import { announce, showHints, tell } from './status-bar.js'
 
 export function optionsNow() {
 	if (state.level === 'detail')
-		return [...state.drawer.querySelectorAll('.sc-drawer-top [data-option], .sc-opt-section [data-option]')]
+		return [
+			...state.drawer.querySelectorAll(
+				'.sc-drawer-top [data-option], .sc-opt-section [data-option], [data-choose]:not([hidden]) [data-option]'
+			),
+		]
 	const row = state.level === 'list' ? current('list') : null
 	if (row?.classList.contains('is-many')) return detailOptions(row)
-	return row ? [...row.querySelectorAll('[data-option]')] : []
+	const options = row ? [...row.querySelectorAll('[data-option]')] : []
+	return options.length ? options : [...document.querySelectorAll('[data-choose]:not([hidden]) [data-option]')]
 }
 
 function detailOptions(row) {
@@ -100,6 +105,11 @@ export function choose(n) {
 	if (!options.length) return tell('No options here.')
 	const option = options[n - 1]
 	if (!option) return tell(`The options go from 1 to ${options.length}.`)
+	const rationale = option.disabled && option.form?.querySelector('[data-rationale]')
+	if (rationale) {
+		rationale.focus()
+		return tell('Write the rationale first. Then press Ctrl+Enter.')
+	}
 	if (option.disabled) return tell('This option is not available here.')
 	option.click()
 }

@@ -106,6 +106,8 @@ Replace the example plan revision and run IDs with the current values. The `run-
 
 Activity lists tests, follow-ups, and chat messages. Open an entry to inspect its status.
 
+A test that you start in a Claude Code session runs in that session. Checkmate starts no process for it. A follow-up that you start in the review UI waits until that session continues the test. Tell the session to continue, or run `checkmate explore next <explorationId>` there. When the session does not continue, stop the test on its page or in Activity. Checkmate records the stop and gives the session no more work. It cannot end the agents of the session. End them in the session.
+
 A chat can read the plan and answer a gap or edit a plan without a prompt. It runs only the Checkmate commands for reading records and for the record writes that you ask for in the chat. Any other command, and any command that changes the application, waits for your permission. If nobody answers in about 10 minutes, Checkmate denies the command and the reply goes on without it.
 
 [![Activity shows a completed test for the checkout build](media/ui/activity.png)](media/ui/activity.png)

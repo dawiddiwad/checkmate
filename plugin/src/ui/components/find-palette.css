@@ -48,7 +48,7 @@
 	align-items: baseline;
 	gap: var(--space-3);
 	min-height: var(--ctl-lg);
-	padding: 10px var(--space-4);
+	padding: var(--space-3) var(--space-4);
 	border-bottom: var(--hairline) solid var(--hair);
 	font: 400 14px/20px var(--font-sans);
 	color: var(--ink);

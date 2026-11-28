@@ -1,7 +1,7 @@
 .sc-ask-list {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: var(--space-2);
 	margin: 0;
 	padding: 0;
 	list-style: none;
@@ -9,7 +9,7 @@
 .sc-ask-list li {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: var(--space-3);
 }
 .sc-record {
 	gap: var(--space-4);
@@ -26,7 +26,7 @@
 .sc-ask-list.asks > li {
 	flex-direction: column;
 	align-items: flex-start;
-	gap: 2px;
+	gap: var(--space-1);
 	padding: var(--space-2) var(--space-3);
 	border-bottom: var(--hairline) solid var(--hair);
 }
@@ -47,12 +47,12 @@
 }
 .sc-ask-list.asks .sc-help {
 	margin: 0;
-	padding-left: 28px;
+	padding-left: var(--space-5);
 	max-width: 72ch;
 	font-size: 13px;
 }
 .sc-record .sc-c-extra {
-	margin-top: 12px;
+	margin-top: var(--space-3);
 }
 .sc-record .sc-form textarea {
 	width: 100%;
@@ -90,14 +90,14 @@
 	font: 400 13px/20px var(--font-mono);
 }
 .sc-activity li {
-	padding: 4px 12px;
+	padding: var(--space-1) var(--space-3);
 }
 .sc-activity li + li {
 	border-top: 1px solid var(--hair);
 }
 .sc-changes {
 	margin: 0;
-	padding-left: 24px;
+	padding-left: var(--space-5);
 	font: 400 14px/22px var(--font-sans);
 }
 @media (max-width: 760px) {

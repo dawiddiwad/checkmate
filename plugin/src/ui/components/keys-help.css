@@ -14,7 +14,7 @@
 .sc-keys-table td,
 .sc-keys-table th {
 	height: auto;
-	padding: 6px var(--space-3);
+	padding: var(--space-2) var(--space-3);
 	white-space: normal;
 }
 .sc-keys-table th {

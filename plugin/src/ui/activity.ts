@@ -19,6 +19,7 @@ export type Failure = { cause: string; next: string; detail: string | null }
 export type Run = {
 	key: string
 	explorationId: string
+	session: boolean
 	follow: boolean
 	planId: string
 	build: string
@@ -151,7 +152,11 @@ export function runsOf(store: Store, explorationId: string, counts: Map<string, 
 	const done = events.find((item) => item.step === 'done')
 	const [claims, questions] = counts.get(`${status.planId}:${explorationId}`) ?? [0, 0]
 	const waiting = explorationPermissions(store, explorationId).filter((item) => !item.decision).length
-	const waits = waiting ? `waits for you: ${plural(waiting, 'permission request')}` : ''
+	const waits = waiting
+		? `waits for you: ${plural(waiting, 'permission request')}`
+		: status.path === 'session'
+			? 'runs in the session that started the test'
+			: ''
 	const firstFollow = events.findIndex((item) => item.step === 'follow')
 	const firstRun = firstFollow === -1 ? events : events.slice(0, firstFollow)
 	const failure = status.state === 'failed' ? failureOf(status.reason, status.doneHint, firstRun) : null
@@ -161,8 +166,10 @@ export function runsOf(store: Store, explorationId: string, counts: Map<string, 
 		stopped: status.reason ?? 'Stopped.',
 		interrupted: 'The run was interrupted: the supervisor stopped before the end.',
 	}
+	const session = status.path === 'session'
 	const base = {
 		explorationId,
+		session,
 		planId: status.planId,
 		build: status.build,
 		instanceId: status.instanceId,
@@ -191,7 +198,7 @@ export function runsOf(store: Store, explorationId: string, counts: Map<string, 
 		costUsd: costOf(firstFollow === -1 ? events : events.slice(0, firstFollow)),
 		outcome: testing ? waits : (outcomes[status.state === 'following' ? 'completed' : status.state] ?? ''),
 		failure,
-		stoppable: testing && status.path !== 'session',
+		stoppable: testing,
 	}
 	const indexes = events.flatMap((item, index) => (item.step === 'follow' ? [index] : []))
 	const follows = indexes.map((from, number): Run => {

@@ -327,10 +327,12 @@ function optionForm(
 	n: number,
 	label: string,
 	fields: Array<[string, string]>,
-	name = label
+	name = label,
+	ask?: { title: string; text: string }
 ) {
+	const attrs = ask ? { 'data-ask-title': ask.title, 'data-ask-text': ask.text, 'data-ask-yes': 'Record' } : {}
 	return html`<form method="post" action="${action(item)}" class="sc-opt-form">
-		${hiddenFields(context, item, fields)}${optionButton({ n, label, name })}
+		${hiddenFields(context, item, fields)}${optionButton({ n, label, name, attrs })}
 	</form>`
 }
 
@@ -345,7 +347,10 @@ export function rightAsBuilt(question: { actual: string | null }) {
 export function optionsOf(context: Context, review: Review, item: Item): Html[] {
 	if (item.kind === 'finding')
 		return [
-			optionForm(context, item, 1, 'Yes, a defect', [['verdict', 'approved']], 'Yes, accept as a defect'),
+			optionForm(context, item, 1, 'Yes, a defect', [['verdict', 'approved']], 'Yes, accept as a defect', {
+				title: `Accept ${item.id} as a defect?`,
+				text: `Checkmate records “${item.title}” as a defect. It then waits for a hand-over.`,
+			}),
 			reveal(2, 'No', 'reject', item, 'No, reject the finding'),
 		]
 	if (item.kind === 'defect')
@@ -374,18 +379,19 @@ export function optionsOf(context: Context, review: Review, item: Item): Html[] 
 	if (item.kind === 'question' || item.kind === 'gap' || item.kind === 'deferred') {
 		const fields: Array<[string, string]> = item.kind === 'gap' ? [['sha', review.sha]] : []
 		const later = optionForm(context, item, 3, 'Later', [...fields, ['kind', 'defer']], 'Decide later')
+		const right = rightAsBuilt({ actual: item.question?.actual ?? null })
 		return [
 			optionForm(
 				context,
 				item,
 				1,
 				'Right',
-				[
-					...fields,
-					['kind', 'accept_assumption'],
-					['value', rightAsBuilt({ actual: item.question?.actual ?? null })],
-				],
-				'Right as built'
+				[...fields, ['kind', 'accept_assumption'], ['value', right]],
+				'Right as built',
+				{
+					title: `Answer ${item.id} as right as built?`,
+					text: `Checkmate records “${right}” as the answer to “${item.title}”. The testers work with it.`,
+				}
 			),
 			reveal(2, 'Different', 'answer', item, 'It should be different'),
 			...(item.kind === 'deferred' ? [] : [later]),
@@ -434,7 +440,10 @@ export function itemRow(context: Context, review: Review, item: Item, id: string
 	const dim = ['answered', 'deferred', 'rejected'].includes(item.kind)
 	const list = reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`)
 	const opened = openedHref(review, item, view)
-	const listed = optionsOf(context, review, item)
+	const listed =
+		item.kind === 'approval'
+			? [optionButton({ n: 1, label: 'Decide', name: `Decide on ${item.id}`, href: `${opened}#decide` })]
+			: optionsOf(context, review, item)
 	const options = asked ? rowOptions(context, asked, list) : listed.length ? optionsBox(listed) : ''
 	const extra = extraOf(context, review, item)
 	return listRow({

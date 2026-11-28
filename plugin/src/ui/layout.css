@@ -143,17 +143,14 @@
 .sc-tools {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 8px;
-	margin-bottom: 12px;
+	gap: var(--space-2);
+	margin-bottom: var(--space-3);
 }
 .sc-tools:empty {
 	display: none;
 }
 .sc-sec-h {
-	margin: 24px 0 8px;
-	font: 600 13px/16px var(--font-sans);
-	letter-spacing: 0;
-	color: var(--muted);
+	margin: var(--space-5) 0 var(--space-2);
 }
 .sc-sec-h:first-child {
 	margin-top: 0;
@@ -182,7 +179,7 @@
 section > h2 {
 	display: flex;
 	align-items: baseline;
-	gap: 10px;
+	gap: var(--space-2);
 	font: 600 17px/22px var(--font-sans);
 	letter-spacing: 0;
 	color: var(--ink);
@@ -275,6 +272,9 @@ section:not([class]) > .sc-sec-h {
 }
 .sc-stack.is-loose {
 	gap: var(--space-5);
+}
+.sc-stack.is-tight {
+	gap: var(--space-2);
 }
 .sc-side {
 	position: sticky;

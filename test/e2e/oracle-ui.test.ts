@@ -24,11 +24,13 @@ import {
 	ready,
 	endProcessesIn,
 } from '../support.ts'
-import { openTest, launched, entries, done, ended, stacks } from '../explorations.ts'
+import { openTest, launch, launched, entries, event, done, ended, stacks } from '../explorations.ts'
+import { explorationEvents, openExploration } from '../../plugin/src/explorations.ts'
+import { explorationStatus } from '../../plugin/src/explorers.ts'
 import { asking, bash, allOf, openOf, plainBody, waitOpen } from '../permissions.ts'
 import { planDetail } from '../../plugin/src/index.ts'
 import { answerGap } from '../../plugin/src/plans.ts'
-import { mergedClaims } from '../../plugin/src/views.ts'
+import { mergedClaims, runDetail } from '../../plugin/src/views.ts'
 import { fakeClaude } from '../claude.ts'
 import { beginRun, checkAssertion, closeTest, finishRun } from '../../plugin/src/runs.ts'
 
@@ -939,6 +941,133 @@ test(
 			Number(read(workspace, (db) => db.db.prepare('SELECT count(*) AS n FROM operations').get()!.n)),
 			historyBefore + 1
 		)
+	}
+)
+
+test(
+	'The number keys answer a question and accept a waiting run in Needs you — a decision needs the mouse, or one key records it.',
+	{ skip: browserSkip, timeout: 60_000 },
+	async (t) => {
+		const workspace = directory(t)
+		t.after(() => endProcessesIn(workspace))
+		seedDemo(workspace)
+		const ui = await startUi(t, workspace)
+		const { page } = await pageFor(t, ui.url)
+		const focusOn = (selector: string) =>
+			page.waitForFunction((wanted) => document.activeElement?.matches(wanted), selector)
+		const pending = () => read(workspace, (db) => planDetail(db, 'checkout').pendingDecisions.length)
+		await page.goto(new URL('/plans/checkout?view=needs&focus=list&at=g%3AG2', ui.url).href)
+		await focusOn('[data-row][data-key="g:G2"]')
+		const row = page.locator('#row-needs-0')
+		const highlighted = await row.boundingBox()
+		await page.keyboard.press('ArrowDown')
+		const plain = await row.boundingBox()
+		await page.keyboard.press('ArrowUp')
+		assert.equal(highlighted?.height, plain?.height, 'a row keeps its height when it gets the highlight')
+		await page.keyboard.press('1')
+		await page.locator('dialog[data-confirm][open]').waitFor()
+		assert.match((await page.locator('[data-confirm-text]').textContent()) ?? '', /Right as built/)
+		await page.keyboard.press('Escape')
+		await focusOn('[data-row][data-key="g:G2"]')
+		assert.equal(pending(), 0, 'a number key alone records no answer')
+		await page.keyboard.press('1')
+		await page.locator('dialog[data-confirm][open]').waitFor()
+		await page.keyboard.press('Enter')
+		await focusOn('[data-row][data-key="r:run-7"]')
+		assert.equal(pending(), 1)
+		await page.keyboard.press('1')
+		await focusOn('[data-drawer] [data-rationale]')
+		assert.match(page.url(), /\/plans\/checkout\?/, 'the decision opens in the drawer of the list')
+		await page.keyboard.press('Escape')
+		await page.keyboard.press('1')
+		await focusOn('[data-drawer] [data-rationale]')
+		assert.equal(
+			read(workspace, (db) => runDetail(db, 'run-7').result?.acceptance),
+			'pending',
+			'a number key records no decision without a rationale'
+		)
+		await page.keyboard.type('The failure is the known stacking defect.')
+		await page.keyboard.press('Control+Enter')
+		await focusOn('[data-choose] [data-option]')
+		await page.keyboard.press('1')
+		await focusOn('[data-confirm-submit]')
+		await page.keyboard.press('Enter')
+		await focusOn('[data-row][data-key="g:G4"]')
+		const decision = read(workspace, (db) => runDetail(db, 'run-7').result?.latestDecision)
+		assert.equal(decision?.verdict, 'approved')
+		assert.equal(decision?.rationale, 'The failure is the known stacking defect.')
+		await page.goto(new URL('/plans/checkout@2', ui.url).href)
+		await page.locator('#questions').waitFor()
+		assert.equal(await page.locator('#rules').isVisible(), false, 'the record of an approved plan is folded')
+		await page.locator('.sc-tabs a[href="#rules"]').click()
+		await page.locator('#rules').waitFor()
+		await page.goto(new URL('/runs/run-7?item=test%3AT4', ui.url).href)
+		const check = page.locator('summary.asr-row').first()
+		await check.evaluate((summary) => ((summary.parentElement as HTMLDetailsElement).open = false))
+		await check.focus()
+		await page.keyboard.press('ArrowRight')
+		assert.equal(await check.evaluate((summary) => (summary.parentElement as HTMLDetailsElement).open), true)
+		await page.keyboard.press('ArrowLeft')
+		assert.equal(await check.evaluate((summary) => (summary.parentElement as HTMLDetailsElement).open), false)
+		await page.keyboard.press('ArrowLeft')
+		await page.waitForURL(/\/runs\/run-7$/)
+	}
+)
+
+test(
+	'Stop the follow-up of a session test that its session does not continue — the test stays Following and the stop is refused.',
+	{ skip: browserSkip, timeout: 60_000 },
+	async (t) => {
+		const workspace = directory(t)
+		t.after(() => endProcessesIn(workspace))
+		const opened = store(t, workspace)
+		target(opened)
+		plan(opened)
+		openExploration(opened, 'checkmate', { planId: 'checkout', build: 'b1', explorationId: 'held' })
+		event(opened, 'held', {
+			step: 'start',
+			detail: { ...launch, path: 'session', allow: [], context: { harness: 'claude' } },
+		})
+		entries(opened, 'held', 'a1', [{ kind: 'question', id: 'Q1', question: 'What is the refund window?' }])
+		done(opened, 'held')
+		answerGap(opened, 'oracle', {
+			planId: 'checkout',
+			gapId: 'a1/Q1',
+			kind: 'clarify',
+			value: 'Refunds are available for 14 days.',
+			source: 'oracle',
+			rationale: 'Product decision.',
+		})
+		closeStore(opened)
+		const { url } = await startUi(t, workspace)
+		const { page } = await pageFor(t, url)
+		const status = () => read(workspace, (db) => explorationStatus(db, 'held'))
+		await page.goto(new URL('/plans/checkout', url).href)
+		await page.getByRole('button', { name: /Test the answers \(1\)/ }).click()
+		const follow = page.locator('dialog[open]')
+		assert.match((await follow.textContent()) ?? '', /Checkmate starts no process/)
+		await follow.getByRole('button', { name: /Test the 1 answer/ }).click()
+		await page.waitForURL(/\/explorations\/held$/)
+		assert.equal(status().state, 'following')
+		assert.equal(
+			read(workspace, (db) => explorationEvents(db, 'held').some((item) => item.step === 'supervisor')),
+			false,
+			'Checkmate starts no process for a session test'
+		)
+		await page.locator('[data-key="session-owned"]').waitFor()
+		await page.getByRole('button', { name: /Stop the test…/ }).click()
+		const stop = page.locator('dialog[open]')
+		assert.match((await stop.textContent()) ?? '', /Checkmate cannot end them/)
+		await stop.locator('input[name="reason"]').fill('The session does not continue.')
+		await stop.getByRole('button', { name: /Stop the test/ }).click()
+		await page.locator('[data-key="follow-failed"]').waitFor()
+		assert.equal(status().state, 'completed')
+		assert.equal(status().follow, 'stopped')
+		const next = command(workspace, ['explore', 'next', 'held'])
+		assert.notEqual(next.code, 0)
+		assert.match(next.out + next.err, /was stopped by oracle: The session does not continue\./)
+		await page.goto(new URL('/plans/checkout', url).href)
+		await page.getByRole('button', { name: /Test the answers \(1\)/ }).waitFor()
 	}
 )
 

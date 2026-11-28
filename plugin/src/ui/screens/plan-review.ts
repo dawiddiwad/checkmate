@@ -1,4 +1,5 @@
 import type { Rule } from '../review.ts'
+import { explorationStatus } from '../../explorers.ts'
 import type { Store } from '../../store.ts'
 import type { CellStatus } from '../../rulemap.ts'
 import { planCost } from '../../costs.ts'
@@ -435,7 +436,7 @@ export function reviewPage(
 			${record}
 			<div data-region="plan-actions">
 				${review.running ? '' : testDialog(context, planId, { build: '', level: 'normal', since: '', until: '', repo: '' }, defaultBuild(store.workspace), asList(instanceChoice(store, planId)))}
-				${review.answers ? followDialog(context, planId, { ...review.answers, planId }, review.answers.count) : ''}
+				${review.answers ? followDialog(context, planId, { ...review.answers, planId, session: explorationStatus(store, review.answers.explorationId).path === 'session' }, review.answers.count) : ''}
 				${
 					ruleEditable(review)
 						? html`${ruleDialog(

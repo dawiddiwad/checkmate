@@ -7,14 +7,13 @@
 	max-height: calc(100vh - var(--bar-h) - var(--dock-h, 0px));
 	overflow-y: auto;
 	padding: var(--space-5) 0;
-	border-right: var(--hairline) solid var(--hair);
 	background: var(--ground);
 	font: 400 14px/20px var(--font-sans);
 }
 .sc-rail-tree {
 	display: flex;
 	flex-direction: column;
-	gap: 28px;
+	gap: var(--space-5);
 }
 .sc-rail-nav {
 	display: flex;
@@ -26,7 +25,7 @@
 	gap: var(--space-1);
 }
 .sc-rail-h {
-	padding: 0 var(--space-5) 6px;
+	padding: 0 var(--space-5) var(--space-2);
 	font: 600 13px/20px var(--font-sans);
 	color: var(--muted);
 }
@@ -111,12 +110,17 @@
 	bottom: calc(100% + var(--space-1));
 	display: inline-grid;
 }
+.sc-rail + .sc-main {
+	border-left: var(--hairline) solid var(--hair);
+}
 @media (max-width: 900px) {
+	.sc-rail + .sc-main {
+		border-left: 0;
+	}
 	.sc-rail {
 		position: static;
 		width: auto;
 		max-height: none;
-		border-right: 0;
 		border-bottom: var(--hairline) solid var(--hair);
 	}
 	.sc-rail-row {

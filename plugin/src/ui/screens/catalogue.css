@@ -1,19 +1,19 @@
 .catalogue-index {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 4px 12px;
-	margin: 0 0 24px;
+	gap: var(--space-1) var(--space-3);
+	margin: 0 0 var(--space-5);
 }
 .catalogue-entry {
-	margin: 0 0 32px;
-	padding: 0 0 16px;
+	margin: 0 0 var(--space-6);
+	padding: 0 0 var(--space-4);
 	border-bottom: 1px solid var(--hair);
 }
 .catalogue-example {
-	margin: 0 0 16px;
+	margin: 0 0 var(--space-4);
 }
 .catalogue-example > figcaption {
-	margin: 0 0 4px;
+	margin: 0 0 var(--space-1);
 	color: var(--muted);
 	font: 400 12px/16px var(--font-mono);
 }

@@ -19,6 +19,8 @@ Use the Checkmate tools in the current host session. Report recorded outcomes an
 3. Use `checkmate_pause_test` before asking the person for information in the middle of work. Resume with the next tester steps after the answer.
 4. Call `checkmate_test_status` with `report` true, then read the plan status. Report checks, findings, and questions from the returned record. Follow the decision rules below.
 
+A person can start a follow-up or stop the exploration in the review UI. When the person says that a follow-up waits, do step 1 for that exploration. When a tool replies that the exploration was stopped, end its agents. Do not start more agents for it. Report the stop and its reason.
+
 For a process exploration, use `checkmate_test_status` with a bounded wait. Continue until completion, failure, or an oracle decision. Do not start a second exploration to wait for the first one.
 
 ## Decisions of the oracle

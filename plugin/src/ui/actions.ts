@@ -21,7 +21,7 @@ export type TestValues = {
 
 export type InstanceChoice = { planId: string; instances: string[]; chosen: string }
 
-type Subject = { explorationId: string; planId: string; build: string }
+type Subject = { explorationId: string; planId: string; build: string; session: boolean }
 
 type Again = Omit<TestValues, 'level' | 'instance'> & { planId: string; level: string | null; instanceId: string }
 
@@ -260,6 +260,14 @@ export function followDialog(context: Context, planId: string, subject: Subject,
 			<p class="sc-note">
 				${planId}, build ${subject.build}: the testers read ${answers} of the product owner and test again.
 			</p>
+			${
+				subject.session
+					? html`<p class="sc-note" data-key="follow-session">
+							${subject.explorationId} runs in the session that started it. Checkmate starts no process.
+							The follow-up waits until that session continues the test. You can stop it on its page.
+						</p>`
+					: ''
+			}
 			<div class="sc-confirm-foot">
 				${button({ label: `Test the ${answers}`, keyName: '1', emphasis: 'primary', attrs: { 'data-stop': true, 'data-key-n': '1' } })}
 				${button({ label: 'Cancel', keyName: '2', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true, 'data-key-n': '2' } })}
@@ -297,8 +305,13 @@ export function stopDialog(context: Context, subject: Subject) {
 		`/explorations/${subject.explorationId}/stop`,
 		context,
 		html`<p class="sc-note">
-				Stop the test of ${subject.planId}, build ${subject.build}? The testers end now. The record and the work
-				folder stay.
+				Stop the test of ${subject.planId}, build ${subject.build}?
+				${
+					subject.session
+						? 'The testers run in the session that started the test. Checkmate cannot end them. It records the stop and gives that session no more work. End the testers in the session.'
+						: 'The testers end now.'
+				}
+				The record and the work folder stay.
 			</p>
 			${dialogField(`act-stop-${subject.explorationId}-reason`, 'Reason (optional)', 'reason', '')}
 			<div class="sc-confirm-foot">

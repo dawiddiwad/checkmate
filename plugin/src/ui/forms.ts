@@ -1,7 +1,7 @@
 import type { Html } from './html.ts'
 import type { Context } from './layout.ts'
 import { notice } from './components/notice.ts'
-import { formButton } from './components/button.ts'
+import { button, formButton } from './components/button.ts'
 import { field, textArea, textInput } from './components/field.ts'
 import { actorLimit, html, short } from './html.ts'
 
@@ -84,13 +84,17 @@ function confirmStep(context: Context, verdict: Verdict, state: FormState) {
 }
 
 function chooseStep(context: Context, verdict: Verdict, state: FormState) {
-	const button = (choice: Verdict['approve'], primary: boolean) =>
-		formButton({
+	const choose = (choice: Verdict['approve'], n: number) =>
+		button({
 			label: choice.label,
-			emphasis: primary ? 'primary' : undefined,
+			keyName: n,
+			keySpoken: false,
+			emphasis: n === 1 ? 'primary' : undefined,
 			attrs: {
 				name: 'verdict',
 				value: choice.value,
+				'data-option': true,
+				'aria-label': `${n}: ${choice.label}`,
 				'data-needs-rationale': true,
 				'data-confirm-label': choice.confirm,
 				'data-summary': choice.summary,
@@ -103,7 +107,7 @@ function chooseStep(context: Context, verdict: Verdict, state: FormState) {
 			<p class="sc-label">Confirm</p>
 			<p data-confirm-summary></p>
 		</div>
-		<div class="sc-row-btns" data-choose>${button(verdict.approve, true)} ${button(verdict.reject, false)}</div>
+		<div class="sc-row-btns" data-choose>${choose(verdict.approve, 1)} ${choose(verdict.reject, 2)}</div>
 		<div class="sc-row-btns" data-confirm-buttons hidden>
 			${formButton({ label: 'Confirm', emphasis: 'primary', attrs: { name: 'confirmed', value: '1', 'data-confirm-submit': true } })}
 			${formButton({ label: 'Back', attrs: { type: 'button', 'data-confirm-back': true } })}

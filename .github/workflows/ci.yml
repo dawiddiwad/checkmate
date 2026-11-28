@@ -179,9 +179,15 @@ jobs:
           appendFileSync(process.env.GITHUB_OUTPUT, `published=${published}\n`)
           NODE
       - name: Verify the release candidate
+        shell: bash
         run: |
-          npm install -g @earendil-works/pi-coding-agent@1.5.2
-          npm run phase:verify
+          if [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ]; then
+            echo "The verify job tested $GITHUB_SHA. Only the version changed."
+            npm run type:check && npm run lint:check && npm run format:check
+          else
+            npm install -g @earendil-works/pi-coding-agent@1.5.2
+            npm run phase:verify
+          fi
       - name: Commit and tag the verified version
         if: steps.resume.outputs.resume != 'true'
         env:

@@ -31,7 +31,7 @@
 	font-size: 15px;
 }
 .sc-btn.has-key {
-	padding-left: 10px;
+	padding-left: var(--space-2);
 }
 .sc-btn.is-primary {
 	background: var(--ink);

@@ -16,12 +16,12 @@ A chess scoresheet records every move in plain ink. Only one move is yours to pl
 6. **Square and flat.** Corners are 0. Depth is a 1 px `--hair` line. There are no shadows.
 7. **Say less.** Use sentence case. Show the number first, then the word. Only the brand word and keys are uppercase.
 8. **One bar, at the bottom.** The status bar (`sc-bar`) is the only bar.
-9. **Gaps, not margins.** A container sets the space between its children with `gap`. Components have no outer margin. Use 8 px from a label to its control and help, 12 px from a section heading to its content, 16 px between fields, and 24 px between sections. The main area has 32 px padding.
+9. **Gaps, not margins.** A container sets the space between its children with `gap`. Components have no outer margin. Every gap and padding is a `--space` token. Use 4 px between the lines of one item, 8 px from a label to its control and help, 12 px from a section heading to its content, 16 px between fields, and 24 px between sections. The main area has 32 px padding.
 10. **Most urgent first.** Lists put what blocks testing first, then findings and defects by severity, then approvals and open questions. Answered, deferred, and rejected items come last.
 
 ## Tokens
 
-`plugin/src/ui/tokens.css` is the only place for colour, space, size, and font values. Two light values are darker than in the Scoresheet files so that every text and control border meets the contrast rules: `--signal` is `#be400c` (the files give `#c2410c`, 4.46:1 on `--surface-2`) and `--edge` is `#85888d` (the files give `#8c8f94`, 2.97:1 on `--surface` and 2.79:1 on `--surface-2`). `npm run lint:check` fails on a raw colour in another stylesheet. Light values are in `:root`. Dark values are in `:root[data-theme='dark']` and in the `prefers-color-scheme` block, with the same names.
+`plugin/src/ui/tokens.css` is the only place for colour, space, size, and font values. Two light values are darker than in the Scoresheet files so that every text and control border meets the contrast rules: `--signal` is `#be400c` (the files give `#c2410c`, 4.46:1 on `--surface-2`) and `--edge` is `#85888d` (the files give `#8c8f94`, 2.97:1 on `--surface` and 2.79:1 on `--surface-2`). `npm run lint:check` fails on a raw colour in another stylesheet. It also fails on a raw length in `gap`, `padding`, or `margin`. Use a `--space` token there. Light values are in `:root`. Dark values are in `:root[data-theme='dark']` and in the `prefers-color-scheme` block, with the same names.
 
 | Group      | Tokens                                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------------------------- |
@@ -38,6 +38,21 @@ A chess scoresheet records every move in plain ink. Only one move is yours to pl
 | Font       | `--font-sans`, `--font-mono`                                                                            |
 
 The UI loads IBM Plex Sans and IBM Plex Mono from Google Fonts. The font stacks fall back to system fonts, so the UI still renders offline.
+
+## Breakpoints
+
+A stylesheet uses three viewport widths in `@media`: 760 px, 900 px, and 1280 px. `npm run lint:check` fails on another width.
+
+| Width                           | Change                                                                                   |
+| ------------------------------- | ---------------------------------------------------------------------------------------- |
+| 1279 px and narrower            | The status bar puts its secondary views in More. The plan tile hides its board.          |
+| 1280 px and wider (`min-width`) | An open drawer moves the main area aside.                                                |
+| 900 px and narrower             | The nav rail is above the main area. Chats shows the list or the conversation, not both. |
+| 760 px and narrower             | The components use their narrow layout.                                                  |
+
+The status bar also has a rule at 400 px, because the actor name does not fit on a small phone. `componentBreakpoints` in `scripts/check-styles.ts` lists it. Do not add an entry for new work. Use a container query when a component depends on the width of its container.
+
+A scroll container that holds an absolutely positioned child, for example an `sc-sr` label, has `position: relative`. Without it, the child widens the page.
 
 ## Status language
 
@@ -94,9 +109,27 @@ Each component is one function in `plugin/src/ui/components/<name>.ts`, with its
 | Tester card    | `testerCard`, `timeline`                       | `sc-tcard`, `sc-timeline`, `sc-event`         |
 | Instance card  | `instanceCard`, `instanceCards`                | `sc-instances`, `sc-instance`                 |
 
+## Work and record
+
+A page shows the open work first and the record after it.
+
+- The plan page shows the banner, the objective, the open questions, and the runs. A plan that waits for approval shows its decision there.
+- The other sections are the record: approval, rules, tests, requirements, claims, answered questions, decisions, explorations, and versions. Each is a closed fold. A plan that waits for approval opens the folds that the approver must read.
+- A section with no entries does not show. Its tab does not show.
+- A highlight does not change the height of a row. In a main area of 800 px and wider, the options of a row are on its line.
+- The tables of one page share their column widths (`sc-table is-record`).
+
 ## Keys
 
 Every action has a key, shown as a cap before its word. The status bar shows at most three key hints.
+
+- The arrows move. Up and Down move the highlight. Right goes one step deeper. Left goes one step back.
+- The numbers decide. A number chooses the option with that cap. The options belong to the highlighted record, or to the open record in the drawer.
+- A record is decided where it is. A question, a finding, a run, and a plan each have their decision in the row or in the drawer. The full run or plan is one link away.
+- An option that records a decision with one key asks first. The question shows the text that Checkmate records. Enter records it, and Esc records nothing. An option that only defers does not ask.
+- On a page that waits for a decision, the decisions have the numbers. A number goes to the rationale when the decision needs one. Ctrl+Enter in the rationale goes to the numbered decisions.
+- A number never records a decision that needs a rationale without the rationale and a confirmation.
+- A closed section acts as a row: Right opens it, Left closes it, and Left on a closed section goes back.
 
 ## Accessibility
 

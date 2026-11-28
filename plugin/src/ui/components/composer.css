@@ -20,7 +20,7 @@
 }
 .sc-composer textarea {
 	min-height: 72px;
-	padding: 12px var(--space-4);
+	padding: var(--space-3) var(--space-4);
 	border: 0;
 	resize: none;
 	background: transparent;

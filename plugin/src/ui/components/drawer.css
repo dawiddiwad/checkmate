@@ -78,7 +78,7 @@
 	border-color: var(--ink);
 	font-weight: 600;
 }
-@media (min-width: 1200px) {
+@media (min-width: 1280px) {
 	.sc-shell.has-drawer .sc-main {
 		margin-right: var(--drawer-w);
 	}
@@ -97,9 +97,9 @@
 	flex: none;
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: var(--space-2);
 	height: 48px;
-	padding: 0 16px;
+	padding: 0 var(--space-4);
 }
 .sc-pane-h::after {
 	content: '';
@@ -115,7 +115,7 @@
 }
 .sc-today,
 .sc-why {
-	padding: 8px 12px;
+	padding: var(--space-2) var(--space-3);
 	font: 400 14px/20px var(--font-sans);
 	background: var(--surface-2);
 	border-left: 2px solid var(--edge);
@@ -133,10 +133,10 @@
 .sc-compare {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
-	gap: 8px;
+	gap: var(--space-2);
 }
 .sc-compare > div {
-	padding: 8px 12px;
+	padding: var(--space-2) var(--space-3);
 	border: 1px solid var(--hair);
 }
 .sc-compare p {
@@ -145,6 +145,6 @@
 }
 .sc-steps {
 	margin: 0;
-	padding-left: 24px;
+	padding-left: var(--space-5);
 	font: 400 14px/20px var(--font-sans);
 }

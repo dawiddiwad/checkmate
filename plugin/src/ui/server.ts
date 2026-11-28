@@ -34,6 +34,7 @@ import {
 import { closeOpenPermissions, decidePermission, openPermissions, permissionOf } from '../permissions.ts'
 import {
 	explorationState,
+	explorationStatus,
 	recordStop,
 	stopPending,
 	startEnding,
@@ -1350,10 +1351,11 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		try {
 			const answers = unusedAnswers(store, explorationId).length
 			startFollow(store, actor, { explorationId, allow: [], claudeArgs: [] }, launchEnv())
-			redirect(request.res, `/explorations/${explorationId}`, [
-				...cookies,
-				cookie('checkmate_toast', `Testing ${plural(answers, 'answer')} of ${explorationId}`, 60),
-			])
+			const session = explorationStatus(store, explorationId).path === 'session'
+			const flash = session
+				? `The follow-up of ${explorationId} waits for the session that started the test`
+				: `Testing ${plural(answers, 'answer')} of ${explorationId}`
+			redirect(request.res, `/explorations/${explorationId}`, [...cookies, cookie('checkmate_toast', flash, 60)])
 		} catch (error) {
 			refuse(engineText(error))
 		}
@@ -1407,7 +1409,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		} catch (error) {
 			return refuse(engineText(error))
 		}
-		const flash = explorer ? `Stopping tester ${explorer} of ${explorationId}…` : `Stopping ${explorationId}…`
+		const session = explorationStatus(store, explorationId).path === 'session'
+		const flash = explorer
+			? `Stopping tester ${explorer} of ${explorationId}…`
+			: session
+				? `Stopped ${explorationId}. End its testers in the session`
+				: `Stopping ${explorationId}…`
 		redirect(request.res, back, [...cookies, cookie('checkmate_toast', flash, 60)])
 	}
 

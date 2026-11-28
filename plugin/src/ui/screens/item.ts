@@ -236,15 +236,7 @@ function questionBody(context: Context, review: Review, item: Item, back: string
 }
 
 function approvalBody(item: Item) {
-	return html`<p class="sc-today">${item.title}</p>
-		<div class="sc-row-btns">
-			${button({
-				label: `Open ${item.kind === 'approval' && item.key.startsWith('p:') ? 'the plan' : 'the run'} to decide`,
-				href: item.href,
-				emphasis: 'primary',
-				attrs: { 'data-sub': true, 'data-href': item.href, 'data-label': 'Open' },
-			})}
-		</div>`
+	return html`<p class="sc-today">${item.title}</p>`
 }
 
 export function recordDrawer(

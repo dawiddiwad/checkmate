@@ -3299,9 +3299,12 @@ section:not([class]) > .sc-sec-h {
 	font: 400 14px/20px var(--font-sans);
 	color: var(--muted);
 }
-@media (max-width: 760px) {
+@container main (max-width: 640px) {
 	.sc-banner {
 		flex-wrap: wrap;
+	}
+	.sc-banner-t {
+		flex-basis: 60%;
 	}
 }
 

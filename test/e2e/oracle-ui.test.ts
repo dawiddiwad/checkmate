@@ -28,7 +28,7 @@ import { openTest, launched, entries, done, ended, stacks } from '../exploration
 import { asking, bash, allOf, openOf, plainBody, waitOpen } from '../permissions.ts'
 import { planDetail } from '../../plugin/src/index.ts'
 import { answerGap } from '../../plugin/src/plans.ts'
-import { mergedClaims } from '../../plugin/src/views.ts'
+import { mergedClaims, runDetail } from '../../plugin/src/views.ts'
 import { fakeClaude } from '../claude.ts'
 import { beginRun, checkAssertion, closeTest, finishRun } from '../../plugin/src/runs.ts'
 
@@ -939,6 +939,53 @@ test(
 			Number(read(workspace, (db) => db.db.prepare('SELECT count(*) AS n FROM operations').get()!.n)),
 			historyBefore + 1
 		)
+	}
+)
+
+test(
+	'The number keys open a waiting run from Needs you and record its acceptance — a decision needs the mouse.',
+	{ skip: browserSkip, timeout: 60_000 },
+	async (t) => {
+		const workspace = directory(t)
+		t.after(() => endProcessesIn(workspace))
+		seedDemo(workspace)
+		const ui = await startUi(t, workspace)
+		const { page } = await pageFor(t, ui.url)
+		const focusOn = (selector: string) =>
+			page.waitForFunction((wanted) => document.activeElement?.matches(wanted), selector)
+		await page.goto(new URL('/plans/checkout?view=needs&focus=list&at=r%3Arun-7', ui.url).href)
+		await focusOn('[data-row][data-key="r:run-7"]')
+		await page.keyboard.press('1')
+		await page.waitForURL(/\/runs\/run-7#decide$/)
+		await focusOn('[data-rationale]')
+		await page.keyboard.press('Escape')
+		await page.keyboard.press('1')
+		await focusOn('[data-rationale]')
+		assert.equal(
+			read(workspace, (db) => runDetail(db, 'run-7').result?.acceptance),
+			'pending',
+			'a number key records no decision without a rationale'
+		)
+		await page.keyboard.type('The failure is the known stacking defect.')
+		await page.keyboard.press('Control+Enter')
+		await focusOn('[data-choose] [data-option]')
+		await page.keyboard.press('1')
+		await focusOn('[data-confirm-submit]')
+		await page.keyboard.press('Enter')
+		await page.locator('[data-region="state"]').filter({ hasText: 'accepted' }).waitFor()
+		const decision = read(workspace, (db) => runDetail(db, 'run-7').result?.latestDecision)
+		assert.equal(decision?.verdict, 'approved')
+		assert.equal(decision?.rationale, 'The failure is the known stacking defect.')
+		await page.goto(new URL('/runs/run-7?item=test%3AT4', ui.url).href)
+		const check = page.locator('summary.asr-row').first()
+		await check.evaluate((summary) => ((summary.parentElement as HTMLDetailsElement).open = false))
+		await check.focus()
+		await page.keyboard.press('ArrowRight')
+		assert.equal(await check.evaluate((summary) => (summary.parentElement as HTMLDetailsElement).open), true)
+		await page.keyboard.press('ArrowLeft')
+		assert.equal(await check.evaluate((summary) => (summary.parentElement as HTMLDetailsElement).open), false)
+		await page.keyboard.press('ArrowLeft')
+		await page.waitForURL(/\/runs\/run-7$/)
 	}
 )
 

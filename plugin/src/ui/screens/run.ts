@@ -6,7 +6,7 @@ import type { FormState } from '../forms.ts'
 import type { Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
 import { resultCell } from '../components/board.ts'
-import { formButton } from '../components/button.ts'
+import { button, formButton } from '../components/button.ts'
 import type { TableCell } from '../components/data-table.ts'
 import { dataTable, tableRow } from '../components/data-table.ts'
 import { evidenceList } from '../components/evidence-viewer.ts'
@@ -601,6 +601,13 @@ function runHead(detail: Detail, label: string | null) {
 				>
 			</p>
 		</div>
+		${
+			result?.acceptance === 'pending'
+				? html`<div class="sc-h-act">
+						${button({ label: `Decide on ${detail.runId}`, href: '#decide', emphasis: 'unblocks' })}
+					</div>`
+				: ''
+		}
 	</header>`
 }
 

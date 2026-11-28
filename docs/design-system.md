@@ -113,6 +113,13 @@ Each component is one function in `plugin/src/ui/components/<name>.ts`, with its
 
 Every action has a key, shown as a cap before its word. The status bar shows at most three key hints.
 
+- The arrows move. Up and Down move the highlight. Right goes one step deeper. Left goes one step back.
+- The numbers decide. A number chooses the option with that cap. The options belong to the highlighted record, or to the open record in the drawer.
+- A record that waits for a decision on another page has one option: 1 opens that page at the decision.
+- On a page that waits for a decision, the decisions have the numbers. A number goes to the rationale when the decision needs one. Ctrl+Enter in the rationale goes to the numbered decisions.
+- A number never records a decision that needs a rationale without the rationale and a confirmation.
+- A closed section acts as a row: Right opens it, Left closes it, and Left on a closed section goes back.
+
 ## Accessibility
 
 - Text and background pairs meet a 4.5:1 contrast ratio, and 3:1 for text of 24 px and larger. Control borders meet 3:1.

@@ -84,7 +84,7 @@ export const keyTable = [
 	},
 	{
 		caps: ['1', '2', '3', '…', '9'],
-		help: 'Choose an option of the highlighted record. The options are numbered from left to right as shown. When records are selected, the numbers act on the selection, and an action on more than one record asks first. On a rule or an area in the navigator, choose a build column; the same number again shows all builds.',
+		help: 'Choose an option of the highlighted record. The options are numbered from left to right as shown. When the record has no options and the page waits for a decision, the numbers choose the decision. When records are selected, the numbers act on the selection, and an action on more than one record asks first. On a rule or an area in the navigator, choose a build column; the same number again shows all builds.',
 		test: (event) => /^[1-9]$/.test(event.key),
 		run: (event) => choose(Number(event.key)),
 		hint: () => {
@@ -144,7 +144,7 @@ export const keyTable = [
 const fieldTable = [
 	{ caps: ['Enter'], help: 'Send a one-line answer, a reason, or a name.' },
 	{ caps: ['Shift+Enter'], help: 'Start a new line.' },
-	{ caps: ['Ctrl+Enter'], help: 'Send a larger form, for example a decision on the plan page.' },
+	{ caps: ['Ctrl+Enter'], help: 'Send a larger form. In a rationale, go to the numbered decisions.' },
 	{ caps: ['Esc'], help: 'Leave the field. The text stays in the field.' },
 	{ caps: ['←', '→'], help: 'Move the caret. The arrows do not move the highlight while you type.' },
 ]
@@ -227,7 +227,7 @@ export function attachKeyboard() {
 		if (typingIn(target)) return fieldKey(event)
 		if (event.ctrlKey || event.metaKey) return
 		if (target.closest?.('[data-actions]') && actionsKey(event)) return
-		const fold = target.matches?.('details.fold > summary') ? target.parentElement : null
+		const fold = target.matches?.('details:not([data-menu]) > summary') ? target.parentElement : null
 		if (fold && (event.key === 'ArrowRight' || (event.key === 'ArrowLeft' && fold.open))) {
 			fold.open = event.key === 'ArrowRight'
 			return event.preventDefault()
@@ -247,7 +247,9 @@ export function attachKeyboard() {
 		if (chatTurn?.contains(chatControl) && (event.key === 'Enter' || event.key === ' ' || /^Arrow/.test(event.key)))
 			return
 		if (!inRecords && (event.key === 'Enter' || event.key === ' ')) return
-		if (!inRecords && /^Arrow/.test(event.key) && target.closest?.('form, details, .menu-list')) return
+		const leavesFold = fold && event.key === 'ArrowLeft'
+		if (!inRecords && !leavesFold && /^Arrow/.test(event.key) && target.closest?.('form, details, .menu-list'))
+			return
 		const entry = keyTable.find((each) => each.test(event))
 		if (!entry) return
 		event.preventDefault()

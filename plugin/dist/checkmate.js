@@ -29021,12 +29021,16 @@ function confirmStep(context2, verdict, state) {
 	</form>`;
 }
 function chooseStep(context2, verdict, state) {
-  const button2 = (choice2, primary) => formButton({
+  const choose = (choice2, n) => button({
     label: choice2.label,
-    emphasis: primary ? "primary" : void 0,
+    keyName: n,
+    keySpoken: false,
+    emphasis: n === 1 ? "primary" : void 0,
     attrs: {
       name: "verdict",
       value: choice2.value,
+      "data-option": true,
+      "aria-label": `${n}: ${choice2.label}`,
       "data-needs-rationale": true,
       "data-confirm-label": choice2.confirm,
       "data-summary": choice2.summary
@@ -29039,7 +29043,7 @@ function chooseStep(context2, verdict, state) {
 			<p class="sc-label">Confirm</p>
 			<p data-confirm-summary></p>
 		</div>
-		<div class="sc-row-btns" data-choose>${button2(verdict.approve, true)} ${button2(verdict.reject, false)}</div>
+		<div class="sc-row-btns" data-choose>${choose(verdict.approve, 1)} ${choose(verdict.reject, 2)}</div>
 		<div class="sc-row-btns" data-confirm-buttons hidden>
 			${formButton({ label: "Confirm", emphasis: "primary", attrs: { name: "confirmed", value: "1", "data-confirm-submit": true } })}
 			${formButton({ label: "Back", attrs: { type: "button", "data-confirm-back": true } })}
@@ -31416,6 +31420,17 @@ function rightAsBuilt(question) {
   return question.actual ? `Right as built: ${question.actual}` : "Right as built.";
 }
 function optionsOf(context2, review, item) {
+  if (item.kind === "approval") {
+    const subject = item.key.startsWith("p:") ? "the plan" : "the run";
+    return [
+      optionButton({
+        n: 1,
+        label: `Open ${subject}`,
+        name: `Open ${subject} to decide`,
+        href: `${item.href}#decide`
+      })
+    ];
+  }
   if (item.kind === "finding")
     return [
       optionForm(context2, item, 1, "Yes, a defect", [["verdict", "approved"]], "Yes, accept as a defect"),
@@ -40158,15 +40173,7 @@ function questionBody(context2, review, item, back, state) {
   }) : ""}`;
 }
 function approvalBody(item) {
-  return html2`<p class="sc-today">${item.title}</p>
-		<div class="sc-row-btns">
-			${button({
-    label: `Open ${item.kind === "approval" && item.key.startsWith("p:") ? "the plan" : "the run"} to decide`,
-    href: item.href,
-    emphasis: "primary",
-    attrs: { "data-sub": true, "data-href": item.href, "data-label": "Open" }
-  })}
-		</div>`;
+  return html2`<p class="sc-today">${item.title}</p>`;
 }
 function recordDrawer(store, context2, review, item, view, refusal) {
   const list5 = reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`);
@@ -43770,6 +43777,9 @@ function runHead(detail, label) {
 				>
 			</p>
 		</div>
+		${result?.acceptance === "pending" ? html2`<div class="sc-h-act">
+						${button({ label: `Decide on ${detail.runId}`, href: "#decide", emphasis: "unblocks" })}
+					</div>` : ""}
 	</header>`;
 }
 function decisionSide(store, context2, detail, state, selected) {

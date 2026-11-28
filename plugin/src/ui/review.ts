@@ -343,6 +343,17 @@ export function rightAsBuilt(question: { actual: string | null }) {
 }
 
 export function optionsOf(context: Context, review: Review, item: Item): Html[] {
+	if (item.kind === 'approval') {
+		const subject = item.key.startsWith('p:') ? 'the plan' : 'the run'
+		return [
+			optionButton({
+				n: 1,
+				label: `Open ${subject}`,
+				name: `Open ${subject} to decide`,
+				href: `${item.href}#decide`,
+			}),
+		]
+	}
 	if (item.kind === 'finding')
 		return [
 			optionForm(context, item, 1, 'Yes, a defect', [['verdict', 'approved']], 'Yes, accept as a defect'),

@@ -16,7 +16,7 @@ A chess scoresheet records every move in plain ink. Only one move is yours to pl
 6. **Square and flat.** Corners are 0. Depth is a 1 px `--hair` line. There are no shadows.
 7. **Say less.** Use sentence case. Show the number first, then the word. Only the brand word and keys are uppercase.
 8. **One bar, at the bottom.** The status bar (`sc-bar`) is the only bar.
-9. **Gaps, not margins.** A container sets the space between its children with `gap`. Components have no outer margin. Use 8 px from a label to its control and help, 12 px from a section heading to its content, 16 px between fields, and 24 px between sections. The main area has 32 px padding.
+9. **Gaps, not margins.** A container sets the space between its children with `gap`. Components have no outer margin. Every gap and padding is a `--space` token. Use 4 px between the lines of one item, 8 px from a label to its control and help, 12 px from a section heading to its content, 16 px between fields, and 24 px between sections. The main area has 32 px padding.
 10. **Most urgent first.** Lists put what blocks testing first, then findings and defects by severity, then approvals and open questions. Answered, deferred, and rejected items come last.
 
 ## Tokens
@@ -41,11 +41,18 @@ The UI loads IBM Plex Sans and IBM Plex Mono from Google Fonts. The font stacks 
 
 ## Breakpoints
 
-A stylesheet uses two viewport widths in `@media`: 760 px and 900 px. At 900 px and narrower, the nav rail is above the main area. At 760 px and narrower, the components use their narrow layout. `npm run lint:check` fails on another width.
+A stylesheet uses three viewport widths in `@media`: 760 px, 900 px, and 1280 px. `npm run lint:check` fails on another width.
 
-Four components have their own width, because their content stops fitting there: the chat workspace (850 px), the drawer (1200 px), the plan tile (1279 px), and the status bar (1240 px and 400 px). Use a container query when a component depends on the width of its container.
+| Width                           | Change                                                                                   |
+| ------------------------------- | ---------------------------------------------------------------------------------------- |
+| 1279 px and narrower            | The status bar puts its secondary views in More. The plan tile hides its board.          |
+| 1280 px and wider (`min-width`) | An open drawer moves the main area aside.                                                |
+| 900 px and narrower             | The nav rail is above the main area. Chats shows the list or the conversation, not both. |
+| 760 px and narrower             | The components use their narrow layout.                                                  |
 
-`scripts/check-styles.ts` has the lists of the known exceptions: `componentBreakpoints` for the widths, and `offScaleSpacing` for the 42 spacing values that are not on the space scale (2, 6, 10, 20, and 28 px). Do not add an entry for new work. Remove an entry when you move its value to a token. The check fails on an entry that no stylesheet has.
+The status bar also has a rule at 400 px, because the actor name does not fit on a small phone. `componentBreakpoints` in `scripts/check-styles.ts` lists it. Do not add an entry for new work. Use a container query when a component depends on the width of its container.
+
+A scroll container that holds an absolutely positioned child, for example an `sc-sr` label, has `position: relative`. Without it, the child widens the page.
 
 ## Status language
 

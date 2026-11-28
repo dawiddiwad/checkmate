@@ -151,9 +151,6 @@
 }
 .sc-sec-h {
 	margin: var(--space-5) 0 var(--space-2);
-	font: 600 13px/16px var(--font-sans);
-	letter-spacing: 0;
-	color: var(--muted);
 }
 .sc-sec-h:first-child {
 	margin-top: 0;
@@ -182,7 +179,7 @@
 section > h2 {
 	display: flex;
 	align-items: baseline;
-	gap: 10px;
+	gap: var(--space-2);
 	font: 600 17px/22px var(--font-sans);
 	letter-spacing: 0;
 	color: var(--ink);

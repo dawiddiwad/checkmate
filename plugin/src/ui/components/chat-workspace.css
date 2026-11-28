@@ -35,7 +35,7 @@
 .sc-chat-title {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-1);
 	min-width: 0;
 }
 .sc-chat-cost {
@@ -55,8 +55,8 @@
 .sc-chat-item {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
-	padding: 10px var(--space-4);
+	gap: var(--space-1);
+	padding: var(--space-3) var(--space-4);
 	border-bottom: var(--hairline) solid var(--hair);
 	color: var(--ink);
 	text-decoration: none;
@@ -109,7 +109,7 @@
 .sc-chat-back {
 	display: none;
 }
-@media (max-width: 850px) {
+@media (max-width: 900px) {
 	.sc-chat {
 		grid-template-columns: minmax(0, 1fr);
 	}

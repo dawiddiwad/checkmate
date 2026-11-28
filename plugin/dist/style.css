@@ -336,7 +336,7 @@ dialog::backdrop {
 .sc-key-hint {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	gap: var(--space-2);
 	padding: 0;
 	border: 0;
 	background: transparent;
@@ -358,14 +358,14 @@ button.sc-key-hint:hover {
 	vertical-align: 0;
 }
 .sc-key + .sc-key {
-	margin-left: 2px;
+	margin-left: var(--space-1);
 }
 
 /* components/brand.css */
 .sc-brand {
 	display: inline-flex;
 	align-items: center;
-	gap: 10px;
+	gap: var(--space-2);
 	color: var(--ink);
 	text-decoration: none;
 }
@@ -444,9 +444,9 @@ button.sc-key-hint:hover {
 .sc-bar-nav summary {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: var(--space-2);
 	height: 100%;
-	padding: 0 10px;
+	padding: 0 var(--space-3);
 	color: var(--muted);
 	text-decoration: none;
 	cursor: pointer;
@@ -456,7 +456,7 @@ button.sc-key-hint:hover {
 	color: var(--ink);
 }
 .sc-bar-nav a b {
-	margin-left: 6px;
+	margin-left: var(--space-2);
 	font: 400 13px/20px var(--font-mono);
 }
 .sc-bar-nav a[aria-current='page'] {
@@ -617,7 +617,7 @@ button.sc-key-hint:hover {
 	font: 500 12px/16px var(--font-mono);
 	overflow-wrap: anywhere;
 }
-@media (max-width: 1240px) {
+@media (max-width: 1279px) {
 	.sc-bar-nav [data-wide] {
 		display: none;
 	}
@@ -723,7 +723,7 @@ button.sc-key-hint:hover {
 	--mark-edge: var(--edge-soft);
 }
 .sc-mark.is-crit {
-	padding: 0 6px;
+	padding: 0 var(--space-2);
 	background: var(--fail);
 	color: var(--on-signal);
 	font-weight: 600;
@@ -823,7 +823,7 @@ button.sc-key-hint:hover {
 	font-size: 15px;
 }
 .sc-btn.has-key {
-	padding-left: 10px;
+	padding-left: var(--space-2);
 }
 .sc-btn.is-primary {
 	background: var(--ink);
@@ -1007,7 +1007,7 @@ fieldset.edit-card > legend + * {
 .sc-fold > summary {
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	gap: var(--space-2);
 	min-height: var(--ctl-lg);
 	padding: 0 var(--space-4);
 	list-style: none;
@@ -1032,7 +1032,7 @@ fieldset.edit-card > legend + * {
 .sc-fold > summary :is(h2, h3) {
 	display: flex;
 	align-items: baseline;
-	gap: 10px;
+	gap: var(--space-2);
 	font: inherit;
 	letter-spacing: 0;
 }
@@ -1155,7 +1155,7 @@ label.inline {
 }
 .sc-error::before {
 	content: '×';
-	margin-right: 6px;
+	margin-right: var(--space-2);
 	font-family: var(--font-mono);
 	font-weight: 600;
 }
@@ -1174,7 +1174,7 @@ fieldset {
 }
 legend {
 	padding: 0;
-	margin-bottom: 6px;
+	margin-bottom: var(--space-2);
 	font: 500 13px/20px var(--font-sans);
 	letter-spacing: 0;
 	color: var(--ink);
@@ -1213,6 +1213,7 @@ legend {
 
 /* components/data-table.css */
 .sc-table-wrap {
+	position: relative;
 	max-width: 100%;
 	overflow: auto;
 	background: var(--surface);
@@ -1226,7 +1227,7 @@ legend {
 	color: var(--ink);
 }
 .sc-table th {
-	padding: 10px var(--space-4);
+	padding: var(--space-3) var(--space-4);
 	text-align: left;
 	white-space: nowrap;
 	background: var(--surface-2);
@@ -1422,14 +1423,13 @@ details.menu > summary::-webkit-details-marker {
 	max-height: calc(100vh - var(--bar-h) - var(--dock-h, 0px));
 	overflow-y: auto;
 	padding: var(--space-5) 0;
-	border-right: var(--hairline) solid var(--hair);
 	background: var(--ground);
 	font: 400 14px/20px var(--font-sans);
 }
 .sc-rail-tree {
 	display: flex;
 	flex-direction: column;
-	gap: 28px;
+	gap: var(--space-5);
 }
 .sc-rail-nav {
 	display: flex;
@@ -1441,7 +1441,7 @@ details.menu > summary::-webkit-details-marker {
 	gap: var(--space-1);
 }
 .sc-rail-h {
-	padding: 0 var(--space-5) 6px;
+	padding: 0 var(--space-5) var(--space-2);
 	font: 600 13px/20px var(--font-sans);
 	color: var(--muted);
 }
@@ -1526,12 +1526,17 @@ details.menu > summary::-webkit-details-marker {
 	bottom: calc(100% + var(--space-1));
 	display: inline-grid;
 }
+.sc-rail + .sc-main {
+	border-left: var(--hairline) solid var(--hair);
+}
 @media (max-width: 900px) {
+	.sc-rail + .sc-main {
+		border-left: 0;
+	}
 	.sc-rail {
 		position: static;
 		width: auto;
 		max-height: none;
-		border-right: 0;
 		border-bottom: var(--hairline) solid var(--hair);
 	}
 	.sc-rail-row {
@@ -1596,7 +1601,7 @@ details.menu > summary::-webkit-details-marker {
 .sc-legend {
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--space-2) 20px;
+	gap: var(--space-2) var(--space-5);
 	margin: 0;
 	padding: 0;
 	list-style: none;
@@ -1606,7 +1611,7 @@ details.menu > summary::-webkit-details-marker {
 .sc-legend li {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: var(--space-2);
 }
 .sc-legend .sc-cell {
 	--cell: var(--legend-cell);
@@ -1977,7 +1982,7 @@ details.menu > summary::-webkit-details-marker {
 	border-color: var(--ink);
 	font-weight: 600;
 }
-@media (min-width: 1200px) {
+@media (min-width: 1280px) {
 	.sc-shell.has-drawer .sc-main {
 		margin-right: var(--drawer-w);
 	}
@@ -2084,7 +2089,7 @@ details.menu > summary::-webkit-details-marker {
 	align-items: flex-start;
 	gap: var(--space-3);
 	margin: 0;
-	padding: 10px var(--space-4);
+	padding: var(--space-3) var(--space-4);
 	border: var(--hairline) solid var(--edge);
 	background: var(--surface);
 	color: var(--ink);
@@ -2149,7 +2154,7 @@ details.menu > summary::-webkit-details-marker {
 .sc-keys-table td,
 .sc-keys-table th {
 	height: auto;
-	padding: 6px var(--space-3);
+	padding: var(--space-2) var(--space-3);
 	white-space: normal;
 }
 .sc-keys-table th {
@@ -2216,7 +2221,7 @@ details.menu > summary::-webkit-details-marker {
 	align-items: baseline;
 	gap: var(--space-3);
 	min-height: var(--ctl-lg);
-	padding: 10px var(--space-4);
+	padding: var(--space-3) var(--space-4);
 	border-bottom: var(--hairline) solid var(--hair);
 	font: 400 14px/20px var(--font-sans);
 	color: var(--ink);
@@ -2282,7 +2287,6 @@ details.menu > summary::-webkit-details-marker {
 	font: 500 12px/16px var(--font-mono);
 }
 .test-h h3,
-.sc-sec-h,
 .record-h h3 {
 	font: 600 16px/24px var(--font-sans);
 }
@@ -2420,7 +2424,7 @@ details.menu > summary::-webkit-details-marker {
 	text-decoration-color: var(--edge);
 }
 .sc-diff .arrow {
-	padding: 0 6px;
+	padding: 0 var(--space-2);
 	font: 500 13px/20px var(--font-mono);
 	color: var(--muted);
 }
@@ -2442,8 +2446,8 @@ details.menu > summary::-webkit-details-marker {
 .sc-group-h {
 	display: flex;
 	align-items: baseline;
-	gap: 10px;
-	padding: 10px var(--space-4);
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-4);
 	background: var(--surface-2);
 	border-bottom: var(--hairline) solid var(--hair);
 	font: 600 13px/20px var(--font-sans);
@@ -2547,7 +2551,7 @@ details.menu > summary::-webkit-details-marker {
 }
 .sc-c-opts .sc-btn {
 	height: 28px;
-	padding: 0 6px;
+	padding: 0 var(--space-2);
 	border-color: transparent;
 	background: transparent;
 	font-size: 13px;
@@ -2666,7 +2670,7 @@ details.menu > summary::-webkit-details-marker {
 .sc-recipe {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-1);
 	padding: var(--space-3) var(--space-4);
 	border-bottom: var(--hairline) solid var(--hair);
 	background: var(--surface);
@@ -2895,9 +2899,6 @@ details.menu > summary::-webkit-details-marker {
 }
 .sc-sec-h {
 	margin: var(--space-5) 0 var(--space-2);
-	font: 600 13px/16px var(--font-sans);
-	letter-spacing: 0;
-	color: var(--muted);
 }
 .sc-sec-h:first-child {
 	margin-top: 0;
@@ -2926,7 +2927,7 @@ details.menu > summary::-webkit-details-marker {
 section > h2 {
 	display: flex;
 	align-items: baseline;
-	gap: 10px;
+	gap: var(--space-2);
 	font: 600 17px/22px var(--font-sans);
 	letter-spacing: 0;
 	color: var(--ink);
@@ -3099,7 +3100,7 @@ section:not([class]) > .sc-sec-h {
 .sc-plan-main {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: var(--space-2);
 	min-width: 0;
 }
 .sc-plan-top {
@@ -3190,7 +3191,7 @@ section:not([class]) > .sc-sec-h {
 }
 .sc-radios legend {
 	width: 100%;
-	margin-bottom: 6px;
+	margin-bottom: var(--space-2);
 	padding: 0;
 }
 .sc-radio {
@@ -3199,7 +3200,7 @@ section:not([class]) > .sc-sec-h {
 	align-items: center;
 	gap: var(--space-2);
 	height: var(--ctl);
-	padding: 0 var(--space-3) 0 10px;
+	padding: 0 var(--space-3);
 	border: var(--hairline) solid var(--edge);
 	background: var(--surface);
 	color: var(--ink);
@@ -3275,7 +3276,7 @@ section:not([class]) > .sc-sec-h {
 	display: flex;
 	align-items: center;
 	gap: var(--space-5);
-	padding: var(--space-4) 20px;
+	padding: var(--space-4) var(--space-5);
 	background: var(--signal-soft);
 	box-shadow: inset var(--bar) 0 0 var(--signal);
 }
@@ -3287,7 +3288,7 @@ section:not([class]) > .sc-sec-h {
 	display: flex;
 	flex: 1;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-1);
 	min-width: 0;
 }
 .sc-banner-t b {
@@ -3377,7 +3378,7 @@ a.sc-chip:hover {
 	align-items: flex-start;
 	gap: var(--space-2);
 	text-align: left;
-	padding: var(--space-4) 20px;
+	padding: var(--space-4) var(--space-5);
 	background: var(--surface);
 	border: var(--hairline) solid var(--hair);
 	font: 400 14px/20px var(--font-sans);
@@ -3403,7 +3404,7 @@ a.sc-chip:hover {
 .sc-tab {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	gap: var(--space-2);
 	height: var(--ctl-lg);
 	padding: 0 var(--space-4);
 	margin-bottom: calc(var(--hairline) * -1);
@@ -3679,7 +3680,7 @@ main a:active {
 .sc-ask-list.asks > li {
 	flex-direction: column;
 	align-items: flex-start;
-	gap: 2px;
+	gap: var(--space-1);
 	padding: var(--space-2) var(--space-3);
 	border-bottom: var(--hairline) solid var(--hair);
 }
@@ -3700,7 +3701,7 @@ main a:active {
 }
 .sc-ask-list.asks .sc-help {
 	margin: 0;
-	padding-left: 28px;
+	padding-left: var(--space-5);
 	max-width: 72ch;
 	font-size: 13px;
 }
@@ -3849,7 +3850,7 @@ main a:active {
 .sc-chat-title {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-1);
 	min-width: 0;
 }
 .sc-chat-cost {
@@ -3869,8 +3870,8 @@ main a:active {
 .sc-chat-item {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
-	padding: 10px var(--space-4);
+	gap: var(--space-1);
+	padding: var(--space-3) var(--space-4);
 	border-bottom: var(--hairline) solid var(--hair);
 	color: var(--ink);
 	text-decoration: none;
@@ -3923,7 +3924,7 @@ main a:active {
 .sc-chat-back {
 	display: none;
 }
-@media (max-width: 850px) {
+@media (max-width: 900px) {
 	.sc-chat {
 		grid-template-columns: minmax(0, 1fr);
 	}
@@ -4022,7 +4023,7 @@ main a:active {
 }
 .sc-md-table th,
 .sc-md-table td {
-	padding: 6px var(--space-3);
+	padding: var(--space-2) var(--space-3);
 	border: var(--hairline) solid var(--hair);
 	text-align: left;
 }
@@ -4139,7 +4140,7 @@ main a:active {
 .sc-tcard {
 	display: grid;
 	grid-template-columns: 56px minmax(0, 1fr) auto;
-	gap: 2px var(--space-3);
+	gap: var(--space-1) var(--space-3);
 	padding: var(--space-3) var(--space-4);
 	background: var(--surface);
 	border-bottom: var(--hairline) solid var(--hair);
@@ -4189,7 +4190,7 @@ main a:active {
 	display: flex;
 	flex-direction: column;
 	align-items: flex-end;
-	gap: 2px;
+	gap: var(--space-1);
 	font: 500 12px/16px var(--font-mono);
 	color: var(--muted);
 	white-space: nowrap;
@@ -4209,7 +4210,7 @@ main a:active {
 	display: grid;
 	grid-template-columns: 88px 16px minmax(0, 1fr) auto;
 	gap: 0 var(--space-3);
-	padding: 6px 0;
+	padding: var(--space-2) 0;
 	font: 400 14px/20px var(--font-sans);
 	cursor: pointer;
 }

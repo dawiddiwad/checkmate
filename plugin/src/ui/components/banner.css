@@ -2,7 +2,7 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-5);
-	padding: var(--space-4) 20px;
+	padding: var(--space-4) var(--space-5);
 	background: var(--signal-soft);
 	box-shadow: inset var(--bar) 0 0 var(--signal);
 }
@@ -14,7 +14,7 @@
 	display: flex;
 	flex: 1;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-1);
 	min-width: 0;
 }
 .sc-banner-t b {

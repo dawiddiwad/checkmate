@@ -78,7 +78,7 @@
 	border-color: var(--ink);
 	font-weight: 600;
 }
-@media (min-width: 1200px) {
+@media (min-width: 1280px) {
 	.sc-shell.has-drawer .sc-main {
 		margin-right: var(--drawer-w);
 	}

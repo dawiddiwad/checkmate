@@ -78,7 +78,7 @@
 }
 .sc-md-table th,
 .sc-md-table td {
-	padding: 6px var(--space-3);
+	padding: var(--space-2) var(--space-3);
 	border: var(--hairline) solid var(--hair);
 	text-align: left;
 }

@@ -11,41 +11,10 @@ const rawColour = new RegExp(
 )
 const spacingProperty = /^(?:(?:row-|column-)?gap|(?:padding|margin)(?:-[a-z-]+)?)$/
 const rawLength = /(?<![\w.-])-?(?:\d+\.?\d*|\.\d+)(?:px|rem|em)\b/g
-const breakpoints = ['760px', '900px']
+const breakpoints = ['760px', '900px', '1279px', '1280px']
 const componentBreakpoints: Record<string, string[]> = {
-	'components/chat-workspace.css': ['850px'],
-	'components/drawer.css': ['1200px'],
-	'components/plan-tile.css': ['1279px'],
-	'components/status-bar.css': ['1240px', '400px'],
+	'components/status-bar.css': ['400px'],
 }
-const offScaleSpacing: Record<string, string[]> = {
-	'components/banner.css': ['padding: var(--space-4) 20px', 'gap: 2px'],
-	'components/board.css': ['gap: var(--space-2) 20px', 'gap: 6px'],
-	'components/brand.css': ['gap: 10px'],
-	'components/button.css': ['padding-left: 10px'],
-	'components/chat-turn.css': ['padding: 6px var(--space-3)'],
-	'components/chat-workspace.css': ['gap: 2px', 'gap: 2px', 'padding: 10px var(--space-4)'],
-	'components/chips.css': ['padding: var(--space-4) 20px'],
-	'components/data-table.css': ['padding: 10px var(--space-4)'],
-	'components/field.css': ['margin-right: 6px', 'margin-bottom: 6px'],
-	'components/find-palette.css': ['padding: 10px var(--space-4)'],
-	'components/fold.css': ['gap: 10px', 'gap: 10px'],
-	'components/key.css': ['gap: 6px', 'margin-left: 2px'],
-	'components/keys-help.css': ['padding: 6px var(--space-3)'],
-	'components/list-row.css': ['gap: 10px', 'padding: 10px var(--space-4)', 'padding: 0 6px', 'gap: 2px'],
-	'components/nav-rail.css': ['gap: 28px', 'padding: 0 var(--space-5) 6px'],
-	'components/notice.css': ['padding: 10px var(--space-4)'],
-	'components/plan-tile.css': ['gap: 6px'],
-	'components/radio-group.css': ['margin-bottom: 6px', 'padding: 0 var(--space-3) 0 10px'],
-	'components/record-list.css': ['padding: 0 6px'],
-	'components/request-record.css': ['gap: 2px', 'padding-left: 28px'],
-	'components/status-bar.css': ['gap: 6px', 'padding: 0 10px', 'margin-left: 6px'],
-	'components/status-mark.css': ['padding: 0 6px'],
-	'components/tabs.css': ['gap: 6px'],
-	'components/tester-card.css': ['gap: 2px var(--space-3)', 'gap: 2px', 'padding: 6px 0'],
-	'layout.css': ['gap: 10px'],
-}
-
 const files = readdirSync(ui, { recursive: true })
 	.map(String)
 	.filter((name) => name.endsWith('.css') && name !== 'tokens.css')
@@ -57,7 +26,6 @@ const stale: string[] = []
 for (const name of files) {
 	const text = readFileSync(new URL(name, ui), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
 	const lineOf = (index: number) => `plugin/src/ui/${name}:${text.slice(0, index).split('\n').length}`
-	const knownSpacing = [...(offScaleSpacing[name] ?? [])]
 	const ownWidths = componentBreakpoints[name] ?? []
 	const unusedWidths = new Set(ownWidths)
 	for (const match of text.matchAll(/([-\w]+)\s*:\s*([^;{}]+)/g)) {
@@ -66,9 +34,7 @@ for (const name of files) {
 		if (rawColour.test(value)) colours.push(`${lineOf(match.index)}: ${declaration}`)
 		if (!spacingProperty.test(match[1])) continue
 		if (!(value.match(rawLength) ?? []).some((length) => parseFloat(length) !== 0)) continue
-		const known = knownSpacing.indexOf(declaration)
-		if (known === -1) spacing.push(`${lineOf(match.index)}: ${declaration}`)
-		else knownSpacing.splice(known, 1)
+		spacing.push(`${lineOf(match.index)}: ${declaration}`)
 	}
 	for (const match of text.matchAll(/@media[^{]*/g)) {
 		for (const [width] of match[0].matchAll(/\d+px/g)) {
@@ -77,10 +43,9 @@ for (const name of files) {
 			else widths.push(`${lineOf(match.index)}: ${match[0].trim()}`)
 		}
 	}
-	for (const declaration of knownSpacing) stale.push(`offScaleSpacing, ${name}: ${declaration}`)
 	for (const width of unusedWidths) stale.push(`componentBreakpoints, ${name}: ${width}`)
 }
-for (const name of [...Object.keys(offScaleSpacing), ...Object.keys(componentBreakpoints)]) {
+for (const name of Object.keys(componentBreakpoints)) {
 	if (!files.includes(name)) stale.push(`${name} is not a stylesheet`)
 }
 
@@ -93,5 +58,5 @@ function report(title: string, problems: string[]) {
 
 report('Use a colour token from plugin/src/ui/tokens.css, not a raw colour:', colours)
 report('Use a --space token from plugin/src/ui/tokens.css for gap, padding, and margin:', spacing)
-report(`Use a breakpoint of ${breakpoints.join(' or ')} in @media:`, widths)
+report(`Use a breakpoint from this list in @media: ${breakpoints.join(', ')}:`, widths)
 report('Remove these entries from scripts/check-styles.ts. The stylesheet no longer has them:', stale)

@@ -23,3 +23,7 @@ plugin/src/validators.js
 
 # Animation sources keep exact whitespace in their text.
 docs/media/*.html
+
+# Types that Claude Code writes when it loads the plugin from this folder
+plugin/.claude-plugin/types/
+plugin/tsconfig.json

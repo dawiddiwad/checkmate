@@ -6,5 +6,6 @@
 		"name": "Dawid Dobrowolski"
 	},
 	"repository": "https://github.com/dawiddiwad/checkmate",
-	"license": "MIT"
+	"license": "MIT",
+	"types": "./types/index.d.ts"
 }

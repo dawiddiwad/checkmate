@@ -31,3 +31,7 @@ app-docs
 cli/plugin/
 cli/README.md
 cli/LICENSE
+
+# Types that Claude Code writes when it loads the plugin from this folder
+plugin/.claude-plugin/types/
+plugin/tsconfig.json

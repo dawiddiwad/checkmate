@@ -178,6 +178,17 @@ For a pipeline, read the exit code, not only the text. The exit-code table for e
 
 A command can return `needs_decision` when a person must decide or provide input. Read each `reason:` line. It is not the same as a command failure. A `rejected` response lists a gate or validation reason. Correct that reason before retrying.
 
+### Terminal pane in Claude Code
+
+This pane is a proof of concept. In Claude Code, `/checkmate-panel` opens a pane beside the chat. The pane is read only. It shows:
+
+- the same items as `checkmate inbox`: open gaps, plans that need approval, results that need a decision, claims, and requested plans
+- each plan with its state and its owner, as `checkmate plan list` gives them
+
+The pane reads the record again after each turn, and every 15 seconds while it is open. **Refresh** reads it at once. A status line under the prompt gives the number of waiting items. To decide, use the review UI or the commands.
+
+The pane reads a record only when `.checkmate/checkmate.db` exists in the session folder. It does not create a record. It needs a Claude Code build that loads plugin hook modules. Other builds and Pi do not show it.
+
 An answer is pending until the planner applies it. Approval applies to one revision. A result decision applies to one recorded run. Acceptance means the record is correct; it does not mean that every test passed or that Checkmate released the application.
 
 ## Run recovery

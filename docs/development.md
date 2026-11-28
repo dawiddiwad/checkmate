@@ -28,11 +28,11 @@ Run the full gate:
 npm run phase:verify
 ```
 
-It runs type and generated-file checks, lint, Prettier, and `npm test`. The test command builds and packs the CLI, installs it into disposable workspaces, and runs every end-to-end case (`scripts/run-e2e.ts` has the expected count) with real SQLite, loopback applications, controlled hosts, Pi, and Chromium. It fails when a prerequisite is missing, a case is absent, or a case skips. CI runs `npm run phase:verify`.
+It runs type and generated-file checks, lint, Prettier, and `npm test`. The test command builds and packs the CLI, installs it into disposable workspaces, and runs every end-to-end case (`scripts/run-e2e.ts` has the expected count) with real SQLite, loopback applications, controlled hosts, Pi, and Chromium. It fails when a prerequisite is missing, a case is absent, or a case skips. CI runs `npm run phase:verify`. The release job does not repeat the end-to-end cases when it releases the commit that the verify job of the same workflow run tested: it runs the type, lint, and format checks on the new version. When the branch has a newer commit, or the job resumes a release commit, it runs `npm run phase:verify` again.
 
 The 43-scenario map is [test/e2e/scenarios.json](../test/e2e/scenarios.json). Some historical Factory campaign behavior is outside this checkout. The local external Factory fixture does not verify Factory checkout, archive, budget, or campaign ownership. Tests use controlled hosts; they do not test live model judgment or require paid model calls.
 
-Use `npm test` to run only the packaged end-to-end suite after you install the same prerequisites. Use Chromium and the real Pi CLI. The runner checks that the browser is executable and `pi --version` succeeds; it does not verify their identity.
+Use `npm test` to run only the packaged end-to-end suite after you install the same prerequisites. The runner starts `test/e2e/local.test.ts` in parallel shards: one for each processor, and at least three. On one processor it uses one shard, because shards give no speed there and a case with a short deadline can fail. Each shard runs every Nth case of the file. Set `CHECKMATE_TEST_SHARDS=1` to run the file in one process, for example to read the output of one failure in order. A case must not depend on another case. Use Chromium and the real Pi CLI. The runner checks that the browser is executable and `pi --version` succeeds; it does not verify their identity.
 
 ## Build and package
 

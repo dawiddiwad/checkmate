@@ -5,6 +5,8 @@ export type Fold = {
 	key: string
 	title: Html | string
 	headingId?: string
+	bodyId?: string
+	link?: Html | ''
 	count?: number | null
 	open?: boolean
 	region?: string
@@ -16,6 +18,8 @@ export function fold({
 	key,
 	title,
 	headingId,
+	bodyId,
+	link = '',
 	count = null,
 	open = false,
 	region = '',
@@ -30,8 +34,14 @@ export function fold({
 		${open ? html`open` : ''}
 	>
 		<summary>
-			${headingId === undefined ? html`<h2>${heading}</h2>` : html`<h2 id="${headingId}">${heading}</h2>`}
+			${headingId === undefined ? html`<h2>${heading}</h2>` : html`<h2 id="${headingId}">${heading}</h2>`}${link}
 		</summary>
-		<div class="sc-fold-b" ${listRegion ? html`data-list-region` : ''}>${body}</div>
+		<div
+			class="sc-fold-b"
+			${bodyId === undefined ? '' : html`id="${bodyId}"`}
+			${listRegion ? html`data-list-region` : ''}
+		>
+			${body}
+		</div>
 	</details>`
 }

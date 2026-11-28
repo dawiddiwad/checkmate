@@ -482,7 +482,7 @@ function section(id: string, title: string, rows: Html[], columns: string[]) {
 	if (!rows.length) return ''
 	return html`<section class="sc-sec" aria-labelledby="${id}">
 		<h2 class="sc-sec-h" id="${id}">${title}<b>${rows.length}</b></h2>
-		${dataTable({ columns, rows, scroll: true })}
+		${dataTable({ columns, rows, scroll: true, attrs: { class: 'is-record' } })}
 	</section>`
 }
 
@@ -706,4 +706,26 @@ export function runPage(
 				${decisionSide(store, context, detail, state, selected)}
 			</div>`,
 	}
+}
+
+export function runSummary(store: Store, runId: string) {
+	const detail = runDetail(store, runId)
+	const failed = detail.tests.flatMap((test) =>
+		test.assertions
+			.filter((assertion) => assertion.result && assertion.result !== 'passed')
+			.map(
+				(assertion) =>
+					html`<dt><code>${test.testId}.${assertion.assertionId}</code></dt>
+						<dd>
+							${statusMark({ state: assertion.result ?? 'waiting' })}
+							${sentence(assertion.check)}${assertion.observed ? html` Observed: ${assertion.observed}` : ''}
+						</dd>`
+			)
+	)
+	return html`${strip(detail)}
+	${failed.length ? html`<dl class="sc-facts" aria-label="Not passed">${failed}</dl>` : ''}`
+}
+
+export function runDecision(store: Store, context: Context, runId: string, state: FormState | null, extra: Html) {
+	return decisionPanel(store, context, runDetail(store, runId), state, extra, html``)
 }

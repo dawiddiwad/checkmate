@@ -184,12 +184,16 @@
 	grid-template-columns: 28px 112px 120px minmax(0, 1fr) 280px;
 }
 @container main (max-width: 1000px) {
-	.sc-row,
-	.sc-row.is-sel:has(> .sc-c-opts) {
+	.sc-row {
 		grid-template-columns: 28px 112px 80px minmax(0, 1fr);
 	}
 	.sc-row > .sc-c-meta {
 		display: none;
+	}
+}
+@container main (max-width: 800px) {
+	.sc-row.is-sel:has(> .sc-c-opts) {
+		grid-template-columns: 28px 112px 80px minmax(0, 1fr);
 	}
 	.sc-row.is-sel > .sc-c-opts {
 		grid-column: 2 / -1;

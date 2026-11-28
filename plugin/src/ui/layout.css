@@ -273,6 +273,9 @@ section:not([class]) > .sc-sec-h {
 .sc-stack.is-loose {
 	gap: var(--space-5);
 }
+.sc-stack.is-tight {
+	gap: var(--space-2);
+}
 .sc-side {
 	position: sticky;
 	top: var(--space-5);

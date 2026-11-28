@@ -73,6 +73,19 @@
 .sc-table td .sc-mark {
 	white-space: nowrap;
 }
+.sc-table.is-record {
+	table-layout: fixed;
+	min-width: 720px;
+}
+.sc-table.is-record th:nth-child(1) {
+	width: 184px;
+}
+.sc-table.is-record th:nth-child(2) {
+	width: 136px;
+}
+.sc-table.is-record th:nth-child(4) {
+	width: 184px;
+}
 .sc-table.is-matrix td,
 .sc-table.is-matrix th {
 	text-align: center;

@@ -109,13 +109,24 @@ Each component is one function in `plugin/src/ui/components/<name>.ts`, with its
 | Tester card    | `testerCard`, `timeline`                       | `sc-tcard`, `sc-timeline`, `sc-event`         |
 | Instance card  | `instanceCard`, `instanceCards`                | `sc-instances`, `sc-instance`                 |
 
+## Work and record
+
+A page shows the open work first and the record after it.
+
+- The plan page shows the banner, the objective, the open questions, and the runs. A plan that waits for approval shows its decision there.
+- The other sections are the record: approval, rules, tests, requirements, claims, answered questions, decisions, explorations, and versions. Each is a closed fold. A plan that waits for approval opens the folds that the approver must read.
+- A section with no entries does not show. Its tab does not show.
+- A highlight does not change the height of a row. In a main area of 800 px and wider, the options of a row are on its line.
+- The tables of one page share their column widths (`sc-table is-record`).
+
 ## Keys
 
 Every action has a key, shown as a cap before its word. The status bar shows at most three key hints.
 
 - The arrows move. Up and Down move the highlight. Right goes one step deeper. Left goes one step back.
 - The numbers decide. A number chooses the option with that cap. The options belong to the highlighted record, or to the open record in the drawer.
-- A record that waits for a decision on another page has one option: 1 opens that page at the decision.
+- A record is decided where it is. A question, a finding, a run, and a plan each have their decision in the row or in the drawer. The full run or plan is one link away.
+- An option that records a decision with one key asks first. The question shows the text that Checkmate records. Enter records it, and Esc records nothing. An option that only defers does not ask.
 - On a page that waits for a decision, the decisions have the numbers. A number goes to the rationale when the decision needs one. Ctrl+Enter in the rationale goes to the numbered decisions.
 - A number never records a decision that needs a rationale without the rationale and a confirmation.
 - A closed section acts as a row: Right opens it, Left closes it, and Left on a closed section goes back.

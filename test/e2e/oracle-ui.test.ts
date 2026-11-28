@@ -943,7 +943,7 @@ test(
 )
 
 test(
-	'The number keys open a waiting run from Needs you and record its acceptance — a decision needs the mouse.',
+	'The number keys answer a question and accept a waiting run in Needs you — a decision needs the mouse, or one key records it.',
 	{ skip: browserSkip, timeout: 60_000 },
 	async (t) => {
 		const workspace = directory(t)
@@ -953,14 +953,32 @@ test(
 		const { page } = await pageFor(t, ui.url)
 		const focusOn = (selector: string) =>
 			page.waitForFunction((wanted) => document.activeElement?.matches(wanted), selector)
-		await page.goto(new URL('/plans/checkout?view=needs&focus=list&at=r%3Arun-7', ui.url).href)
-		await focusOn('[data-row][data-key="r:run-7"]')
+		const pending = () => read(workspace, (db) => planDetail(db, 'checkout').pendingDecisions.length)
+		await page.goto(new URL('/plans/checkout?view=needs&focus=list&at=g%3AG2', ui.url).href)
+		await focusOn('[data-row][data-key="g:G2"]')
+		const row = page.locator('#row-needs-0')
+		const highlighted = await row.boundingBox()
+		await page.keyboard.press('ArrowDown')
+		const plain = await row.boundingBox()
+		await page.keyboard.press('ArrowUp')
+		assert.equal(highlighted?.height, plain?.height, 'a row keeps its height when it gets the highlight')
 		await page.keyboard.press('1')
-		await page.waitForURL(/\/runs\/run-7#decide$/)
-		await focusOn('[data-rationale]')
+		await page.locator('dialog[data-confirm][open]').waitFor()
+		assert.match((await page.locator('[data-confirm-text]').textContent()) ?? '', /Right as built/)
+		await page.keyboard.press('Escape')
+		await focusOn('[data-row][data-key="g:G2"]')
+		assert.equal(pending(), 0, 'a number key alone records no answer')
+		await page.keyboard.press('1')
+		await page.locator('dialog[data-confirm][open]').waitFor()
+		await page.keyboard.press('Enter')
+		await focusOn('[data-row][data-key="r:run-7"]')
+		assert.equal(pending(), 1)
+		await page.keyboard.press('1')
+		await focusOn('[data-drawer] [data-rationale]')
+		assert.match(page.url(), /\/plans\/checkout\?/, 'the decision opens in the drawer of the list')
 		await page.keyboard.press('Escape')
 		await page.keyboard.press('1')
-		await focusOn('[data-rationale]')
+		await focusOn('[data-drawer] [data-rationale]')
 		assert.equal(
 			read(workspace, (db) => runDetail(db, 'run-7').result?.acceptance),
 			'pending',
@@ -972,10 +990,15 @@ test(
 		await page.keyboard.press('1')
 		await focusOn('[data-confirm-submit]')
 		await page.keyboard.press('Enter')
-		await page.locator('[data-region="state"]').filter({ hasText: 'accepted' }).waitFor()
+		await focusOn('[data-row][data-key="g:G4"]')
 		const decision = read(workspace, (db) => runDetail(db, 'run-7').result?.latestDecision)
 		assert.equal(decision?.verdict, 'approved')
 		assert.equal(decision?.rationale, 'The failure is the known stacking defect.')
+		await page.goto(new URL('/plans/checkout@2', ui.url).href)
+		await page.locator('#questions').waitFor()
+		assert.equal(await page.locator('#rules').isVisible(), false, 'the record of an approved plan is folded')
+		await page.locator('.sc-tabs a[href="#rules"]').click()
+		await page.locator('#rules').waitFor()
 		await page.goto(new URL('/runs/run-7?item=test%3AT4', ui.url).href)
 		const check = page.locator('summary.asr-row').first()
 		await check.evaluate((summary) => ((summary.parentElement as HTMLDetailsElement).open = false))

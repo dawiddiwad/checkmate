@@ -84,7 +84,7 @@ export const keyTable = [
 	},
 	{
 		caps: ['1', '2', '3', '…', '9'],
-		help: 'Choose an option of the highlighted record. The options are numbered from left to right as shown. When the record has no options and the page waits for a decision, the numbers choose the decision. When records are selected, the numbers act on the selection, and an action on more than one record asks first. On a rule or an area in the navigator, choose a build column; the same number again shows all builds.',
+		help: 'Choose an option of the highlighted record. The options are numbered from left to right as shown. An option that records a decision asks first, and Enter records it. When the record has no options and the page waits for a decision, the numbers choose the decision. When records are selected, the numbers act on the selection, and an action on more than one record asks first. On a rule or an area in the navigator, choose a build column; the same number again shows all builds.',
 		test: (event) => /^[1-9]$/.test(event.key),
 		run: (event) => choose(Number(event.key)),
 		hint: () => {

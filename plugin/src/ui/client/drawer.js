@@ -7,7 +7,11 @@ import { announce, showHints, tell } from './status-bar.js'
 
 export function optionsNow() {
 	if (state.level === 'detail')
-		return [...state.drawer.querySelectorAll('.sc-drawer-top [data-option], .sc-opt-section [data-option]')]
+		return [
+			...state.drawer.querySelectorAll(
+				'.sc-drawer-top [data-option], .sc-opt-section [data-option], [data-choose]:not([hidden]) [data-option]'
+			),
+		]
 	const row = state.level === 'list' ? current('list') : null
 	if (row?.classList.contains('is-many')) return detailOptions(row)
 	const options = row ? [...row.querySelectorAll('[data-option]')] : []

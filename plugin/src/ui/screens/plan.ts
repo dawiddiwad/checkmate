@@ -512,6 +512,19 @@ function nextLine(planId: string, gaps: Gap[], review: Review, found: PlanContex
 	</div>`
 }
 
+function recordSection(
+	id: string,
+	title: string,
+	count: number,
+	body: Html,
+	open: boolean,
+	region = '',
+	link: Html | '' = ''
+) {
+	if (count === 0) return html`<div id="${id}" ${region ? html`data-region="${region}"` : ''} hidden></div>`
+	return fold({ key: `section:${id}`, title, headingId: `${id}-h`, bodyId: id, link, count, open, region, body })
+}
+
 function section(
 	id: string,
 	title: Html | string,
@@ -520,6 +533,7 @@ function section(
 	region = '',
 	link: Html | '' = ''
 ) {
+	if (count === 0) return html`<div id="${id}" ${region ? html`data-region="${region}"` : ''} hidden></div>`
 	return html`<section
 		class="sc-sec"
 		id="${id}"
@@ -575,21 +589,31 @@ function testsTable(detail: Detail) {
 	})
 }
 
-function questionsSection(planId: string, detail: Detail, found: PlanContext) {
-	const open = found.questions.filter((question) => question.answer === null)
-	const openGaps = detail.plan.gaps.filter((gap) => gap.status === 'open')
-	return section(
-		'questions',
-		'Questions',
-		open.length + openGaps.length,
-		html`<h3 class="sc-sub-h" id="gaps">
-				Gaps of the plan <span class="sc-count-n">${detail.plan.gaps.length}</span>
-			</h3>
-			<div data-region="gaps">${gapsList(detail)}</div>
-			<h3 class="sc-sub-h">Questions of the testers <span class="sc-count-n">${found.questions.length}</span></h3>
-			${questionsList(planId, found.questions)}`,
-		'questions'
-	)
+function questionsSection(planId: string, detail: Detail, found: PlanContext, place: 'work' | 'record') {
+	const open =
+		found.questions.filter((question) => question.answer === null).length +
+		detail.plan.gaps.filter((gap) => gap.status === 'open').length
+	const all = found.questions.length + detail.plan.gaps.length
+	if ((place === 'work') !== open > 0) return ''
+	const body = html`${
+		detail.plan.gaps.length
+			? html`<h3 class="sc-sub-h" id="gaps">
+						Gaps of the plan <span class="sc-count-n">${detail.plan.gaps.length}</span>
+					</h3>
+					<div data-region="gaps">${gapsList(detail)}</div>`
+			: ''
+	}
+	${
+		found.questions.length
+			? html`<h3 class="sc-sub-h">
+						Questions of the testers <span class="sc-count-n">${found.questions.length}</span>
+					</h3>
+					${questionsList(planId, found.questions)}`
+			: ''
+	}`
+	return place === 'work'
+		? section('questions', 'Questions', open, body, 'questions')
+		: recordSection('questions', 'Questions', all, body, false, 'questions')
 }
 
 export function planPage(
@@ -649,7 +673,7 @@ export function planPage(
 			{ href: '#explorations', label: 'Explorations', count: found.explorations.length },
 			{ href: '#runs', label: 'Runs', count: detail.runs.length },
 			{ href: '#history', label: 'Versions', count: versions },
-		],
+		].filter((link) => link.count > 0),
 	})
 	const approval = approvalPanel(store, context, detail, state)
 	const body = html`${heading({
@@ -666,52 +690,78 @@ export function planPage(
 		${nextLine(planId, plan.gaps, review, found)} ${tabs}
 		<div data-region="banners">${newerBanner(detail)} ${pending} ${explorationBanners(found.explorations)}</div>
 		<div class="sc-stack is-loose">
-			${approval}
+			${approving ? approval : ''}
 			<p class="sc-lead">${plan.objective}</p>
-			${section('rules', 'Rules and builds', rules, rulesTable(review))}
-			${section(
-				'tests',
-				'Permanent tests',
-				plan.tests.length,
-				html`${testsTable(detail)}
-				${fold({
-					key: 'section:test-steps',
-					title: 'Steps and checks of each test',
-					headingId: 'test-steps',
-					count: null,
-					open: approving,
-					body: html`<div class="sc-stack">
-						${plan.tests.map((test) => testCard(detail, test, latest ? removeTest(context, detail, test) : ''))}
-					</div>`,
-				})}`,
-				'tests',
-				editLink('edit-tests')
-			)}
-			${section(
-				'requirements',
-				'Requirements and coverage',
-				plan.requirements.length,
-				html`<p class="sc-help">${planSummaryLine(plan)}</p>
-					${requirementsTable(plan)}`,
-				'',
-				editLink('edit-requirements')
-			)}
-			${section(
-				'claims',
-				'Claims',
-				found.claims.length,
-				html`<p class="sc-help">
-						The merged claims of completed explorations.
-						<a href="/plans/${planId}?view=all">Open them in All items</a>.
-					</p>
-					${claimsTable(planId, found.claims)}`,
-				'claims'
-			)}
-			${questionsSection(planId, detail, found)}
-			${section('decisions', 'Decisions', plan.decisions.length, decisionsList(plan))}
-			${section('explorations', 'Explorations', found.explorations.length, explorationsTable(found.explorations), 'explorations')}
+			${questionsSection(planId, detail, found, 'work')}
 			${section('runs', 'Runs', detail.runs.length, runsTable(detail), 'plan-runs')}
-			${section('history', 'Versions', versions, planHistoryList(store, detail, allHistory), 'history')}
+			<section class="sc-sec" aria-labelledby="record-h">
+				<h2 class="sc-sec-h" id="record-h">Record</h2>
+				<div class="sc-stack is-tight">
+					${approving ? '' : fold({ key: 'section:approval', title: 'Approval', body: approval })}
+					${recordSection('rules', 'Rules and builds', rules, rulesTable(review), approving)}
+					${recordSection(
+						'tests',
+						'Permanent tests',
+						plan.tests.length,
+						html`${testsTable(detail)}
+						${fold({
+							key: 'section:test-steps',
+							title: 'Steps and checks of each test',
+							headingId: 'test-steps',
+							count: null,
+							open: approving,
+							body: html`<div class="sc-stack">
+								${plan.tests.map((test) =>
+									testCard(detail, test, latest ? removeTest(context, detail, test) : '')
+								)}
+							</div>`,
+						})}`,
+						approving,
+						'tests',
+						editLink('edit-tests')
+					)}
+					${recordSection(
+						'requirements',
+						'Requirements and coverage',
+						plan.requirements.length,
+						html`<p class="sc-help">${planSummaryLine(plan)}</p>
+							${requirementsTable(plan)}`,
+						approving,
+						'',
+						editLink('edit-requirements')
+					)}
+					${recordSection(
+						'claims',
+						'Claims',
+						found.claims.length,
+						html`<p class="sc-help">
+								The merged claims of completed explorations.
+								<a href="/plans/${planId}?view=all">Open them in All items</a>.
+							</p>
+							${claimsTable(planId, found.claims)}`,
+						false,
+						'claims'
+					)}
+					${questionsSection(planId, detail, found, 'record')}
+					${recordSection('decisions', 'Decisions', plan.decisions.length, decisionsList(plan), approving)}
+					${recordSection(
+						'explorations',
+						'Explorations',
+						found.explorations.length,
+						explorationsTable(found.explorations),
+						found.explorations.some((item) => item.running),
+						'explorations'
+					)}
+					${recordSection(
+						'history',
+						'Versions',
+						versions,
+						planHistoryList(store, detail, allHistory),
+						allHistory,
+						'history'
+					)}
+				</div>
+			</section>
 			<p class="sc-note" data-region="plan-cost">
 				Total cost ${cost.costUsd === null ? '—' : costText(cost.costUsd, cost.costPartial)}
 			</p>

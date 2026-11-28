@@ -7,7 +7,7 @@
 .sc-plan {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) 300px 288px 240px;
-	gap: var(--space-6);
+	gap: var(--space-5);
 	align-items: center;
 	padding: var(--space-4) var(--space-5);
 	border-bottom: var(--hairline) solid var(--hair);

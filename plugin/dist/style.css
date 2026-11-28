@@ -1287,6 +1287,19 @@ legend {
 .sc-table td .sc-mark {
 	white-space: nowrap;
 }
+.sc-table.is-record {
+	table-layout: fixed;
+	min-width: 720px;
+}
+.sc-table.is-record th:nth-child(1) {
+	width: 184px;
+}
+.sc-table.is-record th:nth-child(2) {
+	width: 136px;
+}
+.sc-table.is-record th:nth-child(4) {
+	width: 184px;
+}
 .sc-table.is-matrix td,
 .sc-table.is-matrix th {
 	text-align: center;
@@ -2616,12 +2629,16 @@ details.menu > summary::-webkit-details-marker {
 	grid-template-columns: 28px 112px 120px minmax(0, 1fr) 280px;
 }
 @container main (max-width: 1000px) {
-	.sc-row,
-	.sc-row.is-sel:has(> .sc-c-opts) {
+	.sc-row {
 		grid-template-columns: 28px 112px 80px minmax(0, 1fr);
 	}
 	.sc-row > .sc-c-meta {
 		display: none;
+	}
+}
+@container main (max-width: 800px) {
+	.sc-row.is-sel:has(> .sc-c-opts) {
+		grid-template-columns: 28px 112px 80px minmax(0, 1fr);
 	}
 	.sc-row.is-sel > .sc-c-opts {
 		grid-column: 2 / -1;
@@ -3021,6 +3038,9 @@ section:not([class]) > .sc-sec-h {
 .sc-stack.is-loose {
 	gap: var(--space-5);
 }
+.sc-stack.is-tight {
+	gap: var(--space-2);
+}
 .sc-side {
 	position: sticky;
 	top: var(--space-5);
@@ -3074,7 +3094,7 @@ section:not([class]) > .sc-sec-h {
 .sc-plan {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) 300px 288px 240px;
-	gap: var(--space-6);
+	gap: var(--space-5);
 	align-items: center;
 	padding: var(--space-4) var(--space-5);
 	border-bottom: var(--hairline) solid var(--hair);

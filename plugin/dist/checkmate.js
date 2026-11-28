@@ -23828,9 +23828,9 @@ function recordStop(store, actor, input) {
     const events = explorationEvents(store, id2);
     const state = explorationState(events);
     requireCondition(
-      startOf(events)?.path !== "session",
-      `Exploration ${id2} runs in a session. The operator session owns its testers.`,
-      "Stop the testers in the session."
+      explorer === void 0 || startOf(events)?.path !== "session",
+      `Exploration ${id2} runs in a session. Checkmate cannot end one tester of a session.`,
+      `Stop the test: checkmate explore stop ${id2}. Then end its testers in the session.`
     );
     requireCondition(
       ["starting", "testing", "recording", "verifying", "following", "interrupted"].includes(state),
@@ -27756,6 +27756,13 @@ function sessionLaunch(events, explorationId) {
     `Exploration ${explorationId} does not run in a session. Its testers run as processes.`,
     `Run checkmate explore wait ${explorationId}.`
   );
+  const stop = stopOf(events);
+  const reason = stop?.detail.reason ? `: ${stop.detail.reason}` : "";
+  requireCondition(
+    !stop,
+    `Exploration ${explorationId} was stopped by ${stop?.detail.actor}${reason}.`,
+    "End its testers in this session. Give them no more work."
+  );
   return launch;
 }
 function phaseOf2(events) {
@@ -28745,7 +28752,7 @@ function runsOf(store, explorationId, counts) {
   const done = events.find((item) => item.step === "done");
   const [claims, questions] = counts.get(`${status.planId}:${explorationId}`) ?? [0, 0];
   const waiting = explorationPermissions(store, explorationId).filter((item) => !item.decision).length;
-  const waits = waiting ? `waits for you: ${plural(waiting, "permission request")}` : "";
+  const waits = waiting ? `waits for you: ${plural(waiting, "permission request")}` : status.path === "session" ? "runs in the session that started the test" : "";
   const firstFollow = events.findIndex((item) => item.step === "follow");
   const firstRun = firstFollow === -1 ? events : events.slice(0, firstFollow);
   const failure = status.state === "failed" ? failureOf(status.reason, status.doneHint, firstRun) : null;
@@ -28755,8 +28762,10 @@ function runsOf(store, explorationId, counts) {
     stopped: status.reason ?? "Stopped.",
     interrupted: "The run was interrupted: the supervisor stopped before the end."
   };
+  const session = status.path === "session";
   const base2 = {
     explorationId,
+    session,
     planId: status.planId,
     build: status.build,
     instanceId: status.instanceId,
@@ -28785,7 +28794,7 @@ function runsOf(store, explorationId, counts) {
     costUsd: costOf3(firstFollow === -1 ? events : events.slice(0, firstFollow)),
     outcome: testing ? waits : outcomes[status.state === "following" ? "completed" : status.state] ?? "",
     failure,
-    stoppable: testing && status.path !== "session"
+    stoppable: testing
   };
   const indexes = events.flatMap((item, index2) => item.step === "follow" ? [index2] : []);
   const follows = indexes.map((from, number) => {
@@ -32027,6 +32036,10 @@ function followDialog(context2, planId, subject, count2) {
 			<p class="sc-note">
 				${planId}, build ${subject.build}: the testers read ${answers} of the product owner and test again.
 			</p>
+			${subject.session ? html2`<p class="sc-note" data-key="follow-session">
+							${subject.explorationId} runs in the session that started it. Checkmate starts no process.
+							The follow-up waits until that session continues the test. You can stop it on its page.
+						</p>` : ""}
 			<div class="sc-confirm-foot">
 				${button({ label: `Test the ${answers}`, keyName: "1", emphasis: "primary", attrs: { "data-stop": true, "data-key-n": "1" } })}
 				${button({ label: "Cancel", keyName: "2", attrs: { type: "button", "data-act-cancel": true, "data-stop": true, "data-key-n": "2" } })}
@@ -32062,8 +32075,9 @@ function stopDialog(context2, subject) {
     `/explorations/${subject.explorationId}/stop`,
     context2,
     html2`<p class="sc-note">
-				Stop the test of ${subject.planId}, build ${subject.build}? The testers end now. The record and the work
-				folder stay.
+				Stop the test of ${subject.planId}, build ${subject.build}?
+				${subject.session ? "The testers run in the session that started the test. Checkmate cannot end them. It records the stop and gives that session no more work. End the testers in the session." : "The testers end now."}
+				The record and the work folder stay.
 			</p>
 			${dialogField(`act-stop-${subject.explorationId}-reason`, "Reason (optional)", "reason", "")}
 			<div class="sc-confirm-foot">
@@ -38568,6 +38582,15 @@ function stateLine(store, live, run2) {
 				><strong>Paused: ${live.paused}</strong> It waits for you in the Claude Code session.</span
 			>`
     });
+  if (live.running && live.path === "session")
+    return notice({
+      kind: "info",
+      content: html2`<span data-key="session-owned"
+				><strong>Exploration ${live.explorationId} runs in the session that started it.</strong> Checkmate
+				starts no process for it. When this page does not change, ask that session to continue the test:
+				<code>checkmate explore next ${live.explorationId}</code>. You can also stop the test here.</span
+			>`
+    });
   if (live.running)
     return notice({
       kind: "info",
@@ -38951,7 +38974,7 @@ function phaseStrip(live, run2) {
 function runChoices(live, others) {
   const busy = others.some((item) => item.running) || live.running;
   return {
-    stoppable: live.running && live.path !== "session",
+    stoppable: live.running,
     again: !busy && !live.stopping && ["failed", "stopped", "interrupted"].includes(live.state)
   };
 }
@@ -38977,7 +39000,12 @@ function runOptions(live, run2, others) {
 function runActions(context2, live, run2, others, workspaceBuild, choice2) {
   const { stoppable, again } = runChoices(live, others);
   const testers = live.explorers.filter((item) => stoppableTester(live, item));
-  const subject = { explorationId: live.explorationId, planId: live.planId, build: live.build };
+  const subject = {
+    explorationId: live.explorationId,
+    planId: live.planId,
+    build: live.build,
+    session: live.path === "session"
+  };
   const values = {
     build: run2.build,
     level: run2.level ?? "normal",
@@ -41984,7 +42012,7 @@ function reviewPage(store, context2, planId, params, refusal = null, notice2 = n
 			${record}
 			<div data-region="plan-actions">
 				${review.running ? "" : testDialog(context2, planId, { build: "", level: "normal", since: "", until: "", repo: "" }, defaultBuild(store.workspace), asList(instanceChoice(store, planId)))}
-				${review.answers ? followDialog(context2, planId, { ...review.answers, planId }, review.answers.count) : ""}
+				${review.answers ? followDialog(context2, planId, { ...review.answers, planId, session: explorationStatus(store, review.answers.explorationId).path === "session" }, review.answers.count) : ""}
 				${ruleEditable(review) ? html2`${ruleDialog(
       "edit",
       context2,
@@ -45031,10 +45059,9 @@ data: ${matched.join(",") || "*"}
     try {
       const answers = unusedAnswers(store, explorationId).length;
       startFollow(store, actor, { explorationId, allow: [], claudeArgs: [] }, launchEnv());
-      redirect(request3.res, `/explorations/${explorationId}`, [
-        ...cookies,
-        cookie("checkmate_toast", `Testing ${plural(answers, "answer")} of ${explorationId}`, 60)
-      ]);
+      const session = explorationStatus(store, explorationId).path === "session";
+      const flash = session ? `The follow-up of ${explorationId} waits for the session that started the test` : `Testing ${plural(answers, "answer")} of ${explorationId}`;
+      redirect(request3.res, `/explorations/${explorationId}`, [...cookies, cookie("checkmate_toast", flash, 60)]);
     } catch (error) {
       refuse5(engineText(error));
     }
@@ -45086,7 +45113,8 @@ data: ${matched.join(",") || "*"}
     } catch (error) {
       return refuse5(engineText(error));
     }
-    const flash = explorer ? `Stopping tester ${explorer} of ${explorationId}\u2026` : `Stopping ${explorationId}\u2026`;
+    const session = explorationStatus(store, explorationId).path === "session";
+    const flash = explorer ? `Stopping tester ${explorer} of ${explorationId}\u2026` : session ? `Stopped ${explorationId}. End its testers in the session` : `Stopping ${explorationId}\u2026`;
     redirect(request3.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
   }
   function sameSiteFrom(value2) {

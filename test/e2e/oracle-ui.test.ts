@@ -24,7 +24,9 @@ import {
 	ready,
 	endProcessesIn,
 } from '../support.ts'
-import { openTest, launched, entries, done, ended, stacks } from '../explorations.ts'
+import { openTest, launch, launched, entries, event, done, ended, stacks } from '../explorations.ts'
+import { explorationEvents, openExploration } from '../../plugin/src/explorations.ts'
+import { explorationStatus } from '../../plugin/src/explorers.ts'
 import { asking, bash, allOf, openOf, plainBody, waitOpen } from '../permissions.ts'
 import { planDetail } from '../../plugin/src/index.ts'
 import { answerGap } from '../../plugin/src/plans.ts'
@@ -1009,6 +1011,63 @@ test(
 		assert.equal(await check.evaluate((summary) => (summary.parentElement as HTMLDetailsElement).open), false)
 		await page.keyboard.press('ArrowLeft')
 		await page.waitForURL(/\/runs\/run-7$/)
+	}
+)
+
+test(
+	'Stop the follow-up of a session test that its session does not continue — the test stays Following and the stop is refused.',
+	{ skip: browserSkip, timeout: 60_000 },
+	async (t) => {
+		const workspace = directory(t)
+		t.after(() => endProcessesIn(workspace))
+		const opened = store(t, workspace)
+		target(opened)
+		plan(opened)
+		openExploration(opened, 'checkmate', { planId: 'checkout', build: 'b1', explorationId: 'held' })
+		event(opened, 'held', {
+			step: 'start',
+			detail: { ...launch, path: 'session', allow: [], context: { harness: 'claude' } },
+		})
+		entries(opened, 'held', 'a1', [{ kind: 'question', id: 'Q1', question: 'What is the refund window?' }])
+		done(opened, 'held')
+		answerGap(opened, 'oracle', {
+			planId: 'checkout',
+			gapId: 'a1/Q1',
+			kind: 'clarify',
+			value: 'Refunds are available for 14 days.',
+			source: 'oracle',
+			rationale: 'Product decision.',
+		})
+		closeStore(opened)
+		const { url } = await startUi(t, workspace)
+		const { page } = await pageFor(t, url)
+		const status = () => read(workspace, (db) => explorationStatus(db, 'held'))
+		await page.goto(new URL('/plans/checkout', url).href)
+		await page.getByRole('button', { name: /Test the answers \(1\)/ }).click()
+		const follow = page.locator('dialog[open]')
+		assert.match((await follow.textContent()) ?? '', /Checkmate starts no process/)
+		await follow.getByRole('button', { name: /Test the 1 answer/ }).click()
+		await page.waitForURL(/\/explorations\/held$/)
+		assert.equal(status().state, 'following')
+		assert.equal(
+			read(workspace, (db) => explorationEvents(db, 'held').some((item) => item.step === 'supervisor')),
+			false,
+			'Checkmate starts no process for a session test'
+		)
+		await page.locator('[data-key="session-owned"]').waitFor()
+		await page.getByRole('button', { name: /Stop the test…/ }).click()
+		const stop = page.locator('dialog[open]')
+		assert.match((await stop.textContent()) ?? '', /Checkmate cannot end them/)
+		await stop.locator('input[name="reason"]').fill('The session does not continue.')
+		await stop.getByRole('button', { name: /Stop the test/ }).click()
+		await page.locator('[data-key="follow-failed"]').waitFor()
+		assert.equal(status().state, 'completed')
+		assert.equal(status().follow, 'stopped')
+		const next = command(workspace, ['explore', 'next', 'held'])
+		assert.notEqual(next.code, 0)
+		assert.match(next.out + next.err, /was stopped by oracle: The session does not continue\./)
+		await page.goto(new URL('/plans/checkout', url).href)
+		await page.getByRole('button', { name: /Test the answers \(1\)/ }).waitFor()
 	}
 )
 

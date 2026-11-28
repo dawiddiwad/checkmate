@@ -310,6 +310,15 @@ function stateLine(store: Store, live: Live, run: Run) {
 				><strong>Paused: ${live.paused}</strong> It waits for you in the Claude Code session.</span
 			>`,
 		})
+	if (live.running && live.path === 'session')
+		return notice({
+			kind: 'info',
+			content: html`<span data-key="session-owned"
+				><strong>Exploration ${live.explorationId} runs in the session that started it.</strong> Checkmate
+				starts no process for it. When this page does not change, ask that session to continue the test:
+				<code>checkmate explore next ${live.explorationId}</code>. You can also stop the test here.</span
+			>`,
+		})
 	if (live.running)
 		return notice({
 			kind: 'info',
@@ -763,7 +772,7 @@ function phaseStrip(live: Live, run: Run) {
 function runChoices(live: Live, others: Listed[]) {
 	const busy = others.some((item) => item.running) || live.running
 	return {
-		stoppable: live.running && live.path !== 'session',
+		stoppable: live.running,
 		again: !busy && !live.stopping && ['failed', 'stopped', 'interrupted'].includes(live.state),
 	}
 }
@@ -800,7 +809,12 @@ function runActions(
 ) {
 	const { stoppable, again } = runChoices(live, others)
 	const testers = live.explorers.filter((item) => stoppableTester(live, item))
-	const subject = { explorationId: live.explorationId, planId: live.planId, build: live.build }
+	const subject = {
+		explorationId: live.explorationId,
+		planId: live.planId,
+		build: live.build,
+		session: live.path === 'session',
+	}
 	const values = {
 		build: run.build,
 		level: run.level ?? 'normal',

@@ -30,6 +30,7 @@ import {
 	pauseOf,
 	removeWork,
 	startOf,
+	stopOf,
 	unplacedReports,
 	verifiedEntries,
 	verifierActor,
@@ -88,6 +89,13 @@ function sessionLaunch(events: ExplorationEvent[], explorationId: string): Launc
 		launch?.path === 'session',
 		`Exploration ${explorationId} does not run in a session. Its testers run as processes.`,
 		`Run checkmate explore wait ${explorationId}.`
+	)
+	const stop = stopOf(events)
+	const reason = stop?.detail.reason ? `: ${stop.detail.reason}` : ''
+	requireCondition(
+		!stop,
+		`Exploration ${explorationId} was stopped by ${stop?.detail.actor}${reason}.`,
+		'End its testers in this session. Give them no more work.'
 	)
 	return launch
 }

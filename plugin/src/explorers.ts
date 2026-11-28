@@ -1535,9 +1535,9 @@ export function recordStop(store: Store, actor: string | undefined, input: StopI
 		const events = explorationEvents(store, id)
 		const state = explorationState(events)
 		requireCondition(
-			startOf(events)?.path !== 'session',
-			`Exploration ${id} runs in a session. The operator session owns its testers.`,
-			'Stop the testers in the session.'
+			explorer === undefined || startOf(events)?.path !== 'session',
+			`Exploration ${id} runs in a session. Checkmate cannot end one tester of a session.`,
+			`Stop the test: checkmate explore stop ${id}. Then end its testers in the session.`
 		)
 		requireCondition(
 			['starting', 'testing', 'recording', 'verifying', 'following', 'interrupted'].includes(state),

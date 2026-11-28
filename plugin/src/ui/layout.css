@@ -143,14 +143,14 @@
 .sc-tools {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 8px;
-	margin-bottom: 12px;
+	gap: var(--space-2);
+	margin-bottom: var(--space-3);
 }
 .sc-tools:empty {
 	display: none;
 }
 .sc-sec-h {
-	margin: 24px 0 8px;
+	margin: var(--space-5) 0 var(--space-2);
 	font: 600 13px/16px var(--font-sans);
 	letter-spacing: 0;
 	color: var(--muted);

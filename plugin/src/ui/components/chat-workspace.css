@@ -19,12 +19,12 @@
 	justify-content: space-between;
 	flex-wrap: wrap;
 	gap: var(--space-3);
-	padding: 12px var(--space-4);
+	padding: var(--space-3) var(--space-4);
 	border-bottom: var(--hairline) solid var(--hair);
 	font: 600 15px/22px var(--font-sans);
 }
 .sc-chat-head {
-	padding: 12px var(--space-5);
+	padding: var(--space-3) var(--space-5);
 }
 .sc-chat-list-h h2,
 .sc-chat-head h2 {
@@ -50,7 +50,7 @@
 	overflow-y: auto;
 }
 .sc-chat-list [data-region='chat-list'] > .sc-help {
-	padding: 12px var(--space-4);
+	padding: var(--space-3) var(--space-4);
 }
 .sc-chat-item {
 	display: flex;

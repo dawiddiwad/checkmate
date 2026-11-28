@@ -21,7 +21,7 @@ A chess scoresheet records every move in plain ink. Only one move is yours to pl
 
 ## Tokens
 
-`plugin/src/ui/tokens.css` is the only place for colour, space, size, and font values. Two light values are darker than in the Scoresheet files so that every text and control border meets the contrast rules: `--signal` is `#be400c` (the files give `#c2410c`, 4.46:1 on `--surface-2`) and `--edge` is `#85888d` (the files give `#8c8f94`, 2.97:1 on `--surface` and 2.79:1 on `--surface-2`). `npm run lint:check` fails on a raw colour in another stylesheet. Light values are in `:root`. Dark values are in `:root[data-theme='dark']` and in the `prefers-color-scheme` block, with the same names.
+`plugin/src/ui/tokens.css` is the only place for colour, space, size, and font values. Two light values are darker than in the Scoresheet files so that every text and control border meets the contrast rules: `--signal` is `#be400c` (the files give `#c2410c`, 4.46:1 on `--surface-2`) and `--edge` is `#85888d` (the files give `#8c8f94`, 2.97:1 on `--surface` and 2.79:1 on `--surface-2`). `npm run lint:check` fails on a raw colour in another stylesheet. It also fails on a raw length in `gap`, `padding`, or `margin`. Use a `--space` token there. Light values are in `:root`. Dark values are in `:root[data-theme='dark']` and in the `prefers-color-scheme` block, with the same names.
 
 | Group      | Tokens                                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------------------------- |
@@ -38,6 +38,14 @@ A chess scoresheet records every move in plain ink. Only one move is yours to pl
 | Font       | `--font-sans`, `--font-mono`                                                                            |
 
 The UI loads IBM Plex Sans and IBM Plex Mono from Google Fonts. The font stacks fall back to system fonts, so the UI still renders offline.
+
+## Breakpoints
+
+A stylesheet uses two viewport widths in `@media`: 760 px and 900 px. At 900 px and narrower, the nav rail is above the main area. At 760 px and narrower, the components use their narrow layout. `npm run lint:check` fails on another width.
+
+Four components have their own width, because their content stops fitting there: the chat workspace (850 px), the drawer (1200 px), the plan tile (1279 px), and the status bar (1240 px and 400 px). Use a container query when a component depends on the width of its container.
+
+`scripts/check-styles.ts` has the lists of the known exceptions: `componentBreakpoints` for the widths, and `offScaleSpacing` for the 42 spacing values that are not on the space scale (2, 6, 10, 20, and 28 px). Do not add an entry for new work. Remove an entry when you move its value to a token. The check fails on an entry that no stylesheet has.
 
 ## Status language
 

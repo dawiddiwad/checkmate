@@ -64,7 +64,7 @@
 	list-style: decimal;
 }
 .sc-markdown pre {
-	padding: 12px var(--space-4);
+	padding: var(--space-3) var(--space-4);
 	background: var(--surface-2);
 	border: var(--hairline) solid var(--hair);
 	overflow: auto;

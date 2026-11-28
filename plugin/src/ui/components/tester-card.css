@@ -2,7 +2,7 @@
 	display: grid;
 	grid-template-columns: 56px minmax(0, 1fr) auto;
 	gap: 2px var(--space-3);
-	padding: 12px var(--space-4);
+	padding: var(--space-3) var(--space-4);
 	background: var(--surface);
 	border-bottom: var(--hairline) solid var(--hair);
 	cursor: pointer;

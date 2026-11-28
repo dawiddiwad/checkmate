@@ -30,9 +30,10 @@
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 8px;
+	gap: var(--space-2);
 	min-height: var(--bar-h);
-	padding: 4px max(16px, env(safe-area-inset-right, 0px)) 4px max(16px, env(safe-area-inset-left, 0px));
+	padding: var(--space-1) max(var(--space-4), env(safe-area-inset-right, 0px)) var(--space-1)
+		max(var(--space-4), env(safe-area-inset-left, 0px));
 	border-top: 1px solid var(--hair);
 	background: var(--surface);
 	color: var(--ink);

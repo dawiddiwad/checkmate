@@ -40,7 +40,7 @@
 .sc-chips {
 	display: inline-flex;
 	flex-wrap: wrap;
-	gap: 4px;
+	gap: var(--space-1);
 }
 @media (max-width: 760px) {
 	.sc-facts,

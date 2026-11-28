@@ -33,6 +33,8 @@ export default [
 					'AbortSignal',
 					'setTimeout',
 					'clearTimeout',
+					'setInterval',
+					'clearInterval',
 					'structuredClone',
 				].map((name) => [name, 'readonly'])
 			),

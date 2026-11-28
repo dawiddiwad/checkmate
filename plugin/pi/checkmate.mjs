@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import checkmateTools from './checkmate-tools.mjs'
+import checkmatePanel from './panel.mjs'
 
 const cli = fileURLToPath(new URL('../dist/checkmate.js', import.meta.url))
 
@@ -80,6 +81,7 @@ function versionWarnings(cwd) {
 
 export default function checkmate(pi) {
 	checkmateTools(pi)
+	checkmatePanel(pi)
 	pi.on('session_start', async (_event, ctx) => {
 		const warnings = await versionWarnings(ctx.cwd)
 		if (warnings.length) ctx.ui?.notify?.(warnings.join('\n'), 'warning')
